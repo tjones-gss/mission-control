@@ -59,10 +59,10 @@ export function SessionsList({ sessions, selectedId, onSelect }) {
               </span>
             </div>
 
-            {/* Slug row */}
-            {s.slug && (
-              <div className="mt-0.5 text-xs text-gray-600 truncate font-mono">
-                {s.slug}
+            {/* Summary row */}
+            {(s.lastText || s.slug) && (
+              <div className="mt-0.5 text-xs text-gray-500 line-clamp-2 leading-snug">
+                {s.lastText || s.slug}
               </div>
             )}
 
