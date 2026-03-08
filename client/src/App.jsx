@@ -109,7 +109,7 @@ export default function App() {
 
         {/* Center: Main panel */}
         <main className="flex-1 overflow-hidden flex flex-col">
-          {activeTab === 'agents' && <AgentTree session={selectedSession} />}
+          {activeTab === 'agents' && <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} />}
           {activeTab === 'tasks' && (
             <TaskBoard tasks={tasks} loading={tasksLoading} />
           )}
