@@ -80,7 +80,7 @@ export function getSessionMessages(sessionId) {
       .filter(Boolean)
 
     // Main thread only
-    const mainRecords = records.filter(r => r.isSidechain === false)
+    const mainRecords = records.filter(r => !r.isSidechain)
 
     const messages = mainRecords
       .filter(r => r.uuid) // skip metadata/summary lines without uuid
