@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Bot, GitBranch, MessageSquare, GitCommit } from 'lucide-react'
+import { ConversationView } from './ConversationView.jsx'
 
 function timeRange(start, end) {
   if (!start || !end) return ''
@@ -58,8 +59,11 @@ export function AgentTree({ session, sessionUpdateVersion }) {
       {/* Sub-tab content */}
       {subTab === 'conversation' && (
         <div className="flex-1 overflow-hidden">
-          {/* ConversationView placeholder — will be implemented in Task 3 */}
-          <div className="p-4 text-xs text-gray-600">Conversation view coming soon</div>
+          <ConversationView
+            sessionId={session?.sessionId}
+            sessionUpdateVersion={sessionUpdateVersion}
+            active={subTab === 'conversation'}
+          />
         </div>
       )}
 
