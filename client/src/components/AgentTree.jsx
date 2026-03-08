@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Bot, GitBranch, MessageSquare, GitCommit } from 'lucide-react'
 import { ConversationView } from './ConversationView.jsx'
 import { TimelineView } from './TimelineView.jsx'
+import { IntelView } from './IntelView.jsx'
 
 function timeRange(start, end) {
   if (!start || !end) return ''
@@ -29,7 +30,7 @@ function ToolPill({ name, count }) {
   )
 }
 
-export function AgentTree({ session, sessionUpdateVersion }) {
+export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion }) {
   const [subTab, setSubTab] = useState('conversation')
 
   if (!session) return (
@@ -42,7 +43,7 @@ export function AgentTree({ session, sessionUpdateVersion }) {
     <div className="h-full flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex gap-1 px-3 py-2 border-b border-gray-800 shrink-0">
-        {['conversation', 'timeline', 'summary'].map(tab => (
+        {['conversation', 'timeline', 'summary', 'intel'].map(tab => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
@@ -74,6 +75,16 @@ export function AgentTree({ session, sessionUpdateVersion }) {
             sessionId={session?.sessionId}
             sessionUpdateVersion={sessionUpdateVersion}
             active={subTab === 'timeline'}
+          />
+        </div>
+      )}
+
+      {subTab === 'intel' && (
+        <div className="flex-1 overflow-hidden">
+          <IntelView
+            sessionId={session?.sessionId}
+            intelligenceVersion={intelligenceVersion}
+            active={subTab === 'intel'}
           />
         </div>
       )}

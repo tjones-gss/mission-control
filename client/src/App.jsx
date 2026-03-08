@@ -22,6 +22,7 @@ export default function App() {
   const [events, setEvents] = useState([])
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
+  const [intelligenceVersion, setIntelligenceVersion] = useState(0)
 
   const { data: sessions, refetch: refetchSessions } = useApi('/api/sessions', [sessionsVersion])
   const { data: tasks, loading: tasksLoading } = useApi(
@@ -51,6 +52,9 @@ export default function App() {
     }
     if (evt.type === 'team_update') {
       refetchTeams()
+    }
+    if (evt.type === 'intelligence_update') {
+      setIntelligenceVersion(v => v + 1)
     }
   }, [refetchTeams]))
 
@@ -109,7 +113,7 @@ export default function App() {
 
         {/* Center: Main panel */}
         <main className="flex-1 overflow-hidden flex flex-col">
-          {activeTab === 'agents' && <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} />}
+          {activeTab === 'agents' && <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} intelligenceVersion={intelligenceVersion} />}
           {activeTab === 'tasks' && (
             <TaskBoard tasks={tasks} loading={tasksLoading} />
           )}

@@ -7,7 +7,7 @@ export function useSSE(onMessage) {
   useEffect(() => {
     const es = new EventSource('/api/stream')
 
-    const events = ['session_update', 'new_session', 'task_update', 'team_update', 'history_update']
+    const events = ['session_update', 'new_session', 'task_update', 'team_update', 'history_update', 'intelligence_update']
     events.forEach(evt => {
       es.addEventListener(evt, e => {
         onMessageRef.current({ type: evt, data: JSON.parse(e.data) })

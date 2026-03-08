@@ -7,6 +7,7 @@ import { router as historyRouter } from './routes/history.js'
 import { router as streamRouter } from './routes/stream.js'
 import { router as skillsRouter } from './routes/skills.js'
 import { startWatcher } from './watcher.js'
+import './intelligence/triggers.js'
 
 const app = express()
 const PORT = 3001
