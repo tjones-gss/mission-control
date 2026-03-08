@@ -55,6 +55,62 @@ function parseSessionFile(filePath, projectDirName, filename) {
     // Project name from encoded dir name (replace -- with / and - with \)
     const projectName = decodeProjectDir(projectDirName)
 
+    // Extract rich spy data from records
+    let lastThought = null
+    let lastAction = null
+    let lastText = null
+    let model = null
+    let gitBranch = null
+    const toolUseCounts = {}
+    const tokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+
+    // Sum token usage across all assistant records
+    for (const r of records) {
+      if (r.message?.usage) {
+        tokenUsage.input += r.message.usage.input_tokens || 0
+        tokenUsage.output += r.message.usage.output_tokens || 0
+        tokenUsage.cacheRead += r.message.usage.cache_read_input_tokens || 0
+        tokenUsage.cacheWrite += r.message.usage.cache_creation_input_tokens || 0
+      }
+      // Count tool_use blocks across ALL assistant messages
+      if (r.type === 'assistant' && Array.isArray(r.message?.content)) {
+        for (const block of r.message.content) {
+          if (block.type === 'tool_use') {
+            toolUseCounts[block.name] = (toolUseCounts[block.name] || 0) + 1
+          }
+        }
+      }
+      // Collect gitBranch from any record
+      if (r.gitBranch) gitBranch = r.gitBranch
+    }
+
+    // Iterate in reverse for "most recent" fields
+    for (let i = records.length - 1; i >= 0; i--) {
+      const r = records[i]
+      if (r.type === 'assistant' && Array.isArray(r.message?.content)) {
+        if (!model && r.message.model) model = r.message.model
+        for (const block of r.message.content) {
+          if (!lastThought && block.type === 'thinking') {
+            lastThought = (block.thinking || '').slice(0, 350)
+          }
+          if (!lastAction && block.type === 'tool_use') {
+            const inp = block.input || {}
+            let summary
+            if (block.name === 'Bash') summary = (inp.command || '').slice(0, 80)
+            else if (['Read', 'Write', 'Edit', 'MultiEdit'].includes(block.name)) summary = inp.file_path || ''
+            else if (block.name === 'Agent') summary = (inp.prompt || '').slice(0, 60)
+            else if (block.name === 'Skill') summary = inp.skill || ''
+            else summary = String(Object.values(inp)[0] || '').slice(0, 80)
+            lastAction = { name: block.name, summary }
+          }
+          if (!lastText && block.type === 'text') {
+            lastText = (block.text || '').slice(0, 250)
+          }
+        }
+      }
+      if (lastThought && lastAction && lastText && model) break
+    }
+
     return {
       sessionId,
       slug,
@@ -67,6 +123,13 @@ function parseSessionFile(filePath, projectDirName, filename) {
       messageCount: records.length,
       agentTree,
       filePath,
+      lastThought,
+      lastAction,
+      lastText,
+      toolUseCounts,
+      tokenUsage,
+      model,
+      gitBranch,
     }
   } catch {
     return null

@@ -1,17 +1,19 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Eye, Users, ListTodo } from 'lucide-react'
+import { Eye, Users, ListTodo, Command } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
 import { SessionsList } from './components/SessionsList.jsx'
 import { AgentTree } from './components/AgentTree.jsx'
 import { TaskBoard } from './components/TaskBoard.jsx'
 import { TeamsPanel } from './components/TeamsPanel.jsx'
+import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 
 const TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
   { id: 'teams', label: 'Teams', icon: Users },
+  { id: 'skills', label: 'Skills', icon: Command },
 ]
 
 export default function App() {
@@ -27,6 +29,7 @@ export default function App() {
     [selectedSessionId, tasksVersion]
   )
   const { data: teams, refetch: refetchTeams } = useApi('/api/teams')
+  const { data: skills, loading: skillsLoading } = useApi('/api/skills')
 
   // Auto-select first active session
   useEffect(() => {
@@ -111,6 +114,7 @@ export default function App() {
             <TaskBoard tasks={tasks} loading={tasksLoading} />
           )}
           {activeTab === 'teams' && <TeamsPanel teams={teams} />}
+          {activeTab === 'skills' && <SkillsPanel skills={skills} loading={skillsLoading} />}
         </main>
 
         {/* Right: Live Feed */}
