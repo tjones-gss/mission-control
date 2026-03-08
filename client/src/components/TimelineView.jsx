@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Sparkles, MessageSquare, Wrench, CheckCircle, User } from 'lucide-react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
@@ -26,41 +26,44 @@ export function TimelineView({ sessionId, sessionUpdateVersion, active }) {
   const { data, loading } = useApi(url, [sessionUpdateVersion])
   const messages = data?.messages || []
 
-  const events = []
-  for (const msg of messages) {
-    const ts = msg.timestamp
-    if (msg.type === 'user') {
-      for (const block of msg.blocks) {
-        if (block.type === 'text') {
-          events.push({ timestamp: ts, type: 'user_text', label: 'USER', summary: block.text?.slice(0, 80) || '', color: 'text-indigo-400' })
+  const events = useMemo(() => {
+    const result = []
+    for (const msg of messages) {
+      const ts = msg.timestamp
+      if (msg.type === 'user') {
+        for (const block of msg.blocks ?? []) {
+          if (block.type === 'text') {
+            result.push({ timestamp: ts, type: 'user_text', label: 'USER', summary: block.text?.slice(0, 80) || '', color: 'text-indigo-400' })
+          }
+          if (block.type === 'tool_result') {
+            result.push({ timestamp: ts, type: 'tool_result', label: 'RESULT', summary: (block.content || '').split('\n')[0].slice(0, 80), color: 'text-gray-500' })
+          }
         }
-        if (block.type === 'tool_result') {
-          events.push({ timestamp: ts, type: 'tool_result', label: 'RESULT', summary: (block.content || '').split('\n')[0].slice(0, 80), color: 'text-gray-500' })
+      }
+      if (msg.type === 'assistant') {
+        for (const block of msg.blocks ?? []) {
+          if (block.type === 'thinking') {
+            result.push({ timestamp: ts, type: 'thinking', label: 'THINK', summary: block.text?.slice(0, 80) || '', color: 'text-amber-500' })
+          }
+          if (block.type === 'text') {
+            result.push({ timestamp: ts, type: 'text', label: 'TEXT', summary: block.text?.slice(0, 80) || '', color: 'text-gray-400' })
+          }
+          if (block.type === 'tool_use') {
+            const toolColor = TOOL_COLORS[block.name] ? TOOL_COLORS[block.name].split(' ')[1] : 'text-gray-400'
+            const inputSummary = block.name === 'Bash'
+              ? (block.input?.command || '').slice(0, 80)
+              : ['Read', 'Write', 'Edit', 'MultiEdit'].includes(block.name)
+                ? (block.input?.file_path || '').slice(0, 80)
+                : block.name === 'Agent'
+                  ? (block.input?.prompt || '').slice(0, 60)
+                  : String(Object.values(block.input || {})[0] || '').slice(0, 80)
+            result.push({ timestamp: ts, type: 'tool_use', label: block.name, summary: inputSummary, color: toolColor })
+          }
         }
       }
     }
-    if (msg.type === 'assistant') {
-      for (const block of msg.blocks) {
-        if (block.type === 'thinking') {
-          events.push({ timestamp: ts, type: 'thinking', label: 'THINK', summary: block.text?.slice(0, 80) || '', color: 'text-amber-500' })
-        }
-        if (block.type === 'text') {
-          events.push({ timestamp: ts, type: 'text', label: 'TEXT', summary: block.text?.slice(0, 80) || '', color: 'text-gray-400' })
-        }
-        if (block.type === 'tool_use') {
-          const toolColor = TOOL_COLORS[block.name] ? TOOL_COLORS[block.name].split(' ')[1] : 'text-gray-400'
-          const inputSummary = block.name === 'Bash'
-            ? (block.input?.command || '').slice(0, 80)
-            : ['Read', 'Write', 'Edit', 'MultiEdit'].includes(block.name)
-              ? (block.input?.file_path || '').slice(0, 80)
-              : block.name === 'Agent'
-                ? (block.input?.prompt || '').slice(0, 60)
-                : String(Object.values(block.input || {})[0] || '').slice(0, 80)
-          events.push({ timestamp: ts, type: 'tool_use', label: block.name, summary: inputSummary, color: toolColor })
-        }
-      }
-    }
-  }
+    return result
+  }, [messages])
 
   const scrollRef = useRef(null)
   const [paused, setPaused] = useState(false)
@@ -69,7 +72,7 @@ export function TimelineView({ sessionId, sessionUpdateVersion, active }) {
     if (!paused && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [events.length, sessionUpdateVersion, paused])
+  }, [events, sessionUpdateVersion, paused])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
