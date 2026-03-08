@@ -39,14 +39,14 @@ function ToolUseBlock({ name, input }) {
 function ToolResultBlock({ content }) {
   const [expanded, setExpanded] = useState(false)
   const lines = (content || '').split('\n')
-  const truncated = !expanded && lines.length > 20
-  const display = truncated ? lines.slice(0, 20).join('\n') : content
+  const truncated = lines.length > 20
+  const display = !truncated || expanded ? content : lines.slice(0, 20).join('\n')
   return (
     <div className="rounded bg-gray-900 border border-gray-800">
       <pre className="text-[11px] font-mono text-gray-500 p-2 overflow-x-auto whitespace-pre-wrap">{display}</pre>
       {truncated && (
-        <button className="text-[10px] text-cyan-600 hover:text-cyan-400 px-2 pb-1.5" onClick={() => setExpanded(true)}>
-          +{lines.length - 20} more lines
+        <button className="text-[10px] text-cyan-600 hover:text-cyan-400 px-2 pb-1.5" onClick={() => setExpanded(e => !e)}>
+          {expanded ? 'show less' : `+${lines.length - 20} more lines`}
         </button>
       )}
     </div>
@@ -123,7 +123,7 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
           className="absolute bottom-0 left-0 right-0 py-1.5 px-3 bg-cyan-950/80 border-t border-cyan-800/50 text-xs text-cyan-400 cursor-pointer text-center"
           onClick={resumeScroll}
         >
-          Auto-scroll paused · Click to resume
+          ⏸ Auto-scroll paused · Click to resume
         </div>
       )}
     </div>
