@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
 
@@ -90,21 +90,21 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
     if (!paused && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages.length, paused])
+  }, [messages.length, sessionUpdateVersion, paused])
 
-  function handleScroll() {
+  const handleScroll = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100
     setPaused(!atBottom)
-  }
+  }, [])
 
-  function resumeScroll() {
+  const resumeScroll = useCallback(() => {
     setPaused(false)
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }
+  }, [])
 
   return (
     <div className="h-full flex flex-col overflow-hidden relative">
