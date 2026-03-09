@@ -1,18 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useApi } from '../hooks/useApi.js'
 
+const STORAGE_KEY = 'intel_enabled'
+
 export function IntelView({ sessionId, intelligenceVersion, active }) {
-  const url = active && sessionId ? `/api/sessions/${sessionId}/intelligence` : null
+  const [enabled, setEnabled] = useState(() => localStorage.getItem(STORAGE_KEY) === 'true')
+
+  const url = enabled && active && sessionId ? `/api/sessions/${sessionId}/intelligence` : null
   const { data, loading, error, refetch } = useApi(url, [intelligenceVersion])
 
   const [ageLabel, setAgeLabel] = useState('')
-
-  // 30s polling while active
-  useEffect(() => {
-    if (!active) return
-    const id = setInterval(refetch, 30_000)
-    return () => clearInterval(id)
-  }, [active, refetch])
 
   // "Analyzed X ago" counter
   useEffect(() => {
@@ -25,6 +22,40 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
     const id = setInterval(update, 1000)
     return () => clearInterval(id)
   }, [data?.analyzedAt])
+
+  function enable() {
+    localStorage.setItem(STORAGE_KEY, 'true')
+    setEnabled(true)
+  }
+
+  function disable() {
+    localStorage.setItem(STORAGE_KEY, 'false')
+    setEnabled(false)
+  }
+
+  // Disabled state — opt-in gate
+  if (!enabled) {
+    return (
+      <div className="h-full overflow-y-auto p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">INTEL</span>
+        </div>
+        <div className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-4 space-y-3">
+          <div className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Costs tokens</div>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Intel uses the Claude API (~$0.04 per analysis) to summarize the session.
+            It is off by default to avoid unexpected usage.
+          </p>
+          <button
+            onClick={enable}
+            className="text-[11px] px-3 py-1.5 rounded border border-amber-800/60 text-amber-400 hover:bg-amber-900/30 transition-colors"
+          >
+            Enable Intel analysis
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (loading && !data) {
     return (
@@ -48,10 +79,14 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
       <div className="h-full overflow-y-auto p-4">
         <div className="flex items-center gap-2 mb-4">
           <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">INTEL</span>
+          <button onClick={disable} className="ml-auto text-[10px] text-gray-700 hover:text-gray-500 transition-colors">disable</button>
         </div>
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
           <p className="text-xs text-gray-500 leading-relaxed">
-            Intelligence unavailable — make sure the claude CLI is installed and authenticated
+            Intel analysis failed
+            {error && error !== 'analysis_failed'
+              ? `: ${error}`
+              : ' — make sure the claude CLI is installed and authenticated'}
           </p>
         </div>
       </div>
@@ -76,6 +111,7 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
         >
           ↻
         </button>
+        <button onClick={disable} className="text-[10px] text-gray-700 hover:text-gray-500 transition-colors">disable</button>
       </div>
 
       {data && (

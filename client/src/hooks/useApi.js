@@ -10,7 +10,11 @@ export function useApi(url, deps = []) {
     setLoading(true)
     try {
       const res = await fetch(url)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`
+        try { const body = await res.json(); msg = body.detail ?? body.error ?? msg } catch {}
+        throw new Error(msg)
+      }
       setData(await res.json())
       setError(null)
     } catch (e) {
