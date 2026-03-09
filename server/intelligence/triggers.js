@@ -32,7 +32,7 @@ async function runIfSignificant(sessionId) {
   if (!isStale && !hasChanged) return
 
   snapshots.set(sessionId, { subagentCount, messageCount })
-  await runAnalysis(sessionId, session)
+  await runAnalysis(sessionId, session).catch(() => {})
 }
 
 export async function runAnalysis(sessionId, session) {
