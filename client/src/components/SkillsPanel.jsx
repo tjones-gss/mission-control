@@ -1,9 +1,17 @@
 import { useState } from 'react'
-import { Clipboard, Check, Package, Zap, Search, ChevronDown, ChevronUp } from 'lucide-react'
+import { Clipboard, Check, Package, Zap, Search, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 
-function SkillCard({ skill }) {
+function SkillCard({ skill, refetch }) {
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  // edit state
+  const [editing, setEditing] = useState(false)
+  const [editContent, setEditContent] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [editError, setEditError] = useState(null)
+  // delete state
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   function handleCopy() {
     const text = skill.command + (skill.argumentHint ? ' ' : '')
@@ -13,49 +21,181 @@ function SkillCard({ skill }) {
     })
   }
 
+  async function handleEditOpen() {
+    setEditError(null)
+    try {
+      const res = await fetch(`/api/skills/${encodeURIComponent(skill.name)}/raw`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const text = await res.text()
+      setEditContent(text)
+      setEditing(true)
+    } catch (e) {
+      setEditError(e.message)
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setEditError(null)
+    try {
+      const res = await fetch(`/api/skills/${encodeURIComponent(skill.name)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editContent }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? `HTTP ${res.status}`)
+      }
+      setEditing(false)
+      refetch()
+    } catch (e) {
+      setEditError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/skills/${encodeURIComponent(skill.name)}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? `HTTP ${res.status}`)
+      }
+      refetch()
+    } catch (e) {
+      setEditError(e.message)
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
+
+  const isUser = skill.source === 'user'
+
   return (
     <div
-      className={`bg-gray-900 border rounded p-2 flex flex-col gap-1 transition-colors ${expanded ? 'border-gray-700 col-span-2' : 'border-gray-800'}`}
+      className={`bg-gray-900 border rounded p-2 flex flex-col gap-1 transition-colors ${expanded || editing ? 'border-gray-700 col-span-2' : 'border-gray-800'}`}
     >
       <div className="flex items-start justify-between gap-1">
         <span className="font-mono text-xs text-cyan-300 leading-tight break-all">{skill.command}</span>
-        <button
-          onClick={handleCopy}
-          className="shrink-0 text-gray-600 hover:text-gray-400 transition-colors mt-0.5"
-          title="Copy command"
-        >
-          {copied ? <Check size={11} className="text-green-400" /> : <Clipboard size={11} />}
-        </button>
+        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+          {!isUser && (
+            <span className="text-[9px] text-gray-600 italic">(read-only)</span>
+          )}
+          {isUser && !editing && (
+            <button
+              onClick={handleEditOpen}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors"
+              title="Edit skill"
+            >
+              Edit
+            </button>
+          )}
+          {isUser && !confirmDelete && !editing && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 hover:bg-red-900/50 hover:text-red-400 transition-colors"
+              title="Delete skill"
+            >
+              ✕
+            </button>
+          )}
+          <button
+            onClick={handleCopy}
+            className="text-gray-600 hover:text-gray-400 transition-colors"
+            title="Copy command"
+          >
+            {copied ? <Check size={11} className="text-green-400" /> : <Clipboard size={11} />}
+          </button>
+        </div>
       </div>
-      {skill.description && (
-        <p className="text-[10px] text-gray-400 leading-snug">{skill.description}</p>
+
+      {editError && (
+        <p className="text-[10px] text-red-400">{editError}</p>
       )}
-      {skill.argumentHint && (
-        <span className="text-[10px] text-gray-600 italic">{skill.argumentHint}</span>
+
+      {confirmDelete && !editing && (
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-[10px] text-red-400">Delete this skill?</span>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-[10px] px-1.5 py-0.5 rounded bg-red-900/60 text-red-300 hover:bg-red-900 transition-colors disabled:opacity-50"
+          >
+            {deleting ? '...' : 'Yes'}
+          </button>
+          <button
+            onClick={() => setConfirmDelete(false)}
+            disabled={deleting}
+            className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 transition-colors disabled:opacity-50"
+          >
+            No
+          </button>
+        </div>
       )}
-      {skill.body && (
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className={`mt-1 flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded transition-colors self-start ${
-            expanded
-              ? 'bg-cyan-900/40 text-cyan-400 hover:bg-cyan-900/60'
-              : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
-          }`}
-        >
-          {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-          {expanded ? 'Hide full skill' : 'View full skill'}
-        </button>
+
+      {editing && (
+        <div className="flex flex-col gap-1 mt-1">
+          <textarea
+            value={editContent}
+            onChange={e => setEditContent(e.target.value)}
+            rows={8}
+            className="bg-gray-900 border border-gray-700 rounded p-2 text-xs text-gray-300 font-mono w-full resize-y focus:outline-none focus:border-gray-600"
+          />
+          <div className="flex gap-1">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/50 text-cyan-300 hover:bg-cyan-900 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={() => { setEditing(false); setEditError(null) }}
+              disabled={saving}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
-      {expanded && skill.body && (
-        <pre className="mt-1 text-[10px] text-gray-500 whitespace-pre-wrap leading-relaxed border-t border-gray-800 pt-2 font-mono overflow-x-auto">
-          {skill.body}
-        </pre>
+
+      {!editing && (
+        <>
+          {skill.description && (
+            <p className="text-[10px] text-gray-400 leading-snug">{skill.description}</p>
+          )}
+          {skill.argumentHint && (
+            <span className="text-[10px] text-gray-600 italic">{skill.argumentHint}</span>
+          )}
+          {skill.body && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className={`mt-1 flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded transition-colors self-start ${
+                expanded
+                  ? 'bg-cyan-900/40 text-cyan-400 hover:bg-cyan-900/60'
+                  : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+              }`}
+            >
+              {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+              {expanded ? 'Hide full skill' : 'View full skill'}
+            </button>
+          )}
+          {expanded && skill.body && (
+            <pre className="mt-1 text-[10px] text-gray-500 whitespace-pre-wrap leading-relaxed border-t border-gray-800 pt-2 font-mono overflow-x-auto">
+              {skill.body}
+            </pre>
+          )}
+        </>
       )}
     </div>
   )
 }
 
-function SkillSection({ title, skills }) {
+function SkillSection({ title, skills, refetch }) {
   if (skills.length === 0) return null
   return (
     <div className="mb-4">
@@ -64,16 +204,83 @@ function SkillSection({ title, skills }) {
       </div>
       <div className="px-4 grid grid-cols-2 gap-2">
         {skills.map(skill => (
-          <SkillCard key={skill.command} skill={skill} />
+          <SkillCard key={skill.command} skill={skill} refetch={refetch} />
         ))}
       </div>
     </div>
   )
 }
 
-export function SkillsPanel({ skills, loading }) {
+function NewSkillForm({ onSaved, onCancel }) {
+  const [name, setName] = useState('')
+  const [content, setContent] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function handleSave() {
+    setError(null)
+    if (!name.trim()) return setError('Name is required.')
+    setSaving(true)
+    try {
+      const res = await fetch('/api/skills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), content }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? `HTTP ${res.status}`)
+      }
+      onSaved()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mx-4 mb-4 bg-gray-900 border border-gray-700 rounded p-3 flex flex-col gap-2">
+      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">New Skill</span>
+      {error && <p className="text-[10px] text-red-400">{error}</p>}
+      <input
+        type="text"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="skill-name (letters, digits, _ : -)"
+        className="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 font-mono focus:outline-none focus:border-gray-600 placeholder-gray-700"
+      />
+      <textarea
+        value={content}
+        onChange={e => setContent(e.target.value)}
+        placeholder="Skill markdown content..."
+        rows={8}
+        className="bg-gray-900 border border-gray-700 rounded p-2 text-xs text-gray-300 font-mono w-full resize-y focus:outline-none focus:border-gray-600 placeholder-gray-700"
+      />
+      <div className="flex gap-1">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/50 text-cyan-300 hover:bg-cyan-900 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={saving}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export function SkillsPanel({ skills, loading, refetch }) {
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState('all')
+  const [showNewForm, setShowNewForm] = useState(false)
 
   if (loading) {
     return <div className="p-4 text-gray-600 text-xs">Loading skills...</div>
@@ -107,6 +314,11 @@ export function SkillsPanel({ skills, loading }) {
 
   const hasResults = filteredUser.length > 0 || filteredPlugins.length > 0
 
+  function handleNewSaved() {
+    setShowNewForm(false)
+    refetch()
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -115,6 +327,14 @@ export function SkillsPanel({ skills, loading }) {
           <Zap size={13} className="text-yellow-400" />
           <span className="text-sm font-semibold text-gray-200">Skills</span>
           <span className="text-xs text-gray-600">· {totalSkillCount} skills</span>
+          <button
+            onClick={() => setShowNewForm(v => !v)}
+            className="ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors"
+            title="Create new skill"
+          >
+            <Plus size={10} />
+            New Skill
+          </button>
         </div>
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -143,6 +363,12 @@ export function SkillsPanel({ skills, loading }) {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto py-2">
+        {showNewForm && (
+          <NewSkillForm
+            onSaved={handleNewSaved}
+            onCancel={() => setShowNewForm(false)}
+          />
+        )}
         {!hasResults ? (
           <div className="px-4 py-8 text-center text-xs text-gray-600">
             {query ? `No skills match "${query}"` : 'No skills found.'}
@@ -150,7 +376,7 @@ export function SkillsPanel({ skills, loading }) {
         ) : (
           <>
             {filteredUser.length > 0 && (
-              <SkillSection title="User Skills" skills={filteredUser} />
+              <SkillSection title="User Skills" skills={filteredUser} refetch={refetch} />
             )}
             {filteredPlugins.map(plugin => (
               <div key={plugin.key} className="mb-4">
@@ -166,7 +392,7 @@ export function SkillsPanel({ skills, loading }) {
                 </div>
                 <div className="px-4 grid grid-cols-2 gap-2">
                   {plugin.skills.map(skill => (
-                    <SkillCard key={skill.command} skill={skill} />
+                    <SkillCard key={skill.command} skill={skill} refetch={refetch} />
                   ))}
                 </div>
               </div>

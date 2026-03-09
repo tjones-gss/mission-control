@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Eye, Users, ListTodo, Command } from 'lucide-react'
+import { Eye, Users, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
 import { SessionsList } from './components/SessionsList.jsx'
 import { AgentTree } from './components/AgentTree.jsx'
+import { KanbanBoard } from './components/KanbanBoard.jsx'
 import { TaskBoard } from './components/TaskBoard.jsx'
 import { TeamsPanel } from './components/TeamsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
+import { LegendModal } from './components/LegendModal.jsx'
 
 const TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
@@ -19,18 +21,20 @@ const TABS = [
 export default function App() {
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [activeTab, setActiveTab] = useState('agents')
+  const [agentView, setAgentView] = useState('board') // 'board' | 'detail'
+  const [showLegend, setShowLegend] = useState(false)
   const [events, setEvents] = useState([])
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
   const [intelligenceVersion, setIntelligenceVersion] = useState(0)
 
   const { data: sessions, refetch: refetchSessions } = useApi('/api/sessions', [sessionsVersion])
-  const { data: tasks, loading: tasksLoading } = useApi(
+  const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useApi(
     selectedSessionId ? `/api/tasks/${selectedSessionId}` : null,
     [selectedSessionId, tasksVersion]
   )
   const { data: teams, refetch: refetchTeams } = useApi('/api/teams')
-  const { data: skills, loading: skillsLoading } = useApi('/api/skills')
+  const { data: skills, loading: skillsLoading, refetch: refetchSkills } = useApi('/api/skills')
 
   // Auto-select first active session
   useEffect(() => {
@@ -72,7 +76,7 @@ export default function App() {
             {activeSessions.length} active
           </span>
         )}
-        <nav className="ml-auto flex gap-1">
+        <nav className="ml-auto flex items-center gap-1">
           {TABS.map(tab => {
             const Icon = tab.icon
             return (
@@ -90,6 +94,13 @@ export default function App() {
               </button>
             )
           })}
+          <button
+            onClick={() => setShowLegend(true)}
+            className="ml-2 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            title="Help"
+          >
+            <HelpCircle size={14} />
+          </button>
         </nav>
       </header>
 
@@ -112,12 +123,50 @@ export default function App() {
 
         {/* Center: Main panel */}
         <main className="flex-1 overflow-hidden flex flex-col">
-          {activeTab === 'agents' && <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} intelligenceVersion={intelligenceVersion} />}
+          {activeTab === 'agents' && (
+            <>
+              {/* Board / Detail toggle bar */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800 shrink-0">
+                {agentView === 'detail' && (
+                  <button
+                    onClick={() => setAgentView('board')}
+                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors mr-1"
+                  >
+                    <ArrowLeft size={12} /> Board
+                  </button>
+                )}
+                <div className="ml-auto flex gap-1">
+                  <button
+                    onClick={() => setAgentView('board')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${agentView === 'board' ? 'bg-gray-800 text-gray-200' : 'text-gray-600 hover:text-gray-400'}`}
+                    title="Kanban board"
+                  >
+                    <LayoutGrid size={11} /> Board
+                  </button>
+                  <button
+                    onClick={() => setAgentView('detail')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${agentView === 'detail' ? 'bg-gray-800 text-gray-200' : 'text-gray-600 hover:text-gray-400'}`}
+                    title="Session detail"
+                  >
+                    <List size={11} /> Detail
+                  </button>
+                </div>
+              </div>
+              {agentView === 'board'
+                ? <KanbanBoard
+                    sessions={sessions}
+                    selectedId={selectedSessionId}
+                    onSelect={id => { setSelectedSessionId(id); setAgentView('detail') }}
+                  />
+                : <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} intelligenceVersion={intelligenceVersion} />
+              }
+            </>
+          )}
           {activeTab === 'tasks' && (
-            <TaskBoard tasks={tasks} loading={tasksLoading} />
+            <TaskBoard tasks={tasks} loading={tasksLoading} sessionId={selectedSessionId} refetch={refetchTasks} />
           )}
           {activeTab === 'teams' && <TeamsPanel teams={teams} />}
-          {activeTab === 'skills' && <SkillsPanel skills={skills} loading={skillsLoading} />}
+          {activeTab === 'skills' && <SkillsPanel skills={skills} loading={skillsLoading} refetch={refetchSkills} />}
         </main>
 
         {/* Right: Live Feed */}
@@ -125,6 +174,8 @@ export default function App() {
           <LiveFeed events={events} />
         </aside>
       </div>
+
+      {showLegend && <LegendModal onClose={() => setShowLegend(false)} />}
     </div>
   )
 }
