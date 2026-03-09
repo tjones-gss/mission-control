@@ -6,6 +6,7 @@ import { router as teamsRouter } from './routes/teams.js'
 import { router as historyRouter } from './routes/history.js'
 import { router as streamRouter } from './routes/stream.js'
 import { router as skillsRouter } from './routes/skills.js'
+import { router as workflowsRouter } from './routes/workflows.js'
 import { startWatcher } from './watcher.js'
 import './intelligence/triggers.js'
 
@@ -21,6 +22,7 @@ app.use('/api/teams', teamsRouter)
 app.use('/api/history', historyRouter)
 app.use('/api/stream', streamRouter)
 app.use('/api/skills', skillsRouter)
+app.use('/api/workflows', workflowsRouter)
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }))
 

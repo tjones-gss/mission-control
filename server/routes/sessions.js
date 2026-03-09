@@ -33,8 +33,12 @@ router.get('/:sessionId/intelligence', async (req, res) => {
     try {
       const result = await inFlight
       return res.json({ ...result, analyzedAt: Date.now() })
-    } catch {
-      return res.status(503).json({ error: 'analysis_failed' })
+    } catch (err) {
+      return res.status(503).json({
+        error: 'analysis_failed',
+        detail: err.message,
+        stderr: err.stderrOutput || null,
+      })
     }
   }
 
@@ -44,7 +48,11 @@ router.get('/:sessionId/intelligence', async (req, res) => {
   try {
     const result = await runAnalysis(sessionId, session)
     res.json({ ...result, analyzedAt: Date.now() })
-  } catch {
-    res.status(503).json({ error: 'analysis_failed' })
+  } catch (err) {
+    res.status(503).json({
+      error: 'analysis_failed',
+      detail: err.message,
+      stderr: err.stderrOutput || null,
+    })
   }
 })

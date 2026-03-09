@@ -5,9 +5,17 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm run dev"
+    "dev:client": "cd client && npm run dev",
+    "test": "npm run test:server && npm run test:client",
+    "test:server": "cd server && npx vitest run",
+    "test:client": "cd client && npx vitest run",
+    "test:server:watch": "cd server && npx vitest",
+    "test:client:watch": "cd client && npx vitest",
+    "test:e2e": "npx playwright test",
+    "test:coverage": "cd server && npx vitest run --coverage && cd ../client && npx vitest run --coverage"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "concurrently": "^8.2.2"
   }
 }

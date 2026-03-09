@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Eye, Users, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft } from 'lucide-react'
+import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
 import { SessionsList } from './components/SessionsList.jsx'
 import { AgentTree } from './components/AgentTree.jsx'
 import { KanbanBoard } from './components/KanbanBoard.jsx'
 import { TaskBoard } from './components/TaskBoard.jsx'
-import { TeamsPanel } from './components/TeamsPanel.jsx'
+import { WorkflowsPanel } from './components/WorkflowsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
@@ -14,7 +14,7 @@ import { LegendModal } from './components/LegendModal.jsx'
 const TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
-  { id: 'teams', label: 'Teams', icon: Users },
+  { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
 ]
 
@@ -33,7 +33,7 @@ export default function App() {
     selectedSessionId ? `/api/tasks/${selectedSessionId}` : null,
     [selectedSessionId, tasksVersion]
   )
-  const { data: teams, refetch: refetchTeams } = useApi('/api/teams')
+  const { data: workflows, loading: workflowsLoading, refetch: refetchWorkflows } = useApi('/api/workflows')
   const { data: skills, loading: skillsLoading, refetch: refetchSkills } = useApi('/api/skills')
 
   // Auto-select first active session
@@ -54,13 +54,10 @@ export default function App() {
     if (evt.type === 'task_update') {
       setTasksVersion(v => v + 1)
     }
-    if (evt.type === 'team_update') {
-      refetchTeams()
-    }
     if (evt.type === 'intelligence_update') {
       setIntelligenceVersion(v => v + 1)
     }
-  }, [refetchTeams]))
+  }, []))
 
   const activeSessions = sessions?.filter(s => s.isActive) || []
 
@@ -154,7 +151,7 @@ export default function App() {
               </div>
               {agentView === 'board'
                 ? <KanbanBoard
-                    sessions={sessions}
+                    sessions={sessions || []}
                     selectedId={selectedSessionId}
                     onSelect={id => { setSelectedSessionId(id); setAgentView('detail') }}
                   />
@@ -165,7 +162,7 @@ export default function App() {
           {activeTab === 'tasks' && (
             <TaskBoard tasks={tasks} loading={tasksLoading} sessionId={selectedSessionId} refetch={refetchTasks} />
           )}
-          {activeTab === 'teams' && <TeamsPanel teams={teams} />}
+          {activeTab === 'workflows' && <WorkflowsPanel workflows={workflows} loading={workflowsLoading} refetch={refetchWorkflows} skills={skills} />}
           {activeTab === 'skills' && <SkillsPanel skills={skills} loading={skillsLoading} refetch={refetchSkills} />}
         </main>
 

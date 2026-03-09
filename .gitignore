@@ -3,3 +3,6 @@ dist/
 .env
 *.log
 .worktrees/
+.playwright-mcp/
+playwright-report/
+test-results/

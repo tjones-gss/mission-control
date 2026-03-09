@@ -46,6 +46,8 @@ export async function runAnalysis(sessionId, session) {
     return result
   }).catch(err => {
     console.error(`[intel] analysis failed for ${sessionId}:`, err.message)
+    if (err.stderrOutput) console.error(`[intel] stderr:`, err.stderrOutput)
+    if (err.code != null) console.error(`[intel] exit code:`, err.code)
     clearInFlight(sessionId)
     throw err
   })
