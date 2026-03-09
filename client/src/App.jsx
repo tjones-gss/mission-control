@@ -64,9 +64,8 @@ export default function App() {
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
       {/* Header */}
       <header className="flex items-center px-4 py-3 border-b border-gray-800 shrink-0">
-        <span className="text-sm font-bold text-gray-200 tracking-tight">
-          behind the agent curtain
-        </span>
+        <span className="text-sm font-bold text-gray-200 tracking-tight">Oversight</span>
+        <span className="ml-2 text-xs text-gray-600 tracking-tight">behind the agent curtain</span>
         {activeSessions.length > 0 && (
           <span className="ml-3 flex items-center gap-1.5 text-xs text-green-400">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
