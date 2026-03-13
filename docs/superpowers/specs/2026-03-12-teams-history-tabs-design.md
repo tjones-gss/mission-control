@@ -19,11 +19,20 @@ Both tabs follow the existing panel pattern established by `WorkflowsPanel` and 
 
 ## 1. Teams Tab
 
+### Existing Code
+
+`client/src/components/TeamsPanel.jsx` exists today as a flat, read-only file with no inbox interaction. **This file is replaced in full** by the new directory-based component structure described below. The old file is deleted.
+
 ### Layout
 
-Two-panel layout:
-- **Left:** Team list (mirrors the session sidebar pattern) — team name, member count, unread badge
-- **Right:** Team detail — config card at top, inbox feed below
+The existing sessions sidebar (224px) remains visible — the Teams tab produces a three-panel layout consistent with the Workflows and Skills tabs:
+
+```
+[ Sessions Sidebar ] [ Team List ] [ Team Detail / Inbox ]
+```
+
+- **Team List (left panel):** Team name, member count, unread badge
+- **Team Detail (right panel):** Config card at top, inbox feed below
 
 ### Team Config Card
 
@@ -34,32 +43,54 @@ Read-only display showing:
 
 ### Inbox Feed
 
-- Messages listed chronologically, newest at bottom
+- Messages listed chronologically, **newest at bottom**
 - Auto-scroll with pause-on-scroll-up (same pattern as conversation view)
 - Each message shows: sender, timestamp, content
 - Unread messages highlighted with a subtle background accent
 - Real-time updates via existing SSE `team_update` event — no new SSE wiring needed
+- When the user sends a composed message the list auto-scrolls to the bottom
 
 ### Interactions
 
 | Action | Behavior |
 |--------|----------|
-| Mark as read | Clears unread highlight; persists to inbox JSON file |
-| Archive | Removes from active view; moves to collapsible archived section |
-| Compose | Text input pinned to bottom of inbox; send writes new message via POST |
+| Mark as read | Clears unread highlight; persists `read: true` to inbox JSON file |
+| Archive | Sets `archived: true` on message; moves to collapsible "Archived" section below active messages |
+| Compose | Text input pinned to bottom of inbox; send writes new message via `POST /api/teams/:name/inbox` |
+
+### Inbox Message Schema
+
+All inbox messages (existing and new) conform to this shape:
+
+```json
+{
+  "id": "uuid-v4-string",
+  "sender": "string (agent name or 'user')",
+  "content": "string",
+  "timestamp": "ISO 8601 string",
+  "read": false,
+  "archived": false
+}
+```
+
+**Compose target:** A composed message is written to `~/.claude/teams/{name}/inboxes/dashboard.json` (a dedicated file for dashboard-originated messages, separate from per-agent inbox files).
+
+**Mark read / Archive:** The `PATCH` route updates the matching message object in whichever inbox file it lives in by scanning all files in `~/.claude/teams/{name}/inboxes/` for the given `messageId`. This is a sequential single-writer scan — no locking mechanism is needed. Concurrent writes from agents are accepted as a known constraint appropriate for a local single-user dashboard.
+
+**File creation:** If `dashboard.json` does not exist when a message is composed, the `POST` route creates it with an initial `[]` array before appending the new message.
 
 ### New Server Routes
 
 | Method | Route | Purpose |
 |--------|-------|---------|
-| `POST` | `/api/teams/:name/inbox` | Write a new message to team inbox |
-| `PATCH` | `/api/teams/:name/inbox/:messageId` | Mark message as read or archived |
+| `POST` | `/api/teams/:name/inbox` | Write a new message to `dashboard.json` inbox |
+| `PATCH` | `/api/teams/:name/inbox/:messageId` | Update `read` or `archived` on a message |
 
-Existing `GET /api/teams` and implied `GET /api/teams/:name` remain unchanged.
+The Teams UI fetches all teams from the existing `GET /api/teams` route and selects the detail view client-side — **no `GET /api/teams/:name` route is needed**.
 
 ### Empty State
 
-When no teams are configured: centered icon + "No teams configured" message with a link to Claude Code docs on setting up teams.
+When no teams are configured: centered icon + "No teams configured. Teams are set up via Claude Code's team configuration."
 
 ---
 
@@ -67,41 +98,57 @@ When no teams are configured: centered icon + "No teams configured" message with
 
 ### Layout
 
-Single full-width panel (no sidebar — history is not session-specific).
+Single full-width panel (no secondary sidebar — history is not session-specific). The sessions sidebar remains visible (consistent with all other tabs).
 
 ### Stats Bar
 
-Row of summary cards at the top:
+Row of summary cards at the top (computed from full history file, not truncated):
 - Total commands (all time)
 - Most-used command
 - Most active project
 - Commands today
-- 7-day activity sparkline (bar chart)
+- 7-day activity sparkline (bar chart, one bar per day)
 
 ### Feed
 
-- Chronological list, newest first
-- Each row: timestamp, command/prompt text (truncated), source project
+History entries have this shape (from `~/.claude/history.jsonl`):
+```json
+{
+  "display": "the command or prompt text",
+  "timestamp": 1769145662143,
+  "project": "C:\\Users\\Travis\\Desktop\\Projects\\my-project",
+  "sessionId": "uuid-string",
+  "pastedContents": {}
+}
+```
+The `project` field is the full path string used for filtering and grouping. The `display` field is the command text shown in the feed.
+
+Feed:
+- Chronological list, **newest first**
+- Each row: timestamp, `display` text (truncated), basename of `project` path
 - Click row to expand full text
-- Virtualized list for performance on large history files
+- Feed uses **pagination**: fetches 100 entries at a time (`?offset=N`), appends to a growing local array on scroll-to-bottom
+- Virtualized list renders only visible rows over the full local array (e.g., `react-virtual` or `react-window`) — filters and grouping operate over the in-memory array, not the server
 
 ### Controls
 
 | Control | Behavior |
 |---------|----------|
-| Search | Real-time filter as you type |
-| Project filter | Dropdown — all projects or a specific one |
-| Date range | Today / Last 7 days / Last 30 days / All time |
+| Search | Real-time filter as you type (client-side on fetched page) |
+| Project filter | Dropdown — all projects or a specific one; changes fetch params |
+| Date range | Today / Last 7 days / Last 30 days / All time; changes fetch params |
 | Grouping toggle | Switch between flat chronological and grouped-by-project views |
 
 **Grouped view:** Project headers with command count, expandable to show entries.
+
+**Filter + stats independence:** The stats bar always shows full-history aggregate stats regardless of active filters. The feed reflects filtered results.
 
 ### New Server Routes
 
 | Method | Route | Purpose |
 |--------|-------|---------|
-| `GET` | `/api/history` | Already exists — wire up to UI |
-| `GET` | `/api/history/stats` | Aggregated stats: counts, top commands, daily activity breakdown |
+| `GET` | `/api/history` | Existing route — add `?offset`, `?project`, `?from`, `?to` query params for pagination and filtering |
+| `GET` | `/api/history/stats` | Full-file aggregate stats (requires new `getHistoryStats()` parser function — does **not** use the `limit`-based `getHistory()`) |
 
 ### Empty State
 
@@ -115,14 +162,43 @@ When history file is empty or missing: centered icon + "No command history found
 
 ```
 client/src/components/
-  TeamsPanel/
-    TeamsPanel.jsx          # Two-panel layout, team list + detail
-    TeamInboxFeed.jsx       # Inbox message list with auto-scroll
-    TeamComposeInput.jsx    # Pinned compose box
+  TeamsPanel/                     # replaces old flat TeamsPanel.jsx
+    TeamsPanel.jsx
+    TeamInboxFeed.jsx
+    TeamComposeInput.jsx
   HistoryTab/
-    HistoryTab.jsx          # Full-width panel, stats + feed
-    HistoryStatsBar.jsx     # Summary cards + sparkline
-    HistoryFeed.jsx         # Virtualized feed with controls
+    HistoryTab.jsx
+    HistoryStatsBar.jsx
+    HistoryFeed.jsx
+```
+
+### App.jsx Changes
+
+Add two new state counters and SSE handlers following the existing pattern:
+
+```js
+// New state
+const [teamsVersion, setTeamsVersion] = useState(0);
+const [historyVersion, setHistoryVersion] = useState(0);
+
+// In SSE callback (add alongside existing handlers)
+if (evt.type === 'team_update')    setTeamsVersion(v => v + 1);
+if (evt.type === 'history_update') setHistoryVersion(v => v + 1);
+```
+
+Add a `useApi` call for teams:
+
+```js
+const { data: teams } = useApi('/api/teams', [teamsVersion]);
+```
+
+`HistoryTab` manages its own paginated fetching internally — **do not** add a `useApi('/api/history')` call in App.jsx. Only `historyVersion` is passed as a prop so the tab knows when to refetch.
+
+Add two new entries to the `TABS` array and render the new components in the tab switch:
+
+```jsx
+{activeTab === 'teams'   && <TeamsPanel teams={teams} />}
+{activeTab === 'history' && <HistoryTab historyVersion={historyVersion} />}
 ```
 
 ### Server Routes
@@ -130,12 +206,10 @@ client/src/components/
 ```
 server/routes/
   teams.js      # Add POST /inbox and PATCH /inbox/:messageId
-  history.js    # Add GET /stats endpoint
+  history.js    # Add GET /stats; extend GET / with offset, project, from, to params
+server/parsers/
+  history.js    # Add getHistoryStats() — reads full file without limit
 ```
-
-### Navigation
-
-Add `Teams` and `History` to the tab bar in `client/src/App.jsx` alongside Agents, Tasks, Workflows, Skills.
 
 ---
 
@@ -144,7 +218,8 @@ Add `Teams` and `History` to the tab bar in `client/src/App.jsx` alongside Agent
 - SSE disconnection: existing "reconnecting..." indicator handles this
 - Compose failure: inline error below input, draft preserved
 - Missing/malformed inbox JSON: treat as empty inbox, log warning server-side
-- History file missing: show empty state, no crash
+- Missing history file: show empty state, no crash
+- Stats on empty history: all counts show 0, sparkline shows empty bars
 
 ---
 
@@ -152,18 +227,18 @@ Add `Teams` and `History` to the tab bar in `client/src/App.jsx` alongside Agent
 
 ### Server Unit Tests
 
-- `teams.test.js` — POST inbox, PATCH inbox/:messageId (valid, missing team, malformed body)
-- `history.test.js` — GET /stats (counts, top commands, daily breakdown, empty file)
+- `server/tests/routes/teams.test.js` — POST inbox (valid, missing team, malformed body), PATCH inbox/:messageId (mark read, archive, message not found)
+- `server/tests/routes/history.test.js` — GET /stats (counts, top commands, daily breakdown, empty file); GET / with offset/filter params
 
 ### Client Unit Tests
 
-- `TeamsPanel.test.jsx` — renders team list, inbox feed, mark-read, archive, compose submit
-- `HistoryTab.test.jsx` — stats bar renders, search filter, project filter, grouping toggle, date range
+- `client/src/tests/TeamsPanel.test.jsx` — renders team list, inbox feed, mark-read, archive, compose submit, empty state
+- `client/src/tests/HistoryTab.test.jsx` — stats bar renders, search filter, project filter, grouping toggle, date range; pagination uses a "Load more" button fallback (scroll-based IntersectionObserver is not reliably testable in jsdom)
 
 ### E2E Tests (Playwright)
 
-- `teams.spec.js` — select team, read inbox, compose message, mark as read, archive
-- `history.spec.js` — search, filter by project, toggle grouping, date range filter
+- `e2e/teams.spec.js` — select team, read inbox, compose message, mark as read, archive
+- `e2e/history.spec.js` — search, filter by project, toggle grouping, date range filter, scroll-to-load-more pagination
 
 ---
 
