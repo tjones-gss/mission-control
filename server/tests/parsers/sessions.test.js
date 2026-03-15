@@ -285,6 +285,136 @@ describe('getAllSessions()', () => {
   })
 })
 
+describe('needsInput detection', () => {
+  function setupSession(records, mtimeMs = Date.now() - 10_000) {
+    const jsonl = records.map(r => JSON.stringify(r)).join('\n')
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync
+      .mockReturnValueOnce([makeProjectDirEntry('C--project')])
+      .mockReturnValueOnce(['sess.jsonl'])
+    fs.statSync.mockReturnValue({ mtimeMs })
+    fs.readFileSync.mockReturnValue(jsonl)
+    return getAllSessions()[0]
+  }
+
+  it('sets needsInput=true when last main record is assistant with stop_reason end_turn', () => {
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const assistant = makeRecord({
+      uuid: 'a1',
+      type: 'assistant',
+      message: {
+        model: 'claude-3',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Done!' }],
+      },
+    })
+    const sess = setupSession([user, assistant])
+    expect(sess.needsInput).toBe(true)
+  })
+
+  it('sets needsInput=true when last main record is assistant with tool_use blocks', () => {
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const assistant = makeRecord({
+      uuid: 'a1',
+      type: 'assistant',
+      message: {
+        model: 'claude-3',
+        content: [{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'ls' } }],
+      },
+    })
+    const sess = setupSession([user, assistant])
+    expect(sess.needsInput).toBe(true)
+  })
+
+  it('sets needsInput=false when last main record is a user message', () => {
+    const assistant = makeRecord({
+      uuid: 'a1',
+      type: 'assistant',
+      message: {
+        model: 'claude-3',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'What next?' }],
+      },
+    })
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const sess = setupSession([assistant, user])
+    expect(sess.needsInput).toBe(false)
+  })
+
+  it('sets needsInput=false for sessions older than 4 hours (abandoned)', () => {
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const assistant = makeRecord({
+      uuid: 'a1',
+      type: 'assistant',
+      message: {
+        model: 'claude-3',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Done!' }],
+      },
+    })
+    // Modified 5 hours ago
+    const sess = setupSession([user, assistant], Date.now() - 5 * 60 * 60 * 1000)
+    expect(sess.needsInput).toBe(false)
+  })
+
+  it('skips sidechain records when determining last main record', () => {
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const assistant = makeRecord({
+      uuid: 'a1',
+      type: 'assistant',
+      message: {
+        model: 'claude-3',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Thinking...' }],
+      },
+    })
+    // Sidechain record comes after the assistant message
+    const sidechain = makeRecord({
+      uuid: 'sc1',
+      type: 'user',
+      isSidechain: true,
+      parentToolUseID: 'tuid-1',
+    })
+    const sess = setupSession([user, assistant, sidechain])
+    expect(sess.needsInput).toBe(true)
+  })
+
+  it('sets needsInput=false when last record is assistant with no stop_reason and no tool_use', () => {
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const assistant = makeRecord({
+      uuid: 'a1',
+      type: 'assistant',
+      message: {
+        model: 'claude-3',
+        content: [{ type: 'text', text: 'Hello' }],
+      },
+    })
+    const sess = setupSession([user, assistant])
+    expect(sess.needsInput).toBe(false)
+  })
+
+  it('detects stop_reason on top-level record field as fallback', () => {
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const assistant = makeRecord({
+      uuid: 'a1',
+      type: 'assistant',
+      stop_reason: 'end_turn',
+      message: {
+        model: 'claude-3',
+        content: [{ type: 'text', text: 'Finished' }],
+      },
+    })
+    const sess = setupSession([user, assistant])
+    expect(sess.needsInput).toBe(true)
+  })
+
+  it('sets needsInput=false for session with only user messages', () => {
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const sess = setupSession([user])
+    expect(sess.needsInput).toBe(false)
+  })
+})
+
 describe('getSessionById()', () => {
   it('returns null when session not found', () => {
     fs.existsSync.mockReturnValue(false)

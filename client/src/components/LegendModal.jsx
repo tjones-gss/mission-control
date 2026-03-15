@@ -28,7 +28,7 @@ export function LegendModal({ onClose }) {
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Layout</h3>
             <ul className="space-y-1">
               <li className="text-xs text-gray-500">
-                <span className="text-gray-400 font-medium">Left panel</span> — Sessions list (all Claude Code sessions from ~/.claude/projects/)
+                <span className="text-gray-400 font-medium">Left panel</span> — Sessions grouped by Active / Recent / Older (older collapsed by default)
               </li>
               <li className="text-xs text-gray-500">
                 <span className="text-gray-400 font-medium">Center panel</span> — Active tab content (Agents / Tasks / Teams / Skills)
@@ -93,6 +93,28 @@ export function LegendModal({ onClose }) {
               <li className="flex items-center gap-2">
                 <span className="inline-block w-2.5 h-2.5 rounded-full ring-2 ring-indigo-500 bg-transparent shrink-0" />
                 <span className="text-xs text-gray-500">Indigo ring — selected item</span>
+              </li>
+            </ul>
+          </section>
+
+          {/* Notifications */}
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Notifications</h3>
+            <ul className="space-y-1">
+              <li className="text-xs text-gray-500">
+                Oversight detects when an agent is waiting for input (end_turn or pending tool approval).
+              </li>
+              <li className="text-xs text-gray-500">
+                <span className="text-gray-400 font-medium">Amber pulse</span> — session needs human input
+              </li>
+              <li className="text-xs text-gray-500">
+                <span className="text-gray-400 font-medium">Bell icon</span> — click to enable desktop notifications
+              </li>
+              <li className="text-xs text-gray-500">
+                <span className="text-gray-400 font-medium">Settings (gear icon)</span> — toggle notifications and sound on/off
+              </li>
+              <li className="text-xs text-gray-500">
+                <span className="text-gray-400 font-medium">Dismiss (X)</span> — mute a specific session's waiting indicator
               </li>
             </ul>
           </section>
