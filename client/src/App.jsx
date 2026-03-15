@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft } from 'lucide-react'
+import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
+import { useNotifications } from './hooks/useNotifications.js'
 import { SessionsList } from './components/SessionsList.jsx'
 import { AgentTree } from './components/AgentTree.jsx'
 import { KanbanBoard } from './components/KanbanBoard.jsx'
@@ -60,6 +61,8 @@ export default function App() {
   }, []))
 
   const activeSessions = sessions?.filter(s => s.isActive) || []
+  const needsInputSessions = sessions?.filter(s => s.needsInput) || []
+  const { requestPermission } = useNotifications(sessions)
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
@@ -72,6 +75,17 @@ export default function App() {
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             {activeSessions.length} active
           </span>
+        )}
+        {needsInputSessions.length > 0 && (
+          <button
+            onClick={requestPermission}
+            className="ml-3 flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+            title="Sessions waiting for input — click to enable desktop notifications"
+          >
+            <Bell size={12} />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            {needsInputSessions.length} waiting
+          </button>
         )}
         <nav className="ml-auto flex items-center gap-1">
           {TABS.map(tab => {

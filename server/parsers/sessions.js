@@ -111,6 +111,26 @@ function parseSessionFile(filePath, projectDirName, filename) {
       if (lastThought && lastAction && lastText && model) break
     }
 
+    // Detect if session is waiting for human input
+    const ABANDONED_THRESHOLD_MS = 4 * 60 * 60 * 1000 // 4 hours
+    let needsInput = false
+    if ((Date.now() - lastModified) < ABANDONED_THRESHOLD_MS) {
+      // Find the last main-thread record
+      for (let i = records.length - 1; i >= 0; i--) {
+        const r = records[i]
+        if (r.isSidechain) continue
+        if (r.type === 'assistant') {
+          const stopReason = r.message?.stop_reason || r.stop_reason
+          const hasToolUse = Array.isArray(r.message?.content) &&
+            r.message.content.some(b => b.type === 'tool_use')
+          if (stopReason === 'end_turn' || hasToolUse) {
+            needsInput = true
+          }
+        }
+        break // only check the very last main-thread record
+      }
+    }
+
     return {
       sessionId,
       slug,
@@ -130,6 +150,7 @@ function parseSessionFile(filePath, projectDirName, filename) {
       tokenUsage,
       model,
       gitBranch,
+      needsInput,
     }
   } catch {
     return null

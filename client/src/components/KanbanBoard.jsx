@@ -44,6 +44,12 @@ function SessionCard({ session, isSelected, onSelect }) {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
             </span>
           )}
+          {session.needsInput && !session.isActive && (
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+            </span>
+          )}
           <span className="text-sm font-medium text-gray-100 truncate">{slug}</span>
         </div>
         <span className="text-xs text-gray-500 shrink-0 font-mono">{modelAbbr}</span>
