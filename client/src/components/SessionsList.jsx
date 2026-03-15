@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Clock, Activity, ChevronRight, ChevronDown, X } from 'lucide-react'
 import { projectLabel } from '../utils/session.js'
+import { QuickActions } from './QuickActions.jsx'
 
 const ONE_HOUR = 3_600_000
 
@@ -41,7 +42,7 @@ function SectionHeader({ title, count, collapsed, onToggle, titleClass }) {
   )
 }
 
-function SessionCard({ session, isSelected, onSelect, onMute }) {
+function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
   const activeClasses = session.isActive
     ? 'border-green-800 shadow-[0_0_8px_rgba(74,222,128,0.2)]'
     : 'border-gray-800'
@@ -117,11 +118,16 @@ function SessionCard({ session, isSelected, onSelect, onMute }) {
           )}
         </div>
       )}
+
+      {/* Quick actions for waiting sessions */}
+      {session.needsInput && !session.isActive && (
+        <QuickActions sessionId={session.sessionId} onReply={onReply} />
+      )}
     </button>
   )
 }
 
-export function SessionsList({ sessions, selectedId, onSelect, onMuteSession }) {
+export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, onReplySession }) {
   const [collapsed, setCollapsed] = useState({ active: false, recent: false, older: true })
 
   if (!sessions) return <div className="p-4 text-gray-500">Loading...</div>
@@ -174,6 +180,7 @@ export function SessionsList({ sessions, selectedId, onSelect, onMuteSession }) 
                     isSelected={selectedId === s.sessionId}
                     onSelect={onSelect}
                     onMute={onMuteSession}
+                    onReply={onReplySession}
                   />
                 ))}
               </div>

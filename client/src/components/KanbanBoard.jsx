@@ -1,4 +1,5 @@
 import { Bot, Wrench } from 'lucide-react';
+import { QuickActions } from './QuickActions.jsx';
 
 function getModelAbbr(model) {
   if (!model) return '—';
@@ -88,6 +89,11 @@ function SessionCard({ session, isSelected, onSelect }) {
           </div>
         )}
       </div>
+
+      {/* Quick actions for waiting sessions */}
+      {session.needsInput && !session.isActive && (
+        <QuickActions sessionId={session.sessionId} onReply={() => onSelect(session.sessionId)} />
+      )}
     </div>
   );
 }

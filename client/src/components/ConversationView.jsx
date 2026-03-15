@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { Send } from 'lucide-react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
 
@@ -78,6 +79,44 @@ function AssistantMessage({ blocks }) {
   )
 }
 
+function MessageInput({ sessionId, sending, onSend }) {
+  const [text, setText] = useState('')
+  const inputRef = useRef(null)
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!text.trim() || sending) return
+    onSend(text.trim())
+    setText('')
+  }
+
+  useEffect(() => {
+    if (!sending && inputRef.current) inputRef.current.focus()
+  }, [sending])
+
+  return (
+    <form onSubmit={handleSubmit} className="flex items-center gap-2 px-3 py-2 border-t border-gray-800 bg-gray-950">
+      <input
+        ref={inputRef}
+        type="text"
+        value={text}
+        onChange={e => setText(e.target.value)}
+        disabled={sending}
+        placeholder={sending ? 'Sending...' : 'Send a message to this session...'}
+        className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+      />
+      <button
+        type="submit"
+        disabled={!text.trim() || sending}
+        className="px-3 py-1.5 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+      >
+        <Send size={12} />
+        Send
+      </button>
+    </form>
+  )
+}
+
 export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
   const url = active && sessionId ? `/api/sessions/${sessionId}/messages` : null
   const { data, loading } = useApi(url, [sessionUpdateVersion])
@@ -85,6 +124,30 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
 
   const scrollRef = useRef(null)
   const [paused, setPaused] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState(null)
+
+  const handleSend = useCallback(async (text) => {
+    if (!sessionId) return
+    setSending(true)
+    setSendError(null)
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`)
+      }
+      // SSE will trigger a session_update which refetches messages
+    } catch (e) {
+      setSendError(e.message)
+    } finally {
+      setSending(false)
+    }
+  }, [sessionId])
 
   useEffect(() => {
     if (!paused && scrollRef.current) {
@@ -120,12 +183,21 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
 
       {paused && (
         <div
-          className="absolute bottom-0 left-0 right-0 py-1.5 px-3 bg-cyan-950/80 border-t border-cyan-800/50 text-xs text-cyan-400 cursor-pointer text-center"
+          className="absolute bottom-2 left-2 right-2 py-1.5 px-3 bg-cyan-950/80 border border-cyan-800/50 rounded text-xs text-cyan-400 cursor-pointer text-center"
           onClick={resumeScroll}
         >
-          ⏸ Auto-scroll paused · Click to resume
+          Auto-scroll paused - click to resume
         </div>
       )}
+
+      {sendError && (
+        <div className="px-3 py-1.5 bg-red-950/50 border-t border-red-800/50 text-xs text-red-400 flex items-center justify-between">
+          <span>Send failed: {sendError}</span>
+          <button onClick={() => setSendError(null)} className="text-red-600 hover:text-red-400 ml-2">dismiss</button>
+        </div>
+      )}
+
+      <MessageInput sessionId={sessionId} sending={sending} onSend={handleSend} />
     </div>
   )
 }
