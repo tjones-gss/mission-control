@@ -80,7 +80,7 @@ export function LegendModal({ onClose }) {
               </li>
               <li className="flex items-center gap-2">
                 <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-                <span className="text-xs text-gray-500">Amber — warning / flag</span>
+                <span className="text-xs text-gray-500">Amber — warning / flag / session waiting for human input</span>
               </li>
               <li className="flex items-center gap-2">
                 <span className="inline-block w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0" />

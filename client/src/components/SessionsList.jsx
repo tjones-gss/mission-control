@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Clock, Activity, ChevronRight, ChevronDown } from 'lucide-react'
+import { Clock, Activity, ChevronRight, ChevronDown, X } from 'lucide-react'
+import { projectLabel } from '../utils/session.js'
 
 const ONE_HOUR = 3_600_000
 
@@ -11,12 +12,6 @@ function timeAgo(ms) {
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h ago`
   return `${Math.floor(hrs / 24)}d ago`
-}
-
-function projectName(session) {
-  const src = session.cwd || session.projectName || ''
-  const parts = src.split(/[/\\]/).filter(Boolean)
-  return parts[parts.length - 1] || session.slug || session.sessionId.slice(0, 8)
 }
 
 function modelShort(model) {
@@ -46,7 +41,7 @@ function SectionHeader({ title, count, collapsed, onToggle, titleClass }) {
   )
 }
 
-function SessionCard({ session, isSelected, onSelect }) {
+function SessionCard({ session, isSelected, onSelect, onMute }) {
   const activeClasses = session.isActive
     ? 'border-green-800 shadow-[0_0_8px_rgba(74,222,128,0.2)]'
     : 'border-gray-800'
@@ -71,10 +66,19 @@ function SessionCard({ session, isSelected, onSelect }) {
           </span>
         )}
         <span className="text-sm font-medium text-gray-200 truncate">
-          {projectName(session)}
+          {projectLabel(session)}
         </span>
         {session.needsInput && (
           <span className="text-[10px] text-amber-400 shrink-0">Waiting</span>
+        )}
+        {session.needsInput && onMute && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onMute(session.sessionId) }}
+            className="ml-auto text-gray-600 hover:text-gray-400 transition-colors shrink-0"
+            title="Dismiss notification"
+          >
+            <X size={10} />
+          </button>
         )}
       </div>
 
@@ -114,7 +118,7 @@ function SessionCard({ session, isSelected, onSelect }) {
   )
 }
 
-export function SessionsList({ sessions, selectedId, onSelect }) {
+export function SessionsList({ sessions, selectedId, onSelect, onMuteSession }) {
   const [collapsed, setCollapsed] = useState({ active: false, recent: false, older: true })
 
   if (!sessions) return <div className="p-4 text-gray-500">Loading...</div>
@@ -127,19 +131,17 @@ export function SessionsList({ sessions, selectedId, onSelect }) {
   // Auto-expand collapsed group if selected session is inside it
   const toggle = key => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
 
-  // Check if selected session is in a collapsed group and expand it
+  // Auto-expand collapsed group if selected session is inside it
   useEffect(() => {
     if (!selectedId) return
-    if (collapsed.older && older.some(s => s.sessionId === selectedId)) {
-      setCollapsed(prev => ({ ...prev, older: false }))
-    }
-    if (collapsed.recent && recent.some(s => s.sessionId === selectedId)) {
-      setCollapsed(prev => ({ ...prev, recent: false }))
-    }
-    if (collapsed.active && active.some(s => s.sessionId === selectedId)) {
-      setCollapsed(prev => ({ ...prev, active: false }))
-    }
-  }, [selectedId])
+    setCollapsed(prev => {
+      const next = { ...prev }
+      if (prev.older && older.some(s => s.sessionId === selectedId)) next.older = false
+      if (prev.recent && recent.some(s => s.sessionId === selectedId)) next.recent = false
+      if (prev.active && active.some(s => s.sessionId === selectedId)) next.active = false
+      return next
+    })
+  }, [selectedId, sessions])
 
   const groups = [
     { key: 'active', title: 'Active', titleClass: 'text-green-400', items: active },
@@ -168,6 +170,7 @@ export function SessionsList({ sessions, selectedId, onSelect }) {
                     session={s}
                     isSelected={selectedId === s.sessionId}
                     onSelect={onSelect}
+                    onMute={onMuteSession}
                   />
                 ))}
               </div>

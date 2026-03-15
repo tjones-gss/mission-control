@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react'
+import { projectLabel } from '../utils/session.js'
 
-function getPrefs() {
+export function getNotificationPrefs() {
   try {
     const raw = localStorage.getItem('oversight.notifications')
     if (raw) return JSON.parse(raw)
@@ -8,14 +9,13 @@ function getPrefs() {
   return { enabled: true, sound: true }
 }
 
-function projectLabel(session) {
-  const src = session.cwd || session.projectName || ''
-  const parts = src.split(/[/\\]/).filter(Boolean)
-  return parts[parts.length - 1] || session.slug || session.sessionId.slice(0, 8)
+export function setNotificationPrefs(prefs) {
+  localStorage.setItem('oversight.notifications', JSON.stringify(prefs))
 }
 
 export function useNotifications(sessions) {
   const prevIdsRef = useRef(new Set())
+  const mutedIdsRef = useRef(new Set())
   const audioCtxRef = useRef(null)
 
   // Initialize AudioContext on first user interaction (browser autoplay policy)
@@ -51,19 +51,34 @@ export function useNotifications(sessions) {
     }
   }, [])
 
+  const muteSession = useCallback((sessionId) => {
+    mutedIdsRef.current.add(sessionId)
+  }, [])
+
   useEffect(() => {
     if (!sessions?.length) return
-    const prefs = getPrefs()
-    if (!prefs.enabled) return
+    const prefs = getNotificationPrefs()
 
     const currentNeedsInput = new Set(
       sessions.filter(s => s.needsInput).map(s => s.sessionId)
     )
 
-    // Find sessions that just transitioned to needsInput
+    // Clear muted IDs that are no longer needsInput (so they re-notify if they come back)
+    for (const id of mutedIdsRef.current) {
+      if (!currentNeedsInput.has(id)) {
+        mutedIdsRef.current.delete(id)
+      }
+    }
+
+    if (!prefs.enabled) {
+      prevIdsRef.current = currentNeedsInput
+      return
+    }
+
+    // Find sessions that just transitioned to needsInput (excluding muted)
     const newlyWaiting = []
     for (const id of currentNeedsInput) {
-      if (!prevIdsRef.current.has(id)) {
+      if (!prevIdsRef.current.has(id) && !mutedIdsRef.current.has(id)) {
         const session = sessions.find(s => s.sessionId === id)
         if (session) newlyWaiting.push(session)
       }
@@ -91,5 +106,5 @@ export function useNotifications(sessions) {
     }
   }, [sessions, playPing])
 
-  return { requestPermission }
+  return { requestPermission, muteSession, mutedIds: mutedIdsRef }
 }

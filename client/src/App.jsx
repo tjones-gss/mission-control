@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell } from 'lucide-react'
+import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell, Settings } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
 import { useNotifications } from './hooks/useNotifications.js'
@@ -11,6 +11,7 @@ import { WorkflowsPanel } from './components/WorkflowsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
+import { SettingsModal } from './components/SettingsModal.jsx'
 
 const TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
@@ -24,6 +25,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('agents')
   const [agentView, setAgentView] = useState('board') // 'board' | 'detail'
   const [showLegend, setShowLegend] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [events, setEvents] = useState([])
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
@@ -61,8 +63,8 @@ export default function App() {
   }, []))
 
   const activeSessions = sessions?.filter(s => s.isActive) || []
-  const needsInputSessions = sessions?.filter(s => s.needsInput) || []
-  const { requestPermission } = useNotifications(sessions)
+  const { requestPermission, muteSession, mutedIds } = useNotifications(sessions)
+  const needsInputSessions = sessions?.filter(s => s.needsInput && !mutedIds.current.has(s.sessionId)) || []
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
@@ -106,8 +108,15 @@ export default function App() {
             )
           })}
           <button
-            onClick={() => setShowLegend(true)}
+            onClick={() => setShowSettings(true)}
             className="ml-2 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            title="Settings"
+          >
+            <Settings size={14} />
+          </button>
+          <button
+            onClick={() => setShowLegend(true)}
+            className="text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
             title="Help"
           >
             <HelpCircle size={14} />
@@ -129,6 +138,7 @@ export default function App() {
             sessions={sessions}
             selectedId={selectedSessionId}
             onSelect={setSelectedSessionId}
+            onMuteSession={muteSession}
           />
         </aside>
 
@@ -187,6 +197,7 @@ export default function App() {
       </div>
 
       {showLegend && <LegendModal onClose={() => setShowLegend(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   )
 }
