@@ -1,67 +1,29 @@
-import { spawn } from 'child_process'
+import { runClaude } from '../claude-cli.js'
 
 export async function analyzeSession(sessionData) {
   const prompt = buildPrompt(sessionData)
-  // Unset CLAUDECODE and all CLAUDE_CODE_* vars so the CLI doesn't refuse to run inside an active session
-  const env = { ...process.env }
-  for (const key of Object.keys(env)) {
-    if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE_')) delete env[key]
-  }
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      'claude',
-      [
-        '-p', prompt,
-        '--output-format', 'json',
-        // Skip all MCP server connections — they cause startup to hang for 30+ seconds
-        // when spawned as a subprocess without a TTY (MCP servers wait for connections
-        // that never complete in non-interactive mode).
-        '--mcp-config', '{"mcpServers":{}}',
-        '--strict-mcp-config',
-        // No need to persist a session for a one-shot analysis call
-        '--no-session-persistence',
-      ],
-      { env, stdio: ['pipe', 'pipe', 'pipe'] }
-    )
-
-    // Close stdin immediately — claude.exe waits for EOF on stdin when it is a pipe
-    child.stdin.end()
-
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', chunk => { stdout += chunk })
-    child.stderr.on('data', chunk => { stderr += chunk })
-
-    const timer = setTimeout(() => {
-      child.kill()
-      const err = new Error('claude CLI timed out after 60s')
-      err.stderrOutput = stderr
-      reject(err)
-    }, 60000)
-
-    child.on('error', err => {
-      clearTimeout(timer)
-      err.stderrOutput = stderr
-      reject(err)
-    })
-
-    child.on('close', (code, signal) => {
-      clearTimeout(timer)
-      if (code !== 0 || signal) {
-        const err = new Error(`claude CLI exited with code=${code} signal=${signal}`)
-        err.code = code
-        err.stderrOutput = stderr
-        return reject(err)
-      }
-      try {
-        const parsed = JSON.parse(stdout)
-        const text = parsed.result ?? parsed.content ?? stdout
-        resolve(parseIntelligence(text))
-      } catch {
-        reject(new Error('Failed to parse claude output'))
-      }
-    })
+  const { stdout } = await runClaude({
+    args: [
+      '-p', prompt,
+      '--output-format', 'json',
+      // Skip all MCP server connections — they cause startup to hang for 30+ seconds
+      // when spawned as a subprocess without a TTY (MCP servers wait for connections
+      // that never complete in non-interactive mode).
+      '--mcp-config', '{"mcpServers":{}}',
+      '--strict-mcp-config',
+      // No need to persist a session for a one-shot analysis call
+      '--no-session-persistence',
+    ],
+    timeoutMs: 60_000,
   })
+
+  try {
+    const parsed = JSON.parse(stdout)
+    const text = parsed.result ?? parsed.content ?? stdout
+    return parseIntelligence(text)
+  } catch {
+    throw new Error('Failed to parse claude output')
+  }
 }
 
 function buildPrompt(session) {

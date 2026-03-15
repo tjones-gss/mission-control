@@ -67,6 +67,36 @@ Sessions older than 4 hours are considered abandoned and won't trigger notificat
 
 ---
 
+## Interaction
+
+Oversight isn't just a viewer — you can talk back to your agents directly from the browser.
+
+### Sending messages
+
+The **Conversation** tab has a message input bar at the bottom. Type a message and hit Send (or press Enter) to send it to the active session via `claude --resume`. The response appears in the conversation automatically via the existing SSE pipeline.
+
+### Quick actions
+
+Sessions waiting for input show one-click **quick-action buttons** ("yes", "continue", "approve") on both the sidebar cards and the Kanban board. These send the corresponding text as a message — no typing needed for common responses.
+
+A **"reply"** button opens the session detail view with the conversation input focused.
+
+### Skills
+
+The sub-tab bar in the detail view includes a **skill picker** dropdown. Select a skill (e.g., `/commit`, `/review-pr`) and click Run to invoke it on the current session.
+
+### New sessions
+
+Click the **+** button in the Sessions sidebar header to spawn a new Claude Code session. Provide a working directory and a prompt, and Oversight will start a fresh `claude -p` subprocess.
+
+### Architecture
+
+All interaction goes through the `claude` CLI as a subprocess (`server/claude-cli.js`). This reuses Claude Code's own session persistence — no custom protocol, no API keys, no Agent SDK dependency. The subprocess writes to the JSONL file, chokidar sees the change, and SSE pushes the update to all browser tabs.
+
+Concurrent writes to the same session are blocked (409 Conflict) to prevent race conditions.
+
+---
+
 ## How it works
 
 ```
@@ -75,7 +105,9 @@ Sessions older than 4 hours are considered abandoned and won't trigger notificat
                          ╲──► claude CLI (Intel tab)
 ```
 
-The server watches `~/.claude/` with chokidar. When files change, it parses the relevant JSONL or JSON, then pushes a Server-Sent Events message to all connected browser tabs. React rerenders. The whole pipeline is **read-only** — Oversight never writes to your Claude data.
+The server watches `~/.claude/` with chokidar. When files change, it parses the relevant JSONL or JSON, then pushes a Server-Sent Events message to all connected browser tabs. React rerenders.
+
+For **interaction** (sending messages, invoking skills), Oversight spawns `claude --resume <sessionId> -p "message"` as a subprocess. The CLI appends to the session's JSONL file, and the existing watcher picks up the changes — no custom write path needed.
 
 ### Data sources
 

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Clock, Activity, ChevronRight, ChevronDown, X } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Clock, Activity, ChevronRight, ChevronDown, X, MessageSquare } from 'lucide-react'
 import { projectLabel } from '../utils/session.js'
 
 const ONE_HOUR = 3_600_000
@@ -41,7 +41,60 @@ function SectionHeader({ title, count, collapsed, onToggle, titleClass }) {
   )
 }
 
-function SessionCard({ session, isSelected, onSelect, onMute }) {
+const QUICK_REPLIES = ['yes', 'continue', 'approve']
+
+function QuickActions({ sessionId, onReply }) {
+  const [sending, setSending] = useState(null)
+
+  const send = useCallback(async (message) => {
+    setSending(message)
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`)
+      }
+    } catch {
+      // Errors are transient; session will update via SSE
+    } finally {
+      setSending(null)
+    }
+  }, [sessionId])
+
+  return (
+    <div className="flex items-center gap-1 mt-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
+      {QUICK_REPLIES.map(msg => (
+        <span
+          key={msg}
+          role="button"
+          tabIndex={0}
+          onClick={() => { if (sending === null) send(msg) }}
+          onKeyDown={e => { if (e.key === 'Enter' && sending === null) send(msg) }}
+          className={`px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 text-[10px] hover:bg-amber-800/60 transition-colors cursor-pointer ${sending !== null ? 'opacity-30 pointer-events-none' : ''}`}
+        >
+          {sending === msg ? '...' : msg}
+        </span>
+      ))}
+      {onReply && (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={() => onReply(sessionId)}
+          onKeyDown={e => { if (e.key === 'Enter') onReply(sessionId) }}
+          className="px-1.5 py-0.5 rounded bg-indigo-900/40 text-indigo-300 text-[10px] hover:bg-indigo-800/60 transition-colors flex items-center gap-0.5 cursor-pointer"
+        >
+          <MessageSquare size={8} /> reply
+        </span>
+      )}
+    </div>
+  )
+}
+
+function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
   const activeClasses = session.isActive
     ? 'border-green-800 shadow-[0_0_8px_rgba(74,222,128,0.2)]'
     : 'border-gray-800'
@@ -117,11 +170,16 @@ function SessionCard({ session, isSelected, onSelect, onMute }) {
           )}
         </div>
       )}
+
+      {/* Quick actions for waiting sessions */}
+      {session.needsInput && !session.isActive && (
+        <QuickActions sessionId={session.sessionId} onReply={onReply} />
+      )}
     </button>
   )
 }
 
-export function SessionsList({ sessions, selectedId, onSelect, onMuteSession }) {
+export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, onReplySession }) {
   const [collapsed, setCollapsed] = useState({ active: false, recent: false, older: true })
 
   if (!sessions) return <div className="p-4 text-gray-500">Loading...</div>
@@ -174,6 +232,7 @@ export function SessionsList({ sessions, selectedId, onSelect, onMuteSession }) 
                     isSelected={selectedId === s.sessionId}
                     onSelect={onSelect}
                     onMute={onMuteSession}
+                    onReply={onReplySession}
                   />
                 ))}
               </div>

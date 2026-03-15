@@ -1,4 +1,5 @@
-import { Bot, Wrench } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Bot, Wrench, MessageSquare } from 'lucide-react';
 
 function getModelAbbr(model) {
   if (!model) return '—';
@@ -19,6 +20,54 @@ function getTopTools(toolUseCounts, n = 3) {
   return Object.entries(toolUseCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, n);
+}
+
+const QUICK_REPLIES = ['yes', 'continue', 'approve'];
+
+function KanbanQuickActions({ sessionId, onReply }) {
+  const [sending, setSending] = useState(null);
+
+  const send = useCallback(async (message) => {
+    setSending(message);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+      }
+    } catch {
+      // Errors are transient; session will update via SSE
+    } finally {
+      setSending(null);
+    }
+  }, [sessionId]);
+
+  return (
+    <div className="flex items-center gap-1 mt-2 flex-wrap" onClick={e => e.stopPropagation()}>
+      {QUICK_REPLIES.map(msg => (
+        <button
+          key={msg}
+          onClick={() => send(msg)}
+          disabled={sending !== null}
+          className="px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 text-[10px] hover:bg-amber-800/60 disabled:opacity-30 transition-colors"
+        >
+          {sending === msg ? '...' : msg}
+        </button>
+      ))}
+      {onReply && (
+        <button
+          onClick={() => onReply(sessionId)}
+          className="px-1.5 py-0.5 rounded bg-indigo-900/40 text-indigo-300 text-[10px] hover:bg-indigo-800/60 transition-colors flex items-center gap-0.5"
+        >
+          <MessageSquare size={8} /> reply
+        </button>
+      )}
+    </div>
+  );
 }
 
 function SessionCard({ session, isSelected, onSelect }) {
@@ -88,6 +137,11 @@ function SessionCard({ session, isSelected, onSelect }) {
           </div>
         )}
       </div>
+
+      {/* Quick actions for waiting sessions */}
+      {session.needsInput && !session.isActive && (
+        <KanbanQuickActions sessionId={session.sessionId} onReply={() => onSelect(session.sessionId)} />
+      )}
     </div>
   );
 }
