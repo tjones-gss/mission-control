@@ -72,13 +72,16 @@ function SessionCard({ session, isSelected, onSelect, onMute }) {
           <span className="text-[10px] text-amber-400 shrink-0">Waiting</span>
         )}
         {session.needsInput && onMute && (
-          <button
+          <span
+            role="button"
+            tabIndex={0}
             onClick={(e) => { e.stopPropagation(); onMute(session.sessionId) }}
-            className="ml-auto text-gray-600 hover:text-gray-400 transition-colors shrink-0"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onMute(session.sessionId) } }}
+            className="ml-auto text-gray-600 hover:text-gray-400 transition-colors shrink-0 cursor-pointer"
             title="Dismiss notification"
           >
             <X size={10} />
-          </button>
+          </span>
         )}
       </div>
 

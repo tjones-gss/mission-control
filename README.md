@@ -12,7 +12,7 @@ Every message, thinking block, and tool call — rendered as it happens. You can
 
 ![Conversation view](docs/screenshots/conversation.png)
 
-The sidebar shows all your sessions sorted by recency. Active sessions (modified in the last 5 minutes) glow green. Token counts and model are shown per session so you can keep an eye on context usage at a glance.
+The sidebar groups your sessions into **Active**, **Recent**, and **Older** sections. Active sessions glow green. Older sessions are collapsed by default to keep focus on what's happening now — click the section header to expand. Sessions waiting for human input pulse amber with a "Waiting" label. Token counts and model are shown per session so you can keep an eye on context usage at a glance.
 
 ---
 
@@ -49,6 +49,21 @@ Requires `claude` in your PATH. Silently skips if it's not available.
 If you use Claude Code teams, Oversight shows your team task boards alongside the session list. See what's in-flight, what's completed, and which agent is on what.
 
 ![Teams view](docs/screenshots/teams.png)
+
+---
+
+## Notifications
+
+Oversight detects when a Claude Code session is waiting for human input — either Claude finished speaking (`end_turn`) or a tool call is pending approval. When this happens:
+
+- **Amber pulse indicator** appears on the session card in both the sidebar and Kanban board
+- **Header badge** shows the count of sessions waiting (e.g., "2 waiting")
+- **Desktop notifications** fire via the browser Notification API when a session transitions to "waiting"
+- **Audio ping** plays a short tone (800Hz, 200ms) alongside the desktop notification
+
+Click the bell icon in the header to enable desktop notifications. Open **Settings** (gear icon) to toggle notifications and sound on/off. You can dismiss individual waiting indicators by clicking the X on the session card — they'll re-notify if the session comes back to a waiting state later.
+
+Sessions older than 4 hours are considered abandoned and won't trigger notifications.
 
 ---
 
@@ -90,6 +105,15 @@ npm run dev
 ```
 
 Opens on http://localhost:5173. The API server runs on :3001.
+
+### Testing
+
+```bash
+npm test              # Run all server + client tests
+npm run test:server   # Server tests only (Vitest)
+npm run test:client   # Client tests only (Vitest + React Testing Library)
+npm run test:e2e      # End-to-end tests (Playwright)
+```
 
 ---
 
