@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Bot, GitBranch, MessageSquare, GitCommit } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { Bot, GitBranch, MessageSquare, GitCommit, Zap } from 'lucide-react'
 import { ConversationView } from './ConversationView.jsx'
 import { TimelineView } from './TimelineView.jsx'
 import { IntelView } from './IntelView.jsx'
@@ -30,7 +30,64 @@ function ToolPill({ name, count }) {
   )
 }
 
-export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion }) {
+function SkillPicker({ sessionId, skills }) {
+  const [selectedSkill, setSelectedSkill] = useState('')
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState(null)
+
+  const userSkills = skills?.userSkills || []
+  const pluginSkills = skills?.pluginSkills || []
+  const allSkills = [...userSkills, ...pluginSkills]
+
+  const handleRun = useCallback(async () => {
+    if (!selectedSkill || !sessionId || running) return
+    setRunning(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/skill`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skill: selectedSkill }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`)
+      }
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setRunning(false)
+    }
+  }, [selectedSkill, sessionId, running])
+
+  if (allSkills.length === 0) return null
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Zap size={11} className="text-gray-600" />
+      <select
+        value={selectedSkill}
+        onChange={e => { setSelectedSkill(e.target.value); setError(null) }}
+        className="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-400 focus:outline-none focus:border-indigo-500"
+      >
+        <option value="">Skill...</option>
+        {allSkills.map(s => (
+          <option key={s.name} value={s.name}>{s.command || `/${s.name}`}</option>
+        ))}
+      </select>
+      <button
+        onClick={handleRun}
+        disabled={!selectedSkill || running}
+        className="px-1.5 py-0.5 rounded bg-purple-700 text-white text-[10px] hover:bg-purple-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        {running ? 'Running...' : 'Run'}
+      </button>
+      {error && <span className="text-[10px] text-red-400 truncate max-w-[120px]" title={error}>Failed</span>}
+    </div>
+  )
+}
+
+export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, skills }) {
   const [subTab, setSubTab] = useState('conversation')
 
   if (!session) return (
@@ -42,7 +99,7 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion }
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex gap-1 px-3 py-2 border-b border-gray-800 shrink-0">
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 shrink-0">
         {['conversation', 'timeline', 'summary', 'intel'].map(tab => (
           <button
             key={tab}
@@ -56,6 +113,9 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion }
             {tab}
           </button>
         ))}
+        <div className="ml-auto">
+          <SkillPicker sessionId={session?.sessionId} skills={skills} />
+        </div>
       </div>
 
       {/* Sub-tab content */}

@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft } from 'lucide-react'
+import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell, Settings, Plus } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
+import { useNotifications } from './hooks/useNotifications.js'
 import { SessionsList } from './components/SessionsList.jsx'
 import { AgentTree } from './components/AgentTree.jsx'
 import { KanbanBoard } from './components/KanbanBoard.jsx'
@@ -10,6 +11,7 @@ import { WorkflowsPanel } from './components/WorkflowsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
+import { SettingsModal } from './components/SettingsModal.jsx'
 
 const TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
@@ -23,6 +25,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('agents')
   const [agentView, setAgentView] = useState('board') // 'board' | 'detail'
   const [showLegend, setShowLegend] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [events, setEvents] = useState([])
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
@@ -60,6 +63,36 @@ export default function App() {
   }, []))
 
   const activeSessions = sessions?.filter(s => s.isActive) || []
+  const { requestPermission, muteSession, mutedIds } = useNotifications(sessions)
+  const needsInputSessions = sessions?.filter(s => s.needsInput && !mutedIds.current.has(s.sessionId)) || []
+
+  const [showNewSession, setShowNewSession] = useState(false)
+  const [newSessionCwd, setNewSessionCwd] = useState('')
+  const [newSessionPrompt, setNewSessionPrompt] = useState('')
+  const [newSessionCreating, setNewSessionCreating] = useState(false)
+
+  const handleNewSession = useCallback(async () => {
+    if (!newSessionCwd.trim() || !newSessionPrompt.trim() || newSessionCreating) return
+    setNewSessionCreating(true)
+    try {
+      const res = await fetch('/api/sessions/new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cwd: newSessionCwd.trim(), prompt: newSessionPrompt.trim() }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`)
+      }
+      setShowNewSession(false)
+      setNewSessionCwd('')
+      setNewSessionPrompt('')
+    } catch (e) {
+      alert(`Failed to create session: ${e.message}`)
+    } finally {
+      setNewSessionCreating(false)
+    }
+  }, [newSessionCwd, newSessionPrompt, newSessionCreating])
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
@@ -72,6 +105,17 @@ export default function App() {
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             {activeSessions.length} active
           </span>
+        )}
+        {needsInputSessions.length > 0 && (
+          <button
+            onClick={requestPermission}
+            className="ml-3 flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+            title="Sessions waiting for input — click to enable desktop notifications"
+          >
+            <Bell size={12} />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            {needsInputSessions.length} waiting
+          </button>
         )}
         <nav className="ml-auto flex items-center gap-1">
           {TABS.map(tab => {
@@ -92,8 +136,15 @@ export default function App() {
             )
           })}
           <button
-            onClick={() => setShowLegend(true)}
+            onClick={() => setShowSettings(true)}
             className="ml-2 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            title="Settings"
+          >
+            <Settings size={14} />
+          </button>
+          <button
+            onClick={() => setShowLegend(true)}
+            className="text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
             title="Help"
           >
             <HelpCircle size={14} />
@@ -105,16 +156,51 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Sessions list */}
         <aside className="w-56 shrink-0 border-r border-gray-800 overflow-hidden flex flex-col">
-          <div className="px-3 py-2 border-b border-gray-800">
+          <div className="px-3 py-2 border-b border-gray-800 flex items-center">
             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Sessions</span>
             {sessions && (
               <span className="ml-2 text-xs text-gray-700">{sessions.length}</span>
             )}
+            <button
+              onClick={() => setShowNewSession(s => !s)}
+              className="ml-auto text-gray-600 hover:text-gray-300 transition-colors p-0.5 rounded"
+              title="New session"
+            >
+              <Plus size={14} />
+            </button>
           </div>
+          {showNewSession && (
+            <div className="px-3 py-2 border-b border-gray-800 space-y-2 bg-gray-900/50">
+              <input
+                type="text"
+                value={newSessionCwd}
+                onChange={e => setNewSessionCwd(e.target.value)}
+                placeholder="Working directory..."
+                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+              />
+              <input
+                type="text"
+                value={newSessionPrompt}
+                onChange={e => setNewSessionPrompt(e.target.value)}
+                placeholder="Prompt..."
+                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+                onKeyDown={e => { if (e.key === 'Enter') handleNewSession() }}
+              />
+              <button
+                onClick={handleNewSession}
+                disabled={!newSessionCwd.trim() || !newSessionPrompt.trim() || newSessionCreating}
+                className="w-full px-2 py-1 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                {newSessionCreating ? 'Creating...' : 'Create Session'}
+              </button>
+            </div>
+          )}
           <SessionsList
             sessions={sessions}
             selectedId={selectedSessionId}
             onSelect={setSelectedSessionId}
+            onMuteSession={muteSession}
+            onReplySession={id => { setSelectedSessionId(id); setAgentView('detail') }}
           />
         </aside>
 
@@ -155,7 +241,7 @@ export default function App() {
                     selectedId={selectedSessionId}
                     onSelect={id => { setSelectedSessionId(id); setAgentView('detail') }}
                   />
-                : <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} intelligenceVersion={intelligenceVersion} />
+                : <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} intelligenceVersion={intelligenceVersion} skills={skills} />
               }
             </>
           )}
@@ -173,6 +259,7 @@ export default function App() {
       </div>
 
       {showLegend && <LegendModal onClose={() => setShowLegend(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   )
 }
