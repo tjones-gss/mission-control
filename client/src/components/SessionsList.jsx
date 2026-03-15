@@ -130,15 +130,11 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
 export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, onReplySession }) {
   const [collapsed, setCollapsed] = useState({ active: false, recent: false, older: true })
 
-  if (!sessions) return <div className="p-4 text-gray-500">Loading...</div>
-
   const now = Date.now()
-  const active = sessions.filter(s => s.isActive === true)
-  const recent = sessions.filter(s => !s.isActive && s.lastModified > now - ONE_HOUR)
-  const older = sessions.filter(s => !s.isActive && s.lastModified <= now - ONE_HOUR)
-
-  // Auto-expand collapsed group if selected session is inside it
-  const toggle = key => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
+  const safeSessions = sessions || []
+  const active = safeSessions.filter(s => s.isActive === true)
+  const recent = safeSessions.filter(s => !s.isActive && s.lastModified > now - ONE_HOUR)
+  const older = safeSessions.filter(s => !s.isActive && s.lastModified <= now - ONE_HOUR)
 
   // Auto-expand collapsed group if selected session is inside it
   useEffect(() => {
@@ -151,6 +147,10 @@ export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, on
       return next
     })
   }, [selectedId, sessions])
+
+  if (!sessions) return <div className="p-4 text-gray-500">Loading...</div>
+
+  const toggle = key => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
 
   const groups = [
     { key: 'active', title: 'Active', titleClass: 'text-green-400', items: active },
