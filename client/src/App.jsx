@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft } from 'lucide-react'
+import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell, Settings } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
+import { useNotifications } from './hooks/useNotifications.js'
 import { SessionsList } from './components/SessionsList.jsx'
 import { AgentTree } from './components/AgentTree.jsx'
 import { KanbanBoard } from './components/KanbanBoard.jsx'
@@ -10,6 +11,7 @@ import { WorkflowsPanel } from './components/WorkflowsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
+import { SettingsModal } from './components/SettingsModal.jsx'
 
 const TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
@@ -23,6 +25,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('agents')
   const [agentView, setAgentView] = useState('board') // 'board' | 'detail'
   const [showLegend, setShowLegend] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [events, setEvents] = useState([])
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
@@ -60,6 +63,8 @@ export default function App() {
   }, []))
 
   const activeSessions = sessions?.filter(s => s.isActive) || []
+  const { requestPermission, muteSession, mutedIds } = useNotifications(sessions)
+  const needsInputSessions = sessions?.filter(s => s.needsInput && !mutedIds.current.has(s.sessionId)) || []
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
@@ -72,6 +77,17 @@ export default function App() {
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             {activeSessions.length} active
           </span>
+        )}
+        {needsInputSessions.length > 0 && (
+          <button
+            onClick={requestPermission}
+            className="ml-3 flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+            title="Sessions waiting for input — click to enable desktop notifications"
+          >
+            <Bell size={12} />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            {needsInputSessions.length} waiting
+          </button>
         )}
         <nav className="ml-auto flex items-center gap-1">
           {TABS.map(tab => {
@@ -92,8 +108,15 @@ export default function App() {
             )
           })}
           <button
-            onClick={() => setShowLegend(true)}
+            onClick={() => setShowSettings(true)}
             className="ml-2 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            title="Settings"
+          >
+            <Settings size={14} />
+          </button>
+          <button
+            onClick={() => setShowLegend(true)}
+            className="text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
             title="Help"
           >
             <HelpCircle size={14} />
@@ -115,6 +138,7 @@ export default function App() {
             sessions={sessions}
             selectedId={selectedSessionId}
             onSelect={setSelectedSessionId}
+            onMuteSession={muteSession}
           />
         </aside>
 
@@ -173,6 +197,7 @@ export default function App() {
       </div>
 
       {showLegend && <LegendModal onClose={() => setShowLegend(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   )
 }
