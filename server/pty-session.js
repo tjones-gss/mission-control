@@ -1,6 +1,6 @@
 import * as pty from 'node-pty'
 import crypto from 'crypto'
-import { emit } from './sse.js'
+import { emit, onEvent } from './sse.js'
 
 // On Windows, node-pty needs the .exe extension to find executables in PATH
 const CLAUDE_CMD = process.platform === 'win32' ? 'claude.exe' : 'claude'
@@ -105,6 +105,7 @@ export function cancelQuery(sessionId) {
 
   if (s.timeoutId) clearTimeout(s.timeoutId)
   if (s.completionTimer) clearTimeout(s.completionTimer)
+  if (s.removeCompletionListener) s.removeCompletionListener()
   s.term.kill()
   s.busy = false
   s.exited = true
@@ -181,12 +182,38 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
   s.term.write(sanitizePrompt(prompt) + '\r')
   emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
 
+  // Completion detection: the PTY stays alive for reuse, so we can't rely on exit.
+  // Instead, listen for session_update SSE events (fired by the file watcher when
+  // the JSONL changes). When updates stop for 3s, the response is complete.
+  // The PTY output itself may be empty (Claude Code's TUI doesn't produce parseable output).
+  const removeListener = onEvent((event, data) => {
+    if (event !== 'session_update') return
+    // session_update data contains filePath like "projects/.../sessionId.jsonl"
+    if (!data?.filePath?.includes(sessionId)) return
+    const current = sessions.get(sessionId)
+    if (!current || !current.busy) { removeListener(); return }
+
+    // Reset completion timer on each file update
+    if (current.completionTimer) clearTimeout(current.completionTimer)
+    current.completionTimer = setTimeout(() => {
+      const c = sessions.get(sessionId)
+      if (!c || !c.busy) return
+      const hasUnresolved = [...c.approvals.values()].some(a => !a.resolved)
+      if (hasUnresolved) return
+      c.busy = false
+      if (c.timeoutId) clearTimeout(c.timeoutId)
+      removeListener()
+      emit('sdk_result', { sessionId, subtype: 'success' })
+    }, 3000)
+  })
+  s.removeCompletionListener = removeListener
+
   // Safety timeout: if the query runs for more than 10 minutes, mark as no longer busy
-  // (the PTY stays alive for reuse, but we unblock the UI)
   const timeoutId = setTimeout(() => {
     const current = sessions.get(sessionId)
     if (current?.busy) {
       current.busy = false
+      if (current.removeCompletionListener) current.removeCompletionListener()
       emit('sdk_result', { sessionId, subtype: 'timeout' })
     }
   }, 600_000)
@@ -197,11 +224,16 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
 
 /**
  * Wait for the CLI to be ready for input.
- * Strategy: wait for output to start, then wait for 1.5s of silence.
+ * Strategy: watch for the status bar / input prompt to appear.
+ * The CLI goes through: separator → trust prompt → MCP loading → full UI.
+ * We detect readiness by looking for the input prompt (bracketed paste mode
+ * enable sequence \x1b[?2004h followed by focus events \x1b[?1004h) which
+ * appears when the CLI's message input is ready. Falls back to 3s silence.
  */
 function waitForReady(s) {
   return new Promise((resolve, reject) => {
     let silenceTimer = null
+    let accumulated = ''
 
     const cleanup = () => {
       if (silenceTimer) clearTimeout(silenceTimer)
@@ -209,12 +241,28 @@ function waitForReady(s) {
       s.term.removeListener('exit', onExit)
     }
 
-    const onData = () => {
+    const onData = (data) => {
+      accumulated += data
+
+      // Detect the input prompt: bracketed paste mode + focus events = CLI input ready
+      // This appears after trust prompt, MCP loading, and full UI render
+      if (accumulated.includes('\x1b[?2004h') && accumulated.includes('\x1b[?1004h') &&
+          accumulated.includes('Claude Code')) {
+        // Give a brief pause for any final rendering
+        if (silenceTimer) clearTimeout(silenceTimer)
+        silenceTimer = setTimeout(() => {
+          cleanup()
+          resolve()
+        }, 500)
+        return
+      }
+
+      // Fallback: silence-based detection
       if (silenceTimer) clearTimeout(silenceTimer)
       silenceTimer = setTimeout(() => {
         cleanup()
         resolve()
-      }, 1500)
+      }, 3000)
     }
 
     const onExit = () => {
@@ -225,34 +273,17 @@ function waitForReady(s) {
     s.term.on('data', onData)
     s.term.on('exit', onExit)
 
-    // Hard timeout: resolve after 8 seconds regardless
+    // Hard timeout: resolve after 15 seconds regardless
     setTimeout(() => {
       cleanup()
       resolve()
-    }, 8000)
+    }, 15000)
   })
 }
 
 function handlePtyData(sessionId, data) {
   const s = sessions.get(sessionId)
   if (!s || !s.busy) return
-
-  // Mark that the PTY has produced output since the message was sent
-  s.hasOutput = true
-
-  // Reset the completion silence timer — if no more output arrives for 3s
-  // (and no approval is pending), we consider the response complete.
-  if (s.completionTimer) clearTimeout(s.completionTimer)
-  s.completionTimer = setTimeout(() => {
-    const current = sessions.get(sessionId)
-    if (!current || !current.busy) return
-    // Don't complete if there's an unresolved tool approval (PTY is waiting for input)
-    const hasUnresolved = [...current.approvals.values()].some(a => !a.resolved)
-    if (hasUnresolved) return
-    current.busy = false
-    if (current.timeoutId) clearTimeout(current.timeoutId)
-    emit('sdk_result', { sessionId, subtype: 'success' })
-  }, 3000)
 
   s.recentOutput += data
   const clean = stripAnsi(s.recentOutput)
@@ -317,6 +348,7 @@ function handlePtyExit(sessionId, exitCode) {
   s.exited = true
   if (s.timeoutId) clearTimeout(s.timeoutId)
   if (s.completionTimer) clearTimeout(s.completionTimer)
+  if (s.removeCompletionListener) s.removeCompletionListener()
 
   if (s.busy) {
     s.busy = false

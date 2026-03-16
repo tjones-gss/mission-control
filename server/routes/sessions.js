@@ -7,6 +7,7 @@ import { getSessionMessages } from '../parsers/messages.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
+import { emit } from '../sse.js'
 import { startQuery, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -161,14 +162,33 @@ router.post('/:sessionId/message', async (req, res) => {
     return res.status(409).json({ error: 'A query is already active for this session' })
   }
 
+  // Use CLI subprocess with --resume -p to send message.
+  // Response data flows through the JSONL watcher → session_update SSE.
   try {
-    const result = await startQuery({
-      sessionId,
-      prompt: message.trim(),
-      cwd: session.cwd || undefined,
-      sdkOptions: buildSdkOptions(options),
-    })
-    res.status(202).json(result)
+    const args = buildCliArgs([
+      '--resume', sessionId,
+      '-p', message.trim(),
+      '--output-format', 'json',
+    ], options)
+
+    // Run async — return 202 immediately, result arrives via SSE
+    emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
+
+    runClaude({ args, cwd: session.cwd || undefined, timeoutMs: 300_000 })
+      .then(() => {
+        emit('sdk_result', { sessionId, subtype: 'success' })
+      })
+      .catch(err => {
+        const isCreditError = /credit balance/i.test(err.message) || /credit balance/i.test(err.stderrOutput || '')
+        emit(isCreditError ? 'sdk_error' : 'sdk_result', {
+          sessionId,
+          ...(isCreditError
+            ? { error: 'Credit balance is too low', errorType: 'credit_balance' }
+            : { subtype: 'error', error: err.message }),
+        })
+      })
+
+    res.status(202).json({ ok: true, streaming: true })
   } catch (err) {
     res.status(503).json({
       error: 'send_failed',
@@ -195,13 +215,19 @@ router.post('/:sessionId/skill', async (req, res) => {
   const prompt = skillArgs ? `/${skill} ${skillArgs}` : `/${skill}`
 
   try {
-    const result = await startQuery({
-      sessionId,
-      prompt,
-      cwd: session.cwd || undefined,
-      sdkOptions: buildSdkOptions(options),
-    })
-    res.status(202).json(result)
+    const args = buildCliArgs([
+      '--resume', sessionId,
+      '-p', prompt,
+      '--output-format', 'json',
+    ], options)
+
+    emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
+
+    runClaude({ args, cwd: session.cwd || undefined, timeoutMs: 300_000 })
+      .then(() => { emit('sdk_result', { sessionId, subtype: 'success' }) })
+      .catch(err => { emit('sdk_result', { sessionId, subtype: 'error', error: err.message }) })
+
+    res.status(202).json({ ok: true, streaming: true })
   } catch (err) {
     res.status(503).json({
       error: 'skill_failed',

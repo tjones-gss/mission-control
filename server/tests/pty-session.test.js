@@ -34,7 +34,7 @@ vi.mock('node-pty', () => ({
   spawn: vi.fn(),
 }))
 
-vi.mock('../sse.js', () => ({ emit: vi.fn() }))
+vi.mock('../sse.js', () => ({ emit: vi.fn(), onEvent: vi.fn(() => vi.fn()) }))
 
 // Mock Node's crypto so randomUUID returns a predictable value.
 // Using a literal string here because vi.mock factories are hoisted before
@@ -101,13 +101,15 @@ async function bootSession(sessionId, opts = {}) {
   // Yield so startQuery can register .on('data') listeners inside waitForReady
   await Promise.resolve()
 
-  // Fire a data event so the silence timer is started
+  // Fire data events that simulate CLI initialization output.
+  // waitForReady looks for 'Claude Code' + bracketed paste mode sequences.
+  const initData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76'
   if (capturedOn['data'] && capturedOn['data'].length > 0) {
-    capturedOn['data'].forEach(h => h())
+    capturedOn['data'].forEach(h => h(initData))
   }
 
-  // Advance past the 1500ms silence window → waitForReady resolves
-  vi.advanceTimersByTime(1500)
+  // Advance past the 500ms post-detection pause in waitForReady
+  vi.advanceTimersByTime(500)
 
   return promise
 }
@@ -146,8 +148,9 @@ describe('isQueryActive()', () => {
     expect(isQueryActive(sid)).toBe(true)
 
     // Finish the boot so the session is cleaned up for the module
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h())
-    vi.advanceTimersByTime(1500)
+    const initData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76'
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h(initData))
+    vi.advanceTimersByTime(500)
     await promise
   })
 })
@@ -220,8 +223,9 @@ describe('startQuery()', () => {
     ).rejects.toThrow('A query is already active for this session')
 
     // Clean up
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h())
-    vi.advanceTimersByTime(1500)
+    const initData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76'
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h(initData))
+    vi.advanceTimersByTime(500)
     await first
   })
 
@@ -330,13 +334,13 @@ describe('startQuery()', () => {
 // ─── waitForReady — hard timeout fallback ─────────────────────────────────────
 
 describe('waitForReady() hard timeout', () => {
-  it('resolves after 8s even with no data', async () => {
+  it('resolves after 15s even with no data', async () => {
     const sid = uniqueSession()
-    // Do NOT fire any data events — rely on 8s hard timeout
+    // Do NOT fire any data events — rely on 15s hard timeout
     const promise = startQuery({ sessionId: sid, prompt: 'hi', cwd: '/tmp' })
     await Promise.resolve()
 
-    vi.advanceTimersByTime(8000)
+    vi.advanceTimersByTime(15000)
 
     const result = await promise
     expect(result).toEqual({ ok: true, streaming: true })
