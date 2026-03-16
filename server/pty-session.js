@@ -178,31 +178,27 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
     s.recentOutput = ''
   }
 
+  // Reset TUI input state before sending (Escape clears any partial input or mode)
+  s.term.write('\x1b')
+  await new Promise(resolve => setTimeout(resolve, 50))
+
   // Send the message using bracketed paste mode.
-  // The TUI enables bracketed paste (\x1b[?2004h), so it expects pasted input
-  // wrapped in \x1b[200~ ... \x1b[201~ markers. Without these, the TUI may
-  // ignore or misinterpret typed characters.
-  // IMPORTANT: Enter (\r) must be sent as a separate write after a brief delay —
-  // the TUI processes the paste asynchronously and won't accept Enter if it
-  // arrives in the same write as the paste brackets.
   const sanitized = sanitizePrompt(prompt)
   s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
   await new Promise(resolve => setTimeout(resolve, 100))
   s.term.write('\r')
   emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
 
-  // Completion detection: the PTY stays alive for reuse, so we can't rely on exit.
-  // Instead, listen for session_update SSE events (fired by the file watcher when
-  // the JSONL changes). When updates stop for 8s, the response is complete.
-  // The PTY output itself may be empty (Claude Code's TUI doesn't produce parseable output).
+  // Completion detection: listen for session_update SSE events (fired by the
+  // file watcher when the JSONL changes). When updates stop for 8s after the
+  // assistant starts responding, the response is complete.
   //
-  // The first session_update after sending is the user message being written to JSONL.
-  // We skip it and only start the silence timer after a second update arrives,
-  // which indicates the assistant has started responding.
+  // The first session_update is the user message being written — skip it.
+  // After completion, kill the PTY so the next query spawns fresh (the TUI's
+  // input state is unreliable after a response cycle).
   let updateCount = 0
   const removeListener = onEvent((event, data) => {
     if (event !== 'session_update') return
-    // session_update data contains filePath like "projects/.../sessionId.jsonl"
     if (!data?.filePath?.includes(sessionId)) return
     const current = sessions.get(sessionId)
     if (!current || !current.busy) { removeListener(); return }
@@ -265,18 +261,28 @@ function waitForReady(s) {
 
     const onData = (data) => {
       accumulated += data
-
       // Phase 1: Accept the trust prompt if it appears.
       // The trust prompt shows "trust this folder" with a selection menu.
       // Send Enter to accept the default "Yes, I trust this folder".
+      // Reset the silence timer since the UI will take a few seconds to load
+      // after trust is accepted (MCP servers connect, full UI renders).
       if (!trustAccepted && accumulated.includes('trust')) {
         trustAccepted = true
+        if (silenceTimer) clearTimeout(silenceTimer)
+        silenceTimer = null
         s.term.write('\r')
+        return  // Wait for more data before starting any timer
       }
 
-      // Phase 2: Detect the full UI load — "Claude Code" appears in the
-      // header after trust is accepted and MCP servers are connected.
-      if (accumulated.includes('Claude Code')) {
+      // Phase 2: Detect the message input field being ready.
+      // The TUI emits \x1b[?2004h (bracketed paste enable) twice:
+      //   1st: when the trust prompt's select input renders
+      //   2nd: when the actual message input field renders (after MCP loading)
+      // If trust was already accepted, the first \x1b[?2004h is the trust prompt
+      // and the second one is the message input. We also require "Claude Code"
+      // in the accumulated output to confirm the full UI has loaded.
+      const pasteEnableCount = (accumulated.match(/\x1b\[\?2004h/g) || []).length
+      if (pasteEnableCount >= 2 && accumulated.includes('Claude Code')) {
         if (silenceTimer) clearTimeout(silenceTimer)
         silenceTimer = setTimeout(() => {
           cleanup()

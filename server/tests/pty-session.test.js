@@ -109,8 +109,8 @@ async function bootSession(sessionId, opts = {}) {
   }
   await Promise.resolve()
 
-  // Phase 2: After trust accepted, full UI loads with "Claude Code"
-  const uiData = 'Claude Code v2.1.76'
+  // Phase 2: After trust accepted, full UI loads with second bracketed paste enable + "Claude Code"
+  const uiData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76'
   if (capturedOn['data'] && capturedOn['data'].length > 0) {
     capturedOn['data'].forEach(h => h(uiData))
   }
@@ -158,9 +158,9 @@ describe('isQueryActive()', () => {
     expect(isQueryActive(sid)).toBe(true)
 
     // Finish the boot so the session is cleaned up for the module
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('trust this folder'))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004htrust this folder'))
     await Promise.resolve()
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('Claude Code v2.1.76'))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(100)
     await promise
@@ -235,9 +235,9 @@ describe('startQuery()', () => {
     ).rejects.toThrow('A query is already active for this session')
 
     // Clean up
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('trust this folder'))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004htrust this folder'))
     await Promise.resolve()
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('Claude Code v2.1.76'))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(100)
     await first
@@ -372,15 +372,15 @@ describe('waitForReady() trust prompt acceptance', () => {
     const promise = startQuery({ sessionId: sid, prompt: 'hi', cwd: '/tmp' })
     await Promise.resolve()
 
-    // Fire trust prompt data
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('Do you trust this folder?'))
+    // Fire trust prompt data (includes first bracketed paste enable)
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hDo you trust this folder?'))
     await Promise.resolve()
 
     // The trust prompt should trigger an Enter
     expect(mockTerm.write).toHaveBeenCalledWith('\r')
 
-    // Now fire Claude Code UI
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('Claude Code v2.1.76'))
+    // Now fire Claude Code UI (includes second bracketed paste enable)
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(100)
     await promise
