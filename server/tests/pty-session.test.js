@@ -102,14 +102,24 @@ async function bootSession(sessionId, opts = {}) {
   await Promise.resolve()
 
   // Fire data events that simulate CLI initialization output.
-  // waitForReady looks for 'Claude Code' + bracketed paste mode sequences.
-  const initData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76'
+  // Phase 1: Trust prompt appears — waitForReady detects "trust" and sends Enter
+  const trustData = '\x1b[?2004h\x1b[?1004hDo you trust this folder?'
   if (capturedOn['data'] && capturedOn['data'].length > 0) {
-    capturedOn['data'].forEach(h => h(initData))
+    capturedOn['data'].forEach(h => h(trustData))
+  }
+  await Promise.resolve()
+
+  // Phase 2: After trust accepted, full UI loads with "Claude Code"
+  const uiData = 'Claude Code v2.1.76'
+  if (capturedOn['data'] && capturedOn['data'].length > 0) {
+    capturedOn['data'].forEach(h => h(uiData))
   }
 
   // Advance past the 500ms post-detection pause in waitForReady
   vi.advanceTimersByTime(500)
+
+  // Yield for the startQuery async flow (100ms delay between paste and Enter)
+  await vi.advanceTimersByTimeAsync(100)
 
   return promise
 }
@@ -148,9 +158,11 @@ describe('isQueryActive()', () => {
     expect(isQueryActive(sid)).toBe(true)
 
     // Finish the boot so the session is cleaned up for the module
-    const initData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76'
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h(initData))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('trust this folder'))
+    await Promise.resolve()
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('Claude Code v2.1.76'))
     vi.advanceTimersByTime(500)
+    await vi.advanceTimersByTimeAsync(100)
     await promise
   })
 })
@@ -223,16 +235,19 @@ describe('startQuery()', () => {
     ).rejects.toThrow('A query is already active for this session')
 
     // Clean up
-    const initData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76'
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h(initData))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('trust this folder'))
+    await Promise.resolve()
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('Claude Code v2.1.76'))
     vi.advanceTimersByTime(500)
+    await vi.advanceTimersByTimeAsync(100)
     await first
   })
 
   it('writes prompt in bracketed paste mode after waitForReady completes', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { prompt: 'my prompt' })
-    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~my prompt\x1b[201~\r')
+    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~my prompt\x1b[201~')
+    expect(mockTerm.write).toHaveBeenCalledWith('\r')
   })
 
   it('emits sdk_message after writing prompt', async () => {
@@ -310,13 +325,13 @@ describe('startQuery()', () => {
     const sid = uniqueSession()
     await bootSession(sid, { prompt: 'hello\x03world\x1b[Afoo' })
     // \x03 (Ctrl-C) and \x1b (ESC) should be stripped, wrapped in bracketed paste
-    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~helloworldfoo\x1b[201~\r')
+    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~helloworldfoo\x1b[201~')
   })
 
   it('preserves tabs and newlines in prompt (converted to \\r)', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { prompt: 'line1\tindented' })
-    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~line1\tindented\x1b[201~\r')
+    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~line1\tindented\x1b[201~')
   })
 
   it('throws when PTY crashes during waitForReady (exit before ready)', async () => {
@@ -341,10 +356,34 @@ describe('waitForReady() hard timeout', () => {
     await Promise.resolve()
 
     vi.advanceTimersByTime(15000)
+    // Advance past the 100ms delay between paste and Enter
+    await vi.advanceTimersByTimeAsync(100)
 
     const result = await promise
     expect(result).toEqual({ ok: true, streaming: true })
-    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~hi\x1b[201~\r')
+    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~hi\x1b[201~')
+    expect(mockTerm.write).toHaveBeenCalledWith('\r')
+  })
+})
+
+describe('waitForReady() trust prompt acceptance', () => {
+  it('sends Enter when trust prompt detected', async () => {
+    const sid = uniqueSession()
+    const promise = startQuery({ sessionId: sid, prompt: 'hi', cwd: '/tmp' })
+    await Promise.resolve()
+
+    // Fire trust prompt data
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('Do you trust this folder?'))
+    await Promise.resolve()
+
+    // The trust prompt should trigger an Enter
+    expect(mockTerm.write).toHaveBeenCalledWith('\r')
+
+    // Now fire Claude Code UI
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('Claude Code v2.1.76'))
+    vi.advanceTimersByTime(500)
+    await vi.advanceTimersByTimeAsync(100)
+    await promise
   })
 })
 

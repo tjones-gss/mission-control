@@ -181,9 +181,14 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
   // Send the message using bracketed paste mode.
   // The TUI enables bracketed paste (\x1b[?2004h), so it expects pasted input
   // wrapped in \x1b[200~ ... \x1b[201~ markers. Without these, the TUI may
-  // ignore or misinterpret typed characters. The trailing \r submits.
+  // ignore or misinterpret typed characters.
+  // IMPORTANT: Enter (\r) must be sent as a separate write after a brief delay —
+  // the TUI processes the paste asynchronously and won't accept Enter if it
+  // arrives in the same write as the paste brackets.
   const sanitized = sanitizePrompt(prompt)
-  s.term.write(`\x1b[200~${sanitized}\x1b[201~\r`)
+  s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
+  await new Promise(resolve => setTimeout(resolve, 100))
+  s.term.write('\r')
   emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
 
   // Completion detection: the PTY stays alive for reuse, so we can't rely on exit.
@@ -230,14 +235,17 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
  * Wait for the CLI to be ready for input.
  * Strategy: watch for the status bar / input prompt to appear.
  * The CLI goes through: separator → trust prompt → MCP loading → full UI.
- * We detect readiness by looking for the input prompt (bracketed paste mode
- * enable sequence \x1b[?2004h followed by focus events \x1b[?1004h) which
- * appears when the CLI's message input is ready. Falls back to 3s silence.
+ *
+ * The trust prompt ("Yes, I trust this folder") appears early and must be
+ * accepted with Enter before the full UI loads. We detect it by looking for
+ * the "trust" keyword after the initial bracketed paste enable, send Enter,
+ * then wait for "Claude Code" to confirm the full UI has loaded.
  */
 function waitForReady(s) {
   return new Promise((resolve, reject) => {
     let silenceTimer = null
     let accumulated = ''
+    let trustAccepted = false
 
     const cleanup = () => {
       if (silenceTimer) clearTimeout(silenceTimer)
@@ -248,11 +256,17 @@ function waitForReady(s) {
     const onData = (data) => {
       accumulated += data
 
-      // Detect the input prompt: bracketed paste mode + focus events = CLI input ready
-      // This appears after trust prompt, MCP loading, and full UI render
-      if (accumulated.includes('\x1b[?2004h') && accumulated.includes('\x1b[?1004h') &&
-          accumulated.includes('Claude Code')) {
-        // Give a brief pause for any final rendering
+      // Phase 1: Accept the trust prompt if it appears.
+      // The trust prompt shows "trust this folder" with a selection menu.
+      // Send Enter to accept the default "Yes, I trust this folder".
+      if (!trustAccepted && accumulated.includes('trust')) {
+        trustAccepted = true
+        s.term.write('\r')
+      }
+
+      // Phase 2: Detect the full UI load — "Claude Code" appears in the
+      // header after trust is accepted and MCP servers are connected.
+      if (accumulated.includes('Claude Code')) {
         if (silenceTimer) clearTimeout(silenceTimer)
         silenceTimer = setTimeout(() => {
           cleanup()
@@ -261,7 +275,8 @@ function waitForReady(s) {
         return
       }
 
-      // Fallback: silence-based detection
+      // Fallback: silence-based detection (covers cases where the UI text
+      // changes in future versions)
       if (silenceTimer) clearTimeout(silenceTimer)
       silenceTimer = setTimeout(() => {
         cleanup()
