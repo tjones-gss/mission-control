@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Info, X, Loader } from 'lucide-react'
+import { Send, Info, X, Loader, Terminal, ChevronDown, ChevronUp } from 'lucide-react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
 import { Markdown } from './Markdown.jsx'
@@ -39,25 +39,66 @@ function ToolUseBlock({ name, input }) {
   )
 }
 
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]|\x1b[>=<]|\x1b\[[\d;]*m/g
+
+function stripAnsi(str) {
+  return str.replace(ANSI_RE, '')
+}
+
 function ToolResultBlock({ content, toolName }) {
-  const [expanded, setExpanded] = useState(false)
-  const lines = (content || '').split('\n')
-  const truncated = lines.length > 20
-  const display = !truncated || expanded ? content : lines.slice(0, 20).join('\n')
+  const [open, setOpen] = useState(false)
+  const raw = content || ''
+  const cleaned = stripAnsi(raw)
+  const lines = cleaned.split('\n')
+  const summary = lines[0]?.slice(0, 80) || '(empty)'
   const color = toolName ? (TOOL_COLORS[toolName] || 'bg-gray-800 text-gray-400') : null
   return (
     <div className="rounded bg-gray-900 border border-gray-800">
-      {toolName && (
-        <div className={`px-2 py-0.5 text-[10px] font-mono rounded-t ${color}`}>
-          {toolName} result
-        </div>
+      <button
+        className={`flex items-center gap-2 px-2 py-1 text-xs font-mono w-full text-left ${color || 'bg-gray-800 text-gray-400'}`}
+        onClick={() => setOpen(o => !o)}
+      >
+        <Terminal size={10} className="shrink-0 opacity-60" />
+        <span className="truncate opacity-70">{toolName ? `${toolName} result` : 'result'}: {summary}</span>
+        <span className="ml-auto opacity-50">{open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}</span>
+      </button>
+      {open && (
+        <pre className="text-[11px] font-mono text-gray-500 p-2 overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto">
+          {cleaned}
+        </pre>
       )}
-      <pre className="text-[11px] font-mono text-gray-500 p-2 overflow-x-auto whitespace-pre-wrap">{display}</pre>
-      {truncated && (
-        <button className="text-[10px] text-cyan-600 hover:text-cyan-400 px-2 pb-1.5" onClick={() => setExpanded(e => !e)}>
-          {expanded ? 'show less' : `+${lines.length - 20} more lines`}
-        </button>
-      )}
+    </div>
+  )
+}
+
+// Detect system/notification content injected into user messages
+function isSystemContent(text) {
+  if (!text) return false
+  return text.includes('<task-notification>') ||
+    text.includes('<system-reminder>') ||
+    text.includes('<command-name>') ||
+    text.includes('<available-deferred-tools>') ||
+    text.includes('<local-command-stdout>')
+}
+
+function SystemMessage({ text }) {
+  // Extract a readable summary from the system content
+  let summary = text
+  const taskMatch = text.match(/<summary>(.*?)<\/summary>/s)
+  const cmdMatch = text.match(/<command-name>(.*?)<\/command-name>/s)
+  if (taskMatch) {
+    summary = taskMatch[1].trim()
+  } else if (cmdMatch) {
+    const stdoutMatch = text.match(/<local-command-stdout>(.*?)<\/local-command-stdout>/s)
+    summary = `/${cmdMatch[1]}${stdoutMatch ? ': ' + stdoutMatch[1].trim() : ''}`
+  } else {
+    summary = text.slice(0, 120) + (text.length > 120 ? '...' : '')
+  }
+
+  return (
+    <div className="rounded bg-gray-900/40 border border-gray-800/50 px-3 py-1.5">
+      <span className="text-[10px] text-gray-600 font-mono">{summary}</span>
     </div>
   )
 }
@@ -65,14 +106,20 @@ function ToolResultBlock({ content, toolName }) {
 function UserMessage({ blocks, toolNameMap }) {
   const textBlocks = blocks.filter(b => b.type === 'text')
   const resultBlocks = blocks.filter(b => b.type === 'tool_result')
+
+  // Separate real user text from system-injected content
+  const userTexts = textBlocks.filter(b => !isSystemContent(b.text))
+  const systemTexts = textBlocks.filter(b => isSystemContent(b.text))
+
   return (
     <>
-      {textBlocks.length > 0 && (
+      {userTexts.length > 0 && (
         <div className="rounded-lg bg-indigo-950/40 border border-indigo-900/30 p-3 space-y-2">
           <div className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">USER</div>
-          {textBlocks.map((b, i) => <Markdown key={i} className="text-indigo-100/80">{b.text}</Markdown>)}
+          {userTexts.map((b, i) => <Markdown key={i} className="text-indigo-100/80">{b.text}</Markdown>)}
         </div>
       )}
+      {systemTexts.map((b, i) => <SystemMessage key={`sys-${i}`} text={b.text} />)}
       {resultBlocks.length > 0 && (
         <div className="rounded-lg bg-gray-900/60 border border-gray-800 p-3 space-y-2">
           <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">TOOL OUTPUT</div>
