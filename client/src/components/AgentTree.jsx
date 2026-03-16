@@ -88,7 +88,7 @@ function SkillPicker({ sessionId, skills }) {
   )
 }
 
-export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, skills }) {
+export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, skills, streaming }) {
   const [subTab, setSubTab] = useState('conversation')
   const [sessionOptions, setSessionOptions] = useState({ permissionMode: '', model: '', effort: '' })
 
@@ -136,6 +136,7 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
             active={subTab === 'conversation'}
             sessionOptions={sessionOptions}
             skills={skills}
+            streaming={streaming}
           />
         </div>
       )}

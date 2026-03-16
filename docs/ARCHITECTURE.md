@@ -15,6 +15,7 @@
   - [Intelligence](#intelligence)
   - [File Watching & SSE](#file-watching--sse)
   - [CLI Bridge](#cli-bridge)
+  - [PTY Session Control](#pty-session-control)
 - [Client](#client)
   - [App Shell](#app-shell)
   - [Hooks](#hooks)
@@ -115,7 +116,7 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 
 | Module | Key Endpoints |
 |--------|--------------|
-| `routes/sessions.js` | `GET /`, `GET /:id`, `GET /:id/messages`, `POST /:id/message`, `POST /:id/skill`, `POST /:id/fork`, `POST /:id/name`, `POST /new` |
+| `routes/sessions.js` | `GET /`, `GET /:id`, `GET /:id/messages`, `POST /:id/message`, `POST /:id/skill`, `POST /:id/fork`, `POST /:id/name`, `POST /new`, `POST /:id/tool-approval`, `POST /:id/cancel`, `GET /:id/query-status` |
 | `routes/tasks.js` | `GET /:sessionId`, task CRUD |
 | `routes/skills.js` | `GET /`, skill listing |
 | `routes/teams.js` | `GET /`, `POST /:name/inbox`, `PATCH /:name/inbox/:messageId` |
@@ -140,13 +141,28 @@ AI-powered session analysis using the `claude` CLI.
 | `watcher.js` | chokidar file watcher on `~/.claude/`, detects changes, triggers parser re-reads |
 | `sse.js` | SSE connection manager, broadcasts typed events to all connected clients |
 
-**SSE Event Types:** `session_update`, `new_session`, `task_update`, `team_update`, `intelligence_update`, `history_update`
+**SSE Event Types:** `session_update`, `new_session`, `task_update`, `team_update`, `intelligence_update`, `history_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`
 
 ### CLI Bridge
 
 | File | Purpose |
 |------|---------|
 | `claude-cli.js` | Spawns `claude` CLI as subprocess for message replies, skill invocation, new sessions, and intel analysis. Concurrent writes to the same session are blocked (409 Conflict). |
+
+### PTY Session Control
+
+| File | Purpose |
+|------|---------|
+| `pty-session.js` | Spawns `claude --resume` in a pseudo-terminal for interactive messaging. Uses subscription auth (not API credits). Detects tool approval prompts via pattern matching on PTY output, emits SSE events for real-time UI updates. |
+
+**Why PTY instead of SDK?** The Agent SDK's `query()` function creates synthetic API calls billed against API credits. The PTY approach types into an interactive CLI session, which uses the user's existing subscription — same as typing in a terminal.
+
+**Key behaviors:**
+- PTY kept alive for session reuse (not respawned per message)
+- Tool approval prompts detected via regex patterns on ANSI-stripped output
+- Auto-deny after 120s timeout (timer stored on approval object, cleared on early resolve)
+- 10-minute safety timeout marks query as no longer busy
+- `waitForReady()` detects CLI initialization via 1.5s silence after first output
 
 ---
 
@@ -175,6 +191,7 @@ AI-powered session analysis using the `claude` CLI.
 | `useNotifications.js` | Watches sessions for `needsInput` transitions. Fires desktop notifications + delegates sound to `useSound`. Supports per-session muting. |
 | `useSound.js` | Core audio engine. Lazy AudioContext init, plays synthesized presets or custom uploaded sounds, TTS via speechSynthesis, localStorage persistence. Returns memoized API object. |
 | `useKeyboardShortcuts.js` | Global `keydown` listener with 14 default bindings. Ignores input fields (except Escape). Supports modifier combos (`Ctrl+k`). Conflict auto-resolution on rebind. |
+| `useStreamingSession.js` | Manages streaming query state, pending tool approvals, and SDK errors for the selected session. Resyncs on mount via `/query-status`. |
 
 ### Audio System
 
@@ -199,6 +216,8 @@ AI-powered session analysis using the `claude` CLI.
 | `KanbanBoard.jsx` | Board view — sessions as cards in status columns |
 | `AgentTree.jsx` | Detail view shell — sub-tab bar (Conversation/Timeline/Summary/Intel), session control bar |
 | `ConversationView.jsx` | Message thread with send input, slash-command autocomplete, option pills |
+| `ToolApprovalBanner.jsx` | Inline banner for pending tool approvals — shows tool name with color coding, Allow/Deny buttons, expandable input preview |
+| `Markdown.jsx` | Memoized ReactMarkdown wrapper with GFM and syntax highlighting |
 | `TimelineView.jsx` | Chronological event list with time deltas |
 | `IntelView.jsx` | AI analysis display with auto-refresh |
 | `SessionControlBar.jsx` | Per-session model/mode/effort selector |
@@ -250,15 +269,15 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 
 ## Testing
 
-**337 total tests** — all must pass before pushing.
+**~375 total tests** — all must pass before pushing.
 
 | Suite | Runner | Count | Location |
 |-------|--------|-------|----------|
 | Server parsers | Vitest | 91 | `server/tests/parsers/` |
-| Server routes | Vitest | 53 | `server/tests/routes/` |
-| Client hooks | Vitest + RTL | 71 | `client/src/tests/hooks/` |
+| Server routes | Vitest | ~70 | `server/tests/routes/` |
+| Client hooks | Vitest + RTL | ~85 | `client/src/tests/hooks/` |
 | Client audio | Vitest | 25 | `client/src/tests/audio/` |
-| Client components | Vitest + RTL | 97 | `client/src/tests/components/` |
+| Client components | Vitest + RTL | ~104 | `client/src/tests/components/` |
 | E2E | Playwright | — | `e2e/` (not yet populated) |
 
 **Test infrastructure:**
@@ -287,6 +306,8 @@ oversight/
 │   │   │   │   └── ShortcutsTab.jsx
 │   │   │   ├── AgentTree.jsx
 │   │   │   ├── ConversationView.jsx
+│   │   │   ├── Markdown.jsx
+│   │   │   ├── ToolApprovalBanner.jsx
 │   │   │   ├── IntelView.jsx
 │   │   │   ├── KanbanBoard.jsx
 │   │   │   ├── LegendModal.jsx
@@ -306,7 +327,8 @@ oversight/
 │   │   │   ├── useKeyboardShortcuts.js
 │   │   │   ├── useNotifications.js
 │   │   │   ├── useSSE.js
-│   │   │   └── useSound.js
+│   │   │   ├── useSound.js
+│   │   │   └── useStreamingSession.js
 │   │   ├── tests/
 │   │   │   ├── audio/           # presets.test.js, tts.test.js
 │   │   │   ├── components/      # 5 component test files
@@ -332,6 +354,7 @@ oversight/
 │   │   ├── parsers/              # 6 parser test files
 │   │   └── routes/               # 4 route test files
 │   ├── claude-cli.js
+│   ├── pty-session.js
 │   ├── index.js
 │   ├── sse.js
 │   ├── watcher.js

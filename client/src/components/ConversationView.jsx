@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send } from 'lucide-react'
+import { Send, Info, X, Loader } from 'lucide-react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
+import { Markdown } from './Markdown.jsx'
+import { ToolApprovalBanner } from './ToolApprovalBanner.jsx'
 
 function ThinkingBlock({ text }) {
   const [open, setOpen] = useState(false)
@@ -37,13 +39,19 @@ function ToolUseBlock({ name, input }) {
   )
 }
 
-function ToolResultBlock({ content }) {
+function ToolResultBlock({ content, toolName }) {
   const [expanded, setExpanded] = useState(false)
   const lines = (content || '').split('\n')
   const truncated = lines.length > 20
   const display = !truncated || expanded ? content : lines.slice(0, 20).join('\n')
+  const color = toolName ? (TOOL_COLORS[toolName] || 'bg-gray-800 text-gray-400') : null
   return (
     <div className="rounded bg-gray-900 border border-gray-800">
+      {toolName && (
+        <div className={`px-2 py-0.5 text-[10px] font-mono rounded-t ${color}`}>
+          {toolName} result
+        </div>
+      )}
       <pre className="text-[11px] font-mono text-gray-500 p-2 overflow-x-auto whitespace-pre-wrap">{display}</pre>
       {truncated && (
         <button className="text-[10px] text-cyan-600 hover:text-cyan-400 px-2 pb-1.5" onClick={() => setExpanded(e => !e)}>
@@ -54,15 +62,24 @@ function ToolResultBlock({ content }) {
   )
 }
 
-function UserMessage({ blocks }) {
+function UserMessage({ blocks, toolNameMap }) {
   const textBlocks = blocks.filter(b => b.type === 'text')
   const resultBlocks = blocks.filter(b => b.type === 'tool_result')
   return (
-    <div className="rounded-lg bg-indigo-950/40 border border-indigo-900/30 p-3 space-y-2">
-      <div className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">USER</div>
-      {textBlocks.map((b, i) => <div key={i} className="text-sm text-indigo-100/80 leading-relaxed whitespace-pre-wrap">{b.text}</div>)}
-      {resultBlocks.map((b, i) => <ToolResultBlock key={i} content={b.content} />)}
-    </div>
+    <>
+      {textBlocks.length > 0 && (
+        <div className="rounded-lg bg-indigo-950/40 border border-indigo-900/30 p-3 space-y-2">
+          <div className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">USER</div>
+          {textBlocks.map((b, i) => <Markdown key={i} className="text-indigo-100/80">{b.text}</Markdown>)}
+        </div>
+      )}
+      {resultBlocks.length > 0 && (
+        <div className="rounded-lg bg-gray-900/60 border border-gray-800 p-3 space-y-2">
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">TOOL OUTPUT</div>
+          {resultBlocks.map((b, i) => <ToolResultBlock key={i} content={b.content} toolName={toolNameMap[b.toolUseId]} />)}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -71,7 +88,7 @@ function AssistantMessage({ blocks }) {
     <div className="space-y-2">
       {blocks.map((block, i) => {
         if (block.type === 'thinking') return <ThinkingBlock key={i} text={block.text} />
-        if (block.type === 'text') return <div key={i} className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{block.text}</div>
+        if (block.type === 'text') return <Markdown key={i}>{block.text}</Markdown>
         if (block.type === 'tool_use') return <ToolUseBlock key={i} name={block.name} input={block.input} />
         return null
       })}
@@ -126,7 +143,20 @@ function SlashAutocomplete({ filter, skills, selectedIndex, onSelect }) {
   )
 }
 
-function MessageInput({ sessionId, sending, onSend, sessionOptions, skills }) {
+function StreamingIndicator() {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2">
+      <div className="flex gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '150ms' }} />
+        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '300ms' }} />
+      </div>
+      <span className="text-xs text-indigo-400/70">Generating response...</span>
+    </div>
+  )
+}
+
+function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, active, isStreaming, onCancel }) {
   const [text, setText] = useState('')
   const [showAutocomplete, setShowAutocomplete] = useState(false)
   const [acIndex, setAcIndex] = useState(0)
@@ -223,29 +253,65 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills }) {
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={sending}
+          disabled={sending || isStreaming}
           data-shortcut-focus="message-input"
-          placeholder={sending ? 'Sending...' : 'Send a message (/ for commands)...'}
+          placeholder={isStreaming ? 'Generating...' : sending ? 'Sending...' : 'Send a message (/ for commands)...'}
           className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
         />
         {sessionOptions && <OptionPills options={sessionOptions} />}
-        <button
-          type="submit"
-          disabled={!text.trim() || sending}
-          className="px-3 py-1.5 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-        >
-          <Send size={12} />
-          Send
-        </button>
+        {isStreaming ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 rounded bg-red-700 text-white text-xs font-medium hover:bg-red-600 transition-colors flex items-center gap-1.5"
+          >
+            <X size={12} />
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!text.trim() || sending}
+            className="px-3 py-1.5 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+          >
+            <Send size={12} />
+            Send
+          </button>
+        )}
+        {active && !isStreaming && (
+          <Info
+            size={12}
+            className="text-gray-600 hover:text-gray-400 flex-shrink-0 cursor-default"
+            title="Messages are sent via SDK streaming. Results appear in real-time."
+          />
+        )}
       </div>
     </form>
   )
 }
 
-export function ConversationView({ sessionId, sessionUpdateVersion, active, sessionOptions, skills }) {
+export function ConversationView({ sessionId, sessionUpdateVersion, active, sessionOptions, skills, streaming }) {
+  const isStreaming = streaming?.isStreaming || false
+  const pendingApprovals = streaming?.pendingApprovals || []
+  const sdkError = streaming?.sdkError || null
   const url = active && sessionId ? `/api/sessions/${sessionId}/messages` : null
   const { data, loading } = useApi(url, [sessionUpdateVersion])
   const messages = data?.messages || []
+
+  // Build tool_use_id → tool_name lookup so tool results show which tool produced them
+  const toolNameMap = useMemo(() => {
+    const map = {}
+    for (const msg of messages) {
+      if (msg.type === 'assistant') {
+        for (const block of msg.blocks) {
+          if (block.type === 'tool_use' && block.id) {
+            map[block.id] = block.name
+          }
+        }
+      }
+    }
+    return map
+  }, [messages])
 
   const scrollRef = useRef(null)
   const [paused, setPaused] = useState(false)
@@ -263,7 +329,7 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
   }, [sessionOptions])
 
   const handleSend = useCallback(async (text) => {
-    if (!sessionId) return
+    if (!sessionId || isStreaming) return
     setSending(true)
     setSendError(null)
     try {
@@ -279,13 +345,14 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
         const data = await res.json().catch(() => ({}))
         throw new Error(data.detail || data.error || `HTTP ${res.status}`)
       }
-      // SSE will trigger a session_update which refetches messages
+      // 202 Accepted — query started, streaming state managed by SSE events
+      if (streaming?.markStreaming) streaming.markStreaming()
     } catch (e) {
       setSendError(e.message)
     } finally {
       setSending(false)
     }
-  }, [sessionId, cleanOptions])
+  }, [sessionId, cleanOptions, isStreaming, streaming])
 
   useEffect(() => {
     if (!paused && scrollRef.current) {
@@ -313,11 +380,21 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
         {loading && <div className="text-xs text-gray-600 p-4">Loading...</div>}
         {messages.map(msg => (
           <div key={msg.uuid}>
-            {msg.type === 'user' && <UserMessage blocks={msg.blocks} />}
+            {msg.type === 'user' && <UserMessage blocks={msg.blocks} toolNameMap={toolNameMap} />}
             {msg.type === 'assistant' && <AssistantMessage blocks={msg.blocks} />}
           </div>
         ))}
+        {isStreaming && <StreamingIndicator />}
       </div>
+
+      {pendingApprovals.map(a => (
+        <ToolApprovalBanner
+          key={a.approvalId}
+          approval={a}
+          onApprove={streaming?.approve}
+          onDeny={streaming?.deny}
+        />
+      ))}
 
       {paused && (
         <div
@@ -325,6 +402,24 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
           onClick={resumeScroll}
         >
           Auto-scroll paused - click to resume
+        </div>
+      )}
+
+      {sdkError && (
+        <div className="px-3 py-2 bg-red-950/50 border-t border-red-800/50 text-xs text-red-400">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">
+              {sdkError.errorType === 'credit_balance'
+                ? 'Insufficient API credits'
+                : `Query failed: ${sdkError.message}`}
+            </span>
+            <button onClick={streaming?.clearError} className="text-red-600 hover:text-red-400 ml-2">dismiss</button>
+          </div>
+          {sdkError.errorType === 'credit_balance' && (
+            <div className="mt-1 text-red-400/70">
+              Could not send message. Check your subscription status or try again.
+            </div>
+          )}
         </div>
       )}
 
@@ -341,6 +436,9 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
         onSend={handleSend}
         sessionOptions={sessionOptions}
         skills={skills}
+        active={active}
+        isStreaming={isStreaming}
+        onCancel={streaming?.cancel}
       />
     </div>
   )

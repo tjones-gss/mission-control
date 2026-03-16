@@ -15,12 +15,20 @@ vi.mock('../../intelligence/triggers.js', () => ({
 vi.mock('../../claude-cli.js', () => ({
   runClaude: vi.fn().mockResolvedValue({ stdout: '{"result":"ok"}', stderr: '', exitCode: 0 }),
 }))
+vi.mock('../../pty-session.js', () => ({
+  startQuery: vi.fn().mockResolvedValue({ ok: true, streaming: true }),
+  isQueryActive: vi.fn().mockReturnValue(false),
+  getQueryStatus: vi.fn().mockReturnValue({ active: false, pendingApprovals: [] }),
+  resolveApproval: vi.fn().mockReturnValue(true),
+  cancelQuery: vi.fn().mockReturnValue(true),
+}))
 
 import express from 'express'
 import request from 'supertest'
 import { getAllSessions, getSessionById } from '../../parsers/sessions.js'
 import { getSessionMessages } from '../../parsers/messages.js'
 import { runClaude } from '../../claude-cli.js'
+import { startQuery, isQueryActive, getQueryStatus, resolveApproval, cancelQuery } from '../../pty-session.js'
 import { router } from '../../routes/sessions.js'
 
 const app = express()
@@ -108,20 +116,30 @@ describe('POST /:sessionId/message', () => {
     expect(res.status).toBe(404)
   })
 
-  it('200 when message sent successfully', async () => {
+  it('202 when message sent via SDK', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
-    runClaude.mockResolvedValue({ stdout: '{"result":"done"}', stderr: '', exitCode: 0 })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
     const res = await request(app).post('/abc123/message').send({ message: 'hello' })
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['--resume', 'abc123', '-p', 'hello']),
+    expect(res.body.streaming).toBe(true)
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'abc123',
+      prompt: 'hello',
+      cwd: '/tmp',
     }))
   })
 
-  it('503 when CLI fails', async () => {
+  it('409 when query already active', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
-    runClaude.mockRejectedValue(new Error('CLI crashed'))
+    isQueryActive.mockReturnValue(true)
+    const res = await request(app).post('/abc123/message').send({ message: 'hello' })
+    expect(res.status).toBe(409)
+  })
+
+  it('503 when SDK fails', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockRejectedValue(new Error('SDK crashed'))
     const res = await request(app).post('/abc123/message').send({ message: 'hello' })
     expect(res.status).toBe(503)
     expect(res.body.error).toBe('send_failed')
@@ -143,24 +161,25 @@ describe('POST /:sessionId/skill', () => {
     expect(res.status).toBe(404)
   })
 
-  it('200 when skill invoked successfully', async () => {
+  it('202 when skill invoked via SDK', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
-    runClaude.mockResolvedValue({ stdout: '{"result":"committed"}', stderr: '', exitCode: 0 })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
     const res = await request(app).post('/abc123/skill').send({ skill: 'commit' })
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['-p', '/commit']),
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'abc123',
+      prompt: '/commit',
     }))
   })
 
-  it('sends skill with args', async () => {
+  it('sends skill with args via SDK', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
-    runClaude.mockResolvedValue({ stdout: '{}', stderr: '', exitCode: 0 })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
     const res = await request(app).post('/abc123/skill').send({ skill: 'commit', args: '-m "fix"' })
-    expect(res.status).toBe(200)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['-p', '/commit -m "fix"']),
+    expect(res.status).toBe(202)
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: '/commit -m "fix"',
     }))
   })
 })
@@ -180,14 +199,23 @@ describe('POST /new', () => {
     expect(res.body.error).toMatch(/cwd is required/i)
   })
 
-  it('201 when session created successfully', async () => {
+  it('201 when new session created via CLI', async () => {
     runClaude.mockResolvedValue({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 })
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
     expect(res.status).toBe(201)
     expect(res.body.ok).toBe(true)
     expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
       args: expect.arrayContaining(['-p', 'hello', '--output-format', 'json']),
-      cwd: '/tmp',
+    }))
+  })
+
+  it('201 when session created via CLI with name', async () => {
+    runClaude.mockResolvedValue({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 })
+    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello', name: 'test' })
+    expect(res.status).toBe(201)
+    expect(res.body.ok).toBe(true)
+    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
+      args: expect.arrayContaining(['-p', 'hello', '--name', 'test']),
     }))
   })
 
@@ -196,5 +224,61 @@ describe('POST /new', () => {
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
     expect(res.status).toBe(503)
     expect(res.body.error).toBe('session_create_failed')
+  })
+})
+
+// ─── POST /:sessionId/tool-approval ─────────────────────────────────────────
+
+describe('POST /:sessionId/tool-approval', () => {
+  it('400 when approvalId missing', async () => {
+    const res = await request(app).post('/abc123/tool-approval').send({ decision: 'allow' })
+    expect(res.status).toBe(400)
+  })
+
+  it('400 when decision invalid', async () => {
+    const res = await request(app).post('/abc123/tool-approval').send({ approvalId: 'x', decision: 'maybe' })
+    expect(res.status).toBe(400)
+  })
+
+  it('200 when approval resolved', async () => {
+    resolveApproval.mockReturnValue(true)
+    const res = await request(app).post('/abc123/tool-approval').send({ approvalId: 'x', decision: 'allow' })
+    expect(res.status).toBe(200)
+    expect(res.body.ok).toBe(true)
+  })
+
+  it('404 when approval not found', async () => {
+    resolveApproval.mockReturnValue(false)
+    const res = await request(app).post('/abc123/tool-approval').send({ approvalId: 'x', decision: 'deny' })
+    expect(res.status).toBe(404)
+  })
+})
+
+// ─── POST /:sessionId/cancel ────────────────────────────────────────────────
+
+describe('POST /:sessionId/cancel', () => {
+  it('200 when query cancelled', async () => {
+    cancelQuery.mockReturnValue(true)
+    const res = await request(app).post('/abc123/cancel')
+    expect(res.status).toBe(200)
+    expect(res.body.ok).toBe(true)
+  })
+
+  it('404 when no active query', async () => {
+    cancelQuery.mockReturnValue(false)
+    const res = await request(app).post('/abc123/cancel')
+    expect(res.status).toBe(404)
+  })
+})
+
+// ─── GET /:sessionId/query-status ───────────────────────────────────────────
+
+describe('GET /:sessionId/query-status', () => {
+  it('returns query status', async () => {
+    getQueryStatus.mockReturnValue({ active: true, pendingApprovals: [{ approvalId: 'a1', toolName: 'Bash' }] })
+    const res = await request(app).get('/abc123/query-status')
+    expect(res.status).toBe(200)
+    expect(res.body.active).toBe(true)
+    expect(res.body.pendingApprovals).toHaveLength(1)
   })
 })

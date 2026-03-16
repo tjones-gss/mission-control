@@ -137,9 +137,22 @@ The sub-tab bar in the detail view includes a **skill picker** dropdown. Select 
 
 Click the **+** button in the Sessions sidebar header to spawn a new Claude Code session. Provide a working directory and a prompt, and Oversight will start a fresh `claude -p` subprocess.
 
+### Interactive Session Control (PTY)
+
+When you send a message from the Conversation view, Oversight spawns a pseudo-terminal running `claude --resume <sessionId>` rather than making API calls. This means **dashboard messaging uses your existing Claude subscription** — no API credits consumed.
+
+**Tool approval workflow:**
+1. Claude requests to use a tool (e.g., Bash, Write)
+2. Oversight detects the approval prompt in the PTY output
+3. An amber **Tool Approval Banner** appears in the conversation view
+4. Click **Allow** or **Deny** — the response is typed into the PTY
+5. Auto-denied after 120 seconds if no action taken
+
+The PTY stays alive between messages for the same session, so subsequent messages don't need to re-initialize.
+
 ### Architecture
 
-All interaction goes through the `claude` CLI as a subprocess (`server/claude-cli.js`). This reuses Claude Code's own session persistence — no custom protocol, no API keys, no Agent SDK dependency. The subprocess writes to the JSONL file, chokidar sees the change, and SSE pushes the update to all browser tabs.
+Interaction goes through two paths: **PTY sessions** (`server/pty-session.js`) for interactive messaging (uses subscription auth), and the **CLI subprocess** (`server/claude-cli.js`) for one-shot operations like forking and named session creation. This reuses Claude Code's own session persistence — no custom protocol, no API keys, no Agent SDK dependency. The subprocess writes to the JSONL file, chokidar sees the change, and SSE pushes the update to all browser tabs.
 
 Concurrent writes to the same session are blocked (409 Conflict) to prevent race conditions.
 

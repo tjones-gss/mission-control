@@ -92,7 +92,7 @@ describe('useSSE', () => {
     expect(onMessage2).toHaveBeenCalledWith({ type: 'session_update', data: { id: '1' } })
   })
 
-  it('listens to exactly all 6 expected event types', () => {
+  it('listens to exactly all expected event types', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
@@ -104,6 +104,11 @@ describe('useSSE', () => {
       'team_update',
       'history_update',
       'intelligence_update',
+      'sdk_message',
+      'sdk_result',
+      'sdk_error',
+      'tool_approval_request',
+      'tool_approval_resolved',
     ]
 
     expectedEvents.forEach(eventType => {
@@ -111,7 +116,7 @@ describe('useSSE', () => {
       expect(es.listeners[eventType].length).toBeGreaterThan(0)
     })
 
-    // No extra event types registered beyond the 6 expected
+    // No extra event types registered beyond the expected
     const registeredTypes = Object.keys(es.listeners)
     expect(registeredTypes).toHaveLength(expectedEvents.length)
   })

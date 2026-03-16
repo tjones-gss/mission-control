@@ -7,22 +7,20 @@ import { getSessionMessages } from '../parsers/messages.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
+import { startQuery, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
 
 export const router = Router()
 
-// Track sessions currently being interacted with to prevent concurrent writes
-const activeSends = new Set()
+// Note: concurrency control for queries is handled by pty-session.js isQueryActive()
 
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI options helper
 // ──────────────────────────────────────────────────────────────────────────────
 
-const VALID_PERMISSION_MODES = new Set(['plan', 'auto', 'default', 'acceptEdits', 'dontAsk', 'bypassPermissions'])
 const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'max'])
-const VALID_MODEL_SHORTCUTS = new Set(['sonnet', 'opus', 'haiku'])
 
 function buildCliArgs(baseArgs, options) {
   const args = [...baseArgs]
@@ -42,6 +40,22 @@ function buildCliArgs(baseArgs, options) {
   }
 
   return args
+}
+
+function buildSdkOptions(options) {
+  const sdk = {}
+  if (!options || typeof options !== 'object') return sdk
+
+  if (options.permissionMode && VALID_PERMISSION_MODES.has(options.permissionMode)) {
+    sdk.permissionMode = options.permissionMode
+  }
+  if (options.model) {
+    if (VALID_MODEL_SHORTCUTS.has(options.model) || /^claude-/.test(options.model)) {
+      sdk.model = options.model
+    }
+  }
+
+  return sdk
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -143,46 +157,29 @@ router.post('/:sessionId/message', async (req, res) => {
   const session = getSessionById(sessionId)
   if (!session) return res.status(404).json({ error: 'Session not found' })
 
-  if (activeSends.has(sessionId)) {
-    return res.status(409).json({ error: 'A message is already being sent to this session' })
+  if (isQueryActive(sessionId)) {
+    return res.status(409).json({ error: 'A query is already active for this session' })
   }
 
-  activeSends.add(sessionId)
   try {
-    const args = buildCliArgs([
-      '--resume', sessionId,
-      '-p', message.trim(),
-      '--output-format', 'json',
-    ], options)
-
-    const { stdout, stderr } = await runClaude({
-      args,
+    const result = await startQuery({
+      sessionId,
+      prompt: message.trim(),
       cwd: session.cwd || undefined,
-      timeoutMs: 120_000,
+      sdkOptions: buildSdkOptions(options),
     })
-
-    let result
-    try {
-      result = JSON.parse(stdout)
-    } catch {
-      result = { raw: stdout }
-    }
-
-    res.json({ ok: true, result, stderr: stderr || undefined })
+    res.status(202).json(result)
   } catch (err) {
     res.status(503).json({
       error: 'send_failed',
       detail: err.message,
-      stderr: err.stderrOutput || null,
     })
-  } finally {
-    activeSends.delete(sessionId)
   }
 })
 
 router.post('/:sessionId/skill', async (req, res) => {
   const { sessionId } = req.params
-  const { skill, args, options } = req.body
+  const { skill, args: skillArgs, options } = req.body
 
   if (!skill || typeof skill !== 'string') {
     return res.status(400).json({ error: 'skill is required' })
@@ -191,43 +188,25 @@ router.post('/:sessionId/skill', async (req, res) => {
   const session = getSessionById(sessionId)
   if (!session) return res.status(404).json({ error: 'Session not found' })
 
-  if (activeSends.has(sessionId)) {
-    return res.status(409).json({ error: 'A message is already being sent to this session' })
+  if (isQueryActive(sessionId)) {
+    return res.status(409).json({ error: 'A query is already active for this session' })
   }
 
-  // Skills are invoked as slash commands in the prompt
-  const prompt = args ? `/${skill} ${args}` : `/${skill}`
+  const prompt = skillArgs ? `/${skill} ${skillArgs}` : `/${skill}`
 
-  activeSends.add(sessionId)
   try {
-    const cliArgs = buildCliArgs([
-      '--resume', sessionId,
-      '-p', prompt,
-      '--output-format', 'json',
-    ], options)
-
-    const { stdout, stderr } = await runClaude({
-      args: cliArgs,
+    const result = await startQuery({
+      sessionId,
+      prompt,
       cwd: session.cwd || undefined,
-      timeoutMs: 120_000,
+      sdkOptions: buildSdkOptions(options),
     })
-
-    let result
-    try {
-      result = JSON.parse(stdout)
-    } catch {
-      result = { raw: stdout }
-    }
-
-    res.json({ ok: true, result, stderr: stderr || undefined })
+    res.status(202).json(result)
   } catch (err) {
     res.status(503).json({
       error: 'skill_failed',
       detail: err.message,
-      stderr: err.stderrOutput || null,
     })
-  } finally {
-    activeSends.delete(sessionId)
   }
 })
 
@@ -241,34 +220,22 @@ router.post('/new', async (req, res) => {
     return res.status(400).json({ error: 'cwd is required' })
   }
 
+  // New sessions always use CLI path (PTY requires a sessionId to --resume)
   try {
     const baseArgs = ['-p', prompt.trim(), '--output-format', 'json']
-
     if (name && typeof name === 'string' && name.trim()) {
       baseArgs.push('--name', name.trim())
     }
     if (worktree === true) {
       baseArgs.push('--worktree')
     }
-
     const args = buildCliArgs(baseArgs, options)
-
-    const { stdout, stderr } = await runClaude({
-      args,
-      cwd,
-      timeoutMs: 120_000,
-    })
-
+    const { stdout, stderr } = await runClaude({ args, cwd, timeoutMs: 120_000 })
     let result
-    try {
-      result = JSON.parse(stdout)
-    } catch {
-      result = { raw: stdout }
-    }
-
-    res.status(201).json({ ok: true, result, stderr: stderr || undefined })
+    try { result = JSON.parse(stdout) } catch { result = { raw: stdout } }
+    return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
   } catch (err) {
-    res.status(503).json({
+    return res.status(503).json({
       error: 'session_create_failed',
       detail: err.message,
       stderr: err.stderrOutput || null,
@@ -339,4 +306,43 @@ router.post('/:sessionId/name', (req, res) => {
   saveSessionNames(names)
 
   res.json({ ok: true, sessionId, displayName: name.trim() })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SDK query control endpoints
+// ──────────────────────────────────────────────────────────────────────────────
+
+router.post('/:sessionId/tool-approval', (req, res) => {
+  const { sessionId } = req.params
+  const { approvalId, decision, message } = req.body
+
+  if (!approvalId || typeof approvalId !== 'string') {
+    return res.status(400).json({ error: 'approvalId is required' })
+  }
+  if (decision !== 'allow' && decision !== 'deny') {
+    return res.status(400).json({ error: 'decision must be "allow" or "deny"' })
+  }
+
+  const resolved = resolveApproval(sessionId, approvalId, decision, message)
+  if (!resolved) {
+    return res.status(404).json({ error: 'Approval not found or already resolved' })
+  }
+
+  res.json({ ok: true })
+})
+
+router.post('/:sessionId/cancel', (req, res) => {
+  const { sessionId } = req.params
+
+  const cancelled = cancelQuery(sessionId)
+  if (!cancelled) {
+    return res.status(404).json({ error: 'No active query for this session' })
+  }
+
+  res.json({ ok: true })
+})
+
+router.get('/:sessionId/query-status', (req, res) => {
+  const { sessionId } = req.params
+  res.json(getQueryStatus(sessionId))
 })

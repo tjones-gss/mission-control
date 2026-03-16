@@ -5,6 +5,7 @@ import { useSSE } from './hooks/useSSE.js'
 import { useNotifications, getNotificationPrefs } from './hooks/useNotifications.js'
 import { useSound } from './hooks/useSound.js'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js'
+import { useStreamingSession } from './hooks/useStreamingSession.js'
 import { SessionsList } from './components/SessionsList.jsx'
 import { AgentTree } from './components/AgentTree.jsx'
 import { KanbanBoard } from './components/KanbanBoard.jsx'
@@ -32,6 +33,7 @@ const SSE_SOUND_MAP = {
   new_session: 'newSession',
   team_update: 'teamUpdate',
   history_update: 'historyUpdate',
+  sdk_message: 'sessionUpdate',
 }
 
 // Throttle interval for session_update sounds (ms)
@@ -83,11 +85,17 @@ export default function App() {
 
   const selectedSession = sessions?.find(s => s.sessionId === selectedSessionId)
 
+  // SDK streaming session
+  const streaming = useStreamingSession(selectedSessionId)
+
   // Sound engine
   const soundEngine = useSound()
   const lastSessionSoundRef = useRef(0)
 
   const { connected } = useSSE(useCallback(evt => {
+    // Forward SDK events to streaming handler
+    streaming.handleSdkEvent(evt)
+
     setEvents(prev => [...prev.slice(-199), evt])
     if (evt.type === 'session_update' || evt.type === 'new_session') {
       setSessionsVersion(v => v + 1)
@@ -110,7 +118,7 @@ export default function App() {
       }
       soundEngine.play(soundEvent, evt.sessionId ? { projectLabel: evt.projectLabel || 'session' } : undefined)
     }
-  }, [soundEngine]))
+  }, [soundEngine, streaming.handleSdkEvent]))
 
   const activeSessions = sessions?.filter(s => s.isActive) || []
   const { requestPermission, muteSession, mutedIds } = useNotifications(sessions, soundEngine)
@@ -432,7 +440,7 @@ export default function App() {
                     selectedId={selectedSessionId}
                     onSelect={id => { setSelectedSessionId(id); setAgentView('detail') }}
                   />
-                : <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} intelligenceVersion={intelligenceVersion} skills={skills} />
+                : <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} intelligenceVersion={intelligenceVersion} skills={skills} streaming={streaming} />
               }
             </>
           )}
