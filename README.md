@@ -52,18 +52,66 @@ If you use Claude Code teams, Oversight shows your team task boards alongside th
 
 ---
 
-## Notifications
+## Notifications & Sound
 
 Oversight detects when a Claude Code session is waiting for human input — either Claude finished speaking (`end_turn`) or a tool call is pending approval. When this happens:
 
 - **Amber pulse indicator** appears on the session card in both the sidebar and Kanban board
 - **Header badge** shows the count of sessions waiting (e.g., "2 waiting")
 - **Desktop notifications** fire via the browser Notification API when a session transitions to "waiting"
-- **Audio ping** plays a short tone (800Hz, 200ms) alongside the desktop notification
+- **Event-specific sounds** play synthesized audio via the Web Audio API — different sounds for different event types
 
-Click the bell icon in the header to enable desktop notifications. Open **Settings** (gear icon) to toggle notifications and sound on/off. You can dismiss individual waiting indicators by clicking the X on the session card — they'll re-notify if the session comes back to a waiting state later.
+Click the bell icon in the header to enable desktop notifications. Open **Settings** (gear icon or `,` key) to configure notifications, sounds, and keyboard shortcuts. You can dismiss individual waiting indicators by clicking the X on the session card — they'll re-notify if the session comes back to a waiting state later.
 
 Sessions older than 4 hours are considered abandoned and won't trigger notifications.
+
+### Sound presets
+
+8 built-in synthesized sounds, no external files required:
+
+| Preset | Description |
+|--------|-------------|
+| `chime` | Two ascending tones (C5 → E5) — default for "needs input" |
+| `ping` | Single 800Hz tone, 200ms fade |
+| `alert` | Three rapid square-wave pulses |
+| `gentle` | Soft 440Hz sine, slow fade |
+| `urgent` | Alternating sawtooth tones, 3 cycles |
+| `success` | Major triad arpeggio (C5 → E5 → G5) |
+| `fail` | Minor second descend (E4 → Eb4) |
+| `none` | No sound |
+
+Each event type can be mapped to any preset (or a custom uploaded sound) via Settings → Sounds & Voice.
+
+### Text-to-speech
+
+Enable per-event TTS voice announcements in Settings → Sounds & Voice. When enabled, events like "needs input" or "session complete" are spoken aloud using the browser's `speechSynthesis` API. Choose from any system voice.
+
+### Custom sounds
+
+Upload your own `.mp3` or `.wav` files (up to 500KB each) via Settings → Sounds & Voice. Assign them to any event type.
+
+---
+
+## Keyboard Shortcuts
+
+Navigate the dashboard without touching the mouse. All shortcuts are rebindable in Settings → Shortcuts.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Navigate sessions (next / previous) |
+| `Enter` | Open detail view for selected session |
+| `Escape` | Back to board view (or close modals) |
+| `1` - `4` | Switch tabs (Agents, Tasks, Workflows, Skills) |
+| `y` | Approve — send "yes" to waiting session |
+| `c` | Continue — send "continue" to waiting session |
+| `/` | Focus message input |
+| `m` | Mute selected session's notifications |
+| `,` | Open settings |
+| `?` | Toggle keyboard shortcut overlay |
+
+Shortcuts are disabled when focus is in a text input (except `Escape`). Modifier combos like `Ctrl+k` are supported for custom bindings.
+
+A floating `?` badge in the bottom-right corner opens a quick reference overlay.
 
 ---
 

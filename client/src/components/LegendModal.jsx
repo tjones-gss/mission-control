@@ -138,6 +138,43 @@ export function LegendModal({ onClose }) {
             </ul>
           </section>
 
+          {/* Keyboard Shortcuts */}
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Keyboard Shortcuts</h3>
+            <ul className="space-y-1">
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">j</kbd> / <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">k</kbd> — Navigate sessions
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">Enter</kbd> — Open detail view
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">Esc</kbd> — Back to board
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">1</kbd>-<kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">4</kbd> — Switch tabs (Agents, Tasks, Workflows, Skills)
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">y</kbd> — Approve waiting session
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">c</kbd> — Continue waiting session
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">/</kbd> — Focus message input
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">m</kbd> — Mute session
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">,</kbd> — Open settings
+              </li>
+              <li className="text-xs text-gray-500">
+                <kbd className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-gray-300 font-mono text-[10px]">?</kbd> — Toggle shortcut overlay
+              </li>
+            </ul>
+          </section>
+
           {/* Intel note */}
           <section>
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Intel Analysis</h3>
