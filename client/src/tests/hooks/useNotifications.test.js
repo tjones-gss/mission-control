@@ -5,24 +5,18 @@ import { useNotifications, getNotificationPrefs, setNotificationPrefs } from '..
 const mockNotification = vi.fn()
 mockNotification.requestPermission = vi.fn().mockResolvedValue('granted')
 
-// Mock AudioContext
-const mockOscillator = {
-  connect: vi.fn(),
-  type: 'sine',
-  frequency: { value: 0 },
-  start: vi.fn(),
-  stop: vi.fn(),
+// Mock soundEngine
+function createMockSoundEngine() {
+  return {
+    play: vi.fn(),
+    playPreset: vi.fn(),
+    speakText: vi.fn(),
+    getPrefs: vi.fn(() => ({ masterVolume: 0.7, events: {} })),
+    updatePrefs: vi.fn(),
+    addCustomSound: vi.fn(),
+    removeCustomSound: vi.fn(),
+  }
 }
-const mockGain = {
-  connect: vi.fn(),
-  gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
-}
-const MockAudioContext = vi.fn(() => ({
-  createOscillator: () => mockOscillator,
-  createGain: () => mockGain,
-  destination: {},
-  currentTime: 0,
-}))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -31,7 +25,6 @@ beforeEach(() => {
     permission: 'granted',
     requestPermission: mockNotification.requestPermission,
   })
-  global.AudioContext = MockAudioContext
 })
 
 function makeSession(id, needsInput = false) {
@@ -62,15 +55,16 @@ describe('getNotificationPrefs / setNotificationPrefs', () => {
 describe('useNotifications — transition detection', () => {
   it('does not fire notifications on initial render with no needsInput sessions', () => {
     const sessions = [makeSession('s1', false)]
-    renderHook(() => useNotifications(sessions))
+    renderHook(() => useNotifications(sessions, createMockSoundEngine()))
     expect(mockNotification).not.toHaveBeenCalled()
   })
 
   it('fires desktop notification when session transitions to needsInput', () => {
+    const soundEngine = createMockSoundEngine()
     const sessions1 = [makeSession('s1', false)]
     const sessions2 = [makeSession('s1', true)]
 
-    const { rerender } = renderHook(({ s }) => useNotifications(s), {
+    const { rerender } = renderHook(({ s }) => useNotifications(s, soundEngine), {
       initialProps: { s: sessions1 },
     })
 
@@ -85,7 +79,7 @@ describe('useNotifications — transition detection', () => {
   it('does not re-notify for the same session on subsequent renders', () => {
     const sessions = [makeSession('s1', true)]
 
-    const { rerender } = renderHook(({ s }) => useNotifications(s), {
+    const { rerender } = renderHook(({ s }) => useNotifications(s, createMockSoundEngine()), {
       initialProps: { s: sessions },
     })
 
@@ -100,7 +94,7 @@ describe('useNotifications — transition detection', () => {
     const sessions1 = [makeSession('s1', false)]
     const sessions2 = [makeSession('s1', true)]
 
-    const { rerender } = renderHook(({ s }) => useNotifications(s), {
+    const { rerender } = renderHook(({ s }) => useNotifications(s, createMockSoundEngine()), {
       initialProps: { s: sessions1 },
     })
     act(() => { rerender({ s: sessions2 }) })
@@ -109,12 +103,59 @@ describe('useNotifications — transition detection', () => {
   })
 })
 
+describe('useNotifications — sound engine integration', () => {
+  it('calls soundEngine.play when session transitions to needsInput', () => {
+    const soundEngine = createMockSoundEngine()
+    const sessions1 = [makeSession('s1', false)]
+    const sessions2 = [makeSession('s1', true)]
+
+    const { rerender } = renderHook(({ s }) => useNotifications(s, soundEngine), {
+      initialProps: { s: sessions1 },
+    })
+
+    act(() => { rerender({ s: sessions2 }) })
+
+    expect(soundEngine.play).toHaveBeenCalledWith('needsInput', expect.objectContaining({
+      sessionId: 's1',
+    }))
+  })
+
+  it('does not call soundEngine.play when global sound is disabled', () => {
+    setNotificationPrefs({ enabled: true, sound: false })
+    const soundEngine = createMockSoundEngine()
+    const sessions1 = [makeSession('s1', false)]
+    const sessions2 = [makeSession('s1', true)]
+
+    const { rerender } = renderHook(({ s }) => useNotifications(s, soundEngine), {
+      initialProps: { s: sessions1 },
+    })
+
+    act(() => { rerender({ s: sessions2 }) })
+
+    expect(soundEngine.play).not.toHaveBeenCalled()
+  })
+
+  it('calls soundEngine.play once per newly waiting session', () => {
+    const soundEngine = createMockSoundEngine()
+    const sessions1 = [makeSession('s1', false), makeSession('s2', false)]
+    const sessions2 = [makeSession('s1', true), makeSession('s2', true)]
+
+    const { rerender } = renderHook(({ s }) => useNotifications(s, soundEngine), {
+      initialProps: { s: sessions1 },
+    })
+
+    act(() => { rerender({ s: sessions2 }) })
+
+    expect(soundEngine.play).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('useNotifications — muting', () => {
   it('muteSession prevents notifications for that session', () => {
     const sessions1 = [makeSession('s1', false)]
     const sessions2 = [makeSession('s1', true)]
 
-    const { result, rerender } = renderHook(({ s }) => useNotifications(s), {
+    const { result, rerender } = renderHook(({ s }) => useNotifications(s, createMockSoundEngine()), {
       initialProps: { s: sessions1 },
     })
 
@@ -129,7 +170,7 @@ describe('useNotifications — muting', () => {
     const sessions2 = [makeSession('s1', false)]
     const sessions3 = [makeSession('s1', true)]
 
-    const { result, rerender } = renderHook(({ s }) => useNotifications(s), {
+    const { result, rerender } = renderHook(({ s }) => useNotifications(s, createMockSoundEngine()), {
       initialProps: { s: sessions1 },
     })
 
@@ -150,14 +191,14 @@ describe('useNotifications — muting', () => {
 describe('useNotifications — requestPermission', () => {
   it('requests notification permission when called', () => {
     global.Notification.permission = 'default'
-    const { result } = renderHook(() => useNotifications([]))
+    const { result } = renderHook(() => useNotifications([], createMockSoundEngine()))
     act(() => { result.current.requestPermission() })
     expect(mockNotification.requestPermission).toHaveBeenCalled()
   })
 
   it('does not request permission if already granted', () => {
     global.Notification.permission = 'granted'
-    const { result } = renderHook(() => useNotifications([]))
+    const { result } = renderHook(() => useNotifications([], createMockSoundEngine()))
     act(() => { result.current.requestPermission() })
     expect(mockNotification.requestPermission).not.toHaveBeenCalled()
   })
@@ -166,13 +207,13 @@ describe('useNotifications — requestPermission', () => {
 describe('useNotifications — null/empty sessions', () => {
   it('handles null sessions gracefully', () => {
     expect(() => {
-      renderHook(() => useNotifications(null))
+      renderHook(() => useNotifications(null, createMockSoundEngine()))
     }).not.toThrow()
   })
 
   it('handles empty sessions array', () => {
     expect(() => {
-      renderHook(() => useNotifications([]))
+      renderHook(() => useNotifications([], createMockSoundEngine()))
     }).not.toThrow()
   })
 })
