@@ -104,6 +104,7 @@ export function cancelQuery(sessionId) {
   }
 
   if (s.timeoutId) clearTimeout(s.timeoutId)
+  if (s.completionTimer) clearTimeout(s.completionTimer)
   s.term.kill()
   s.busy = false
   s.exited = true
@@ -236,6 +237,23 @@ function handlePtyData(sessionId, data) {
   const s = sessions.get(sessionId)
   if (!s || !s.busy) return
 
+  // Mark that the PTY has produced output since the message was sent
+  s.hasOutput = true
+
+  // Reset the completion silence timer — if no more output arrives for 3s
+  // (and no approval is pending), we consider the response complete.
+  if (s.completionTimer) clearTimeout(s.completionTimer)
+  s.completionTimer = setTimeout(() => {
+    const current = sessions.get(sessionId)
+    if (!current || !current.busy) return
+    // Don't complete if there's an unresolved tool approval (PTY is waiting for input)
+    const hasUnresolved = [...current.approvals.values()].some(a => !a.resolved)
+    if (hasUnresolved) return
+    current.busy = false
+    if (current.timeoutId) clearTimeout(current.timeoutId)
+    emit('sdk_result', { sessionId, subtype: 'success' })
+  }, 3000)
+
   s.recentOutput += data
   const clean = stripAnsi(s.recentOutput)
 
@@ -298,6 +316,7 @@ function handlePtyExit(sessionId, exitCode) {
 
   s.exited = true
   if (s.timeoutId) clearTimeout(s.timeoutId)
+  if (s.completionTimer) clearTimeout(s.completionTimer)
 
   if (s.busy) {
     s.busy = false
