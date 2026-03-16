@@ -84,11 +84,11 @@ Each event type can be mapped to any preset (or a custom uploaded sound) via Set
 
 ### Text-to-speech
 
-Enable per-event TTS voice announcements in Settings → Sounds & Voice. When enabled, events like "needs input" or "session complete" are spoken aloud using the browser's `speechSynthesis` API. Choose from any system voice.
+Enable per-event TTS voice announcements in Settings → Sounds & Voice. When enabled, events like "needs input" or "session complete" are spoken aloud using the browser's `speechSynthesis` API. Choose from any system voice. New announcements automatically cancel any in-progress speech to prevent pile-up.
 
 ### Custom sounds
 
-Upload your own `.mp3` or `.wav` files (up to 500KB each) via Settings → Sounds & Voice. Assign them to any event type.
+Upload your own `.mp3` or `.wav` files (up to 500KB each, 2MB total) via Settings → Sounds & Voice. Assign them to any event type. Sound names are restricted to alphanumeric characters, hyphens, and underscores.
 
 ---
 
