@@ -178,8 +178,12 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
     s.recentOutput = ''
   }
 
-  // Send the message (sanitize to prevent control char injection)
-  s.term.write(sanitizePrompt(prompt) + '\r')
+  // Send the message using bracketed paste mode.
+  // The TUI enables bracketed paste (\x1b[?2004h), so it expects pasted input
+  // wrapped in \x1b[200~ ... \x1b[201~ markers. Without these, the TUI may
+  // ignore or misinterpret typed characters. The trailing \r submits.
+  const sanitized = sanitizePrompt(prompt)
+  s.term.write(`\x1b[200~${sanitized}\x1b[201~\r`)
   emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
 
   // Completion detection: the PTY stays alive for reuse, so we can't rely on exit.

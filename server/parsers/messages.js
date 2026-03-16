@@ -57,6 +57,12 @@ function mapUserBlocks(content) {
     if (block.type === 'text') {
       return { type: 'text', text: block.text }
     }
+    if (block.type === 'image') {
+      return {
+        type: 'image',
+        source: block.source,
+      }
+    }
     if (block.type === 'tool_result') {
       return {
         type: 'tool_result',

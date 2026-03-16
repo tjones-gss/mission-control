@@ -19,6 +19,14 @@ vi.mock('../../sse.js', () => ({
   emit: vi.fn(),
   onEvent: vi.fn(() => vi.fn()),
 }))
+vi.mock('multer', () => {
+  const multerInstance = {
+    single: () => (req, _res, next) => { next() },
+  }
+  const fn = () => multerInstance
+  fn.diskStorage = () => ({})
+  return { default: fn }
+})
 vi.mock('../../pty-session.js', () => ({
   startQuery: vi.fn().mockResolvedValue({ ok: true, streaming: true }),
   isQueryActive: vi.fn().mockReturnValue(false),
@@ -122,15 +130,17 @@ describe('POST /:sessionId/message', () => {
     expect(res.status).toBe(404)
   })
 
-  it('202 when message sent via CLI', async () => {
+  it('202 when message sent via PTY', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
-    runClaude.mockResolvedValue({ stdout: '{"result":"ok"}', stderr: '', exitCode: 0 })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
     const res = await request(app).post('/abc123/message').send({ message: 'hello' })
     expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
     expect(res.body.streaming).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['--resume', 'abc123', '-p', 'hello']),
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'abc123',
+      prompt: 'hello',
+      cwd: '/tmp',
     }))
   })
 
@@ -139,6 +149,52 @@ describe('POST /:sessionId/message', () => {
     isQueryActive.mockReturnValue(true)
     const res = await request(app).post('/abc123/message').send({ message: 'hello' })
     expect(res.status).toBe(409)
+  })
+
+  it('passes sdkOptions with permissionMode to startQuery', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
+    const res = await request(app).post('/abc123/message').send({
+      message: 'hello',
+      options: { permissionMode: 'plan', model: 'sonnet' },
+    })
+    expect(res.status).toBe(202)
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      sdkOptions: { permissionMode: 'plan', model: 'sonnet' },
+    }))
+  })
+
+  it('503 when startQuery rejects', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockRejectedValue(new Error('PTY spawn failed'))
+    const res = await request(app).post('/abc123/message').send({ message: 'hello' })
+    expect(res.status).toBe(503)
+    expect(res.body.error).toBe('send_failed')
+    expect(res.body.detail).toBe('PTY spawn failed')
+  })
+
+  it('400 when options is malformed JSON string', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    // Simulate multipart form-data where options arrives as a string
+    const res = await request(app).post('/abc123/message').send({
+      message: 'hello',
+      options: '{bad json',
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/invalid options/i)
+  })
+
+  it('passes valid JSON options string when parsed', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
+    const res = await request(app).post('/abc123/message').send({
+      message: 'hello',
+      options: '{"permissionMode":"auto"}',
+    })
+    expect(res.status).toBe(202)
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      sdkOptions: { permissionMode: 'auto' },
+    }))
   })
 })
 
@@ -157,24 +213,54 @@ describe('POST /:sessionId/skill', () => {
     expect(res.status).toBe(404)
   })
 
-  it('202 when skill invoked via CLI', async () => {
+  it('202 when skill invoked via PTY', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
-    runClaude.mockResolvedValue({ stdout: '{}', stderr: '', exitCode: 0 })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
     const res = await request(app).post('/abc123/skill').send({ skill: 'commit' })
     expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['--resume', 'abc123', '-p', '/commit']),
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'abc123',
+      prompt: '/commit',
+      cwd: '/tmp',
     }))
   })
 
-  it('sends skill with args via CLI', async () => {
+  it('sends skill with args via PTY', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
-    runClaude.mockResolvedValue({ stdout: '{}', stderr: '', exitCode: 0 })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
     const res = await request(app).post('/abc123/skill').send({ skill: 'commit', args: '-m "fix"' })
     expect(res.status).toBe(202)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['-p', '/commit -m "fix"']),
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: '/commit -m "fix"',
+    }))
+  })
+
+  it('409 when query already active for skill', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    isQueryActive.mockReturnValue(true)
+    const res = await request(app).post('/abc123/skill').send({ skill: 'commit' })
+    expect(res.status).toBe(409)
+  })
+
+  it('503 when startQuery rejects for skill', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockRejectedValue(new Error('PTY busy'))
+    const res = await request(app).post('/abc123/skill').send({ skill: 'commit' })
+    expect(res.status).toBe(503)
+    expect(res.body.error).toBe('skill_failed')
+  })
+
+  it('passes sdkOptions to startQuery for skill', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
+    const res = await request(app).post('/abc123/skill').send({
+      skill: 'commit',
+      options: { permissionMode: 'auto' },
+    })
+    expect(res.status).toBe(202)
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
+      sdkOptions: { permissionMode: 'auto' },
     }))
   })
 })

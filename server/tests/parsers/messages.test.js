@@ -99,6 +99,38 @@ describe('getSessionMessages()', () => {
     ])
   })
 
+  it('parses user messages with image blocks', () => {
+    const record = {
+      uuid: 'u1',
+      type: 'user',
+      timestamp: '2024-01-01T00:00:00Z',
+      isSidechain: false,
+      message: {
+        content: [
+          { type: 'text', text: 'Look at this image' },
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/png',
+              data: 'iVBORw0KGgo=',
+            },
+          },
+        ],
+      },
+    }
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
+    fs.readFileSync.mockReturnValue(JSON.stringify(record))
+
+    const result = getSessionMessages('sess-1')
+    expect(result.messages[0].blocks).toHaveLength(2)
+    expect(result.messages[0].blocks[1]).toEqual({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' },
+    })
+  })
+
   it('parses user messages with tool_result blocks', () => {
     const record = {
       uuid: 'u1',

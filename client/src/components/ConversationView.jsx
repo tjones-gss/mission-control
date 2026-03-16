@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Info, X, Loader, Terminal, ChevronDown, ChevronUp } from 'lucide-react'
+import { Send, Info, X, Loader, Terminal, ChevronDown, ChevronUp, ImagePlus } from 'lucide-react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
 import { Markdown } from './Markdown.jsx'
@@ -103,8 +103,24 @@ function SystemMessage({ text }) {
   )
 }
 
+function ImageBlock({ source }) {
+  if (!source) return null
+  const src = source.type === 'base64'
+    ? `data:${source.media_type};base64,${source.data}`
+    : source.url || null
+  if (!src) return null
+  return (
+    <img
+      src={src}
+      alt="User attached image"
+      className="max-w-xs max-h-64 rounded border border-indigo-800/30 object-contain"
+    />
+  )
+}
+
 function UserMessage({ blocks, toolNameMap }) {
   const textBlocks = blocks.filter(b => b.type === 'text')
+  const imageBlocks = blocks.filter(b => b.type === 'image')
   const resultBlocks = blocks.filter(b => b.type === 'tool_result')
 
   // Separate real user text from system-injected content
@@ -113,9 +129,10 @@ function UserMessage({ blocks, toolNameMap }) {
 
   return (
     <>
-      {userTexts.length > 0 && (
+      {(userTexts.length > 0 || imageBlocks.length > 0) && (
         <div className="rounded-lg bg-indigo-950/40 border border-indigo-900/30 p-3 space-y-2">
           <div className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">USER</div>
+          {imageBlocks.map((b, i) => <ImageBlock key={`img-${i}`} source={b.source} />)}
           {userTexts.map((b, i) => <Markdown key={i} className="text-indigo-100/80">{b.text}</Markdown>)}
         </div>
       )}
@@ -203,17 +220,23 @@ function StreamingIndicator() {
   )
 }
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
+const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+
 function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, active, isStreaming, onCancel }) {
   const [text, setText] = useState('')
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
   const [showAutocomplete, setShowAutocomplete] = useState(false)
   const [acIndex, setAcIndex] = useState(0)
   const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   const allSkills = useMemo(() => {
     if (!skills) return []
     const user = skills.userSkills || []
     const plugins = (skills.plugins || skills.pluginSkills || [])
-    // plugins may be an array of skills or an array of {skills: [...]}
     const flat = Array.isArray(plugins) && plugins[0]?.skills
       ? plugins.flatMap(p => p.skills)
       : plugins
@@ -246,6 +269,56 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
     inputRef.current?.focus()
   }, [text])
 
+  // Image handling
+  const validateAndSetImage = useCallback((file) => {
+    if (!file) return
+    if (!IMAGE_MIME_TYPES.includes(file.type)) return
+    if (file.size > MAX_IMAGE_SIZE) return
+    setImageFile(file)
+    const url = URL.createObjectURL(file)
+    setImagePreview(url)
+  }, [])
+
+  const clearImage = useCallback(() => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(null)
+    setImagePreview(null)
+  }, [imagePreview])
+
+  // Clean up object URL on unmount
+  useEffect(() => {
+    return () => { if (imagePreview) URL.revokeObjectURL(imagePreview) }
+  }, [imagePreview])
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault()
+    setDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault()
+    setDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer?.files?.[0]
+    if (file) validateAndSetImage(file)
+  }, [validateAndSetImage])
+
+  const handlePaste = useCallback((e) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.kind === 'file' && IMAGE_MIME_TYPES.includes(item.type)) {
+        e.preventDefault()
+        validateAndSetImage(item.getAsFile())
+        return
+      }
+    }
+  }, [validateAndSetImage])
+
   const handleKeyDown = (e) => {
     if (showAutocomplete) {
       if (e.key === 'ArrowDown') {
@@ -274,9 +347,10 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!text.trim() || sending) return
-    onSend(text.trim())
+    onSend(text.trim(), imageFile)
     setText('')
     setShowAutocomplete(false)
+    clearImage()
   }
 
   useEffect(() => {
@@ -284,7 +358,13 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
   }, [sending])
 
   return (
-    <form onSubmit={handleSubmit} className="relative px-3 py-2 border-t border-gray-800 bg-gray-950">
+    <form
+      onSubmit={handleSubmit}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`relative px-3 py-2 border-t bg-gray-950 ${dragOver ? 'border-indigo-500 bg-indigo-950/20' : 'border-gray-800'}`}
+    >
       {showAutocomplete && (
         <SlashAutocomplete
           filter={slashFilter}
@@ -293,13 +373,45 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
           onSelect={selectSkill}
         />
       )}
+      {imagePreview && (
+        <div className="flex items-center gap-2 mb-1.5">
+          <div className="relative inline-block">
+            <img src={imagePreview} alt="Attached" className="h-12 w-12 object-cover rounded border border-gray-700" />
+            <button
+              type="button"
+              onClick={clearImage}
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center hover:bg-red-800 transition-colors"
+            >
+              <X size={8} className="text-gray-400" />
+            </button>
+          </div>
+          <span className="text-[10px] text-gray-500">{imageFile?.name}</span>
+        </div>
+      )}
       <div className="flex items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          className="hidden"
+          onChange={e => { validateAndSetImage(e.target.files?.[0]); e.target.value = '' }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending || isStreaming}
+          className="p-1.5 rounded text-gray-500 hover:text-indigo-400 hover:bg-gray-800 transition-colors disabled:opacity-30"
+          title="Attach image"
+        >
+          <ImagePlus size={16} />
+        </button>
         <input
           ref={inputRef}
           type="text"
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           disabled={sending || isStreaming}
           data-shortcut-focus="message-input"
           placeholder={isStreaming ? 'Generating...' : sending ? 'Sending...' : 'Send a message (/ for commands)...'}
@@ -329,7 +441,7 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
           <Info
             size={12}
             className="text-gray-600 hover:text-gray-400 flex-shrink-0 cursor-default"
-            title="Messages are sent via SDK streaming. Results appear in real-time."
+            title="Messages sent via PTY (subscription auth). Results appear in real-time."
           />
         )}
       </div>
@@ -375,19 +487,31 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
     return Object.keys(o).length > 0 ? o : undefined
   }, [sessionOptions])
 
-  const handleSend = useCallback(async (text) => {
+  const handleSend = useCallback(async (text, imageFile) => {
     if (!sessionId || isStreaming) return
     setSending(true)
     setSendError(null)
     try {
-      const body = { message: text }
-      if (cleanOptions) body.options = cleanOptions
+      let fetchOpts
+      if (imageFile) {
+        // Multipart form data for image upload
+        const formData = new FormData()
+        formData.append('message', text)
+        formData.append('image', imageFile)
+        if (cleanOptions) formData.append('options', JSON.stringify(cleanOptions))
+        fetchOpts = { method: 'POST', body: formData }
+      } else {
+        // JSON body for text-only messages
+        const body = { message: text }
+        if (cleanOptions) body.options = cleanOptions
+        fetchOpts = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+      }
 
-      const res = await fetch(`/api/sessions/${sessionId}/message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
+      const res = await fetch(`/api/sessions/${sessionId}/message`, fetchOpts)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.detail || data.error || `HTTP ${res.status}`)

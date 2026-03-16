@@ -229,10 +229,10 @@ describe('startQuery()', () => {
     await first
   })
 
-  it('writes prompt + \\r after waitForReady completes', async () => {
+  it('writes prompt in bracketed paste mode after waitForReady completes', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { prompt: 'my prompt' })
-    expect(mockTerm.write).toHaveBeenCalledWith('my prompt\r')
+    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~my prompt\x1b[201~\r')
   })
 
   it('emits sdk_message after writing prompt', async () => {
@@ -309,14 +309,14 @@ describe('startQuery()', () => {
   it('sanitizes control characters from prompt before writing to PTY', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { prompt: 'hello\x03world\x1b[Afoo' })
-    // \x03 (Ctrl-C) and \x1b (ESC) should be stripped
-    expect(mockTerm.write).toHaveBeenCalledWith('helloworldfoo\r')
+    // \x03 (Ctrl-C) and \x1b (ESC) should be stripped, wrapped in bracketed paste
+    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~helloworldfoo\x1b[201~\r')
   })
 
   it('preserves tabs and newlines in prompt (converted to \\r)', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { prompt: 'line1\tindented' })
-    expect(mockTerm.write).toHaveBeenCalledWith('line1\tindented\r')
+    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~line1\tindented\x1b[201~\r')
   })
 
   it('throws when PTY crashes during waitForReady (exit before ready)', async () => {
@@ -344,7 +344,7 @@ describe('waitForReady() hard timeout', () => {
 
     const result = await promise
     expect(result).toEqual({ ok: true, streaming: true })
-    expect(mockTerm.write).toHaveBeenCalledWith('hi\r')
+    expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~hi\x1b[201~\r')
   })
 })
 

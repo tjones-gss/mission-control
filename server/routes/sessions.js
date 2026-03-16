@@ -1,19 +1,94 @@
 import { Router } from 'express'
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { fileURLToPath } from 'url'
+import multer from 'multer'
 import { getAllSessions, getSessionById } from '../parsers/sessions.js'
 import { getSessionMessages } from '../parsers/messages.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
-import { emit } from '../sse.js'
 import { startQuery, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
+import { onEvent } from '../sse.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Image upload config
+// ──────────────────────────────────────────────────────────────────────────────
+
+const UPLOAD_DIR = path.join(os.tmpdir(), 'oversight-uploads')
+const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
+
+// Ensure upload dir exists
+fs.mkdirSync(UPLOAD_DIR, { recursive: true })
+
+const storage = multer.diskStorage({
+  destination: UPLOAD_DIR,
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || mimeToExt(file.mimetype)
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`)
+  },
+})
+
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_IMAGE_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME.has(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Only PNG, JPEG, GIF, and WebP images are allowed'))
+    }
+  },
+})
+
+function mimeToExt(mime) {
+  const map = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' }
+  return map[mime] || '.bin'
+}
+
+function cleanupTempFile(filePath, sessionId) {
+  let removeListener = null
+
+  // Clean up after session_update indicates response complete, or 5-min timeout
+  const timeout = setTimeout(() => {
+    try { fs.unlinkSync(filePath) } catch { /* already gone */ }
+    if (removeListener) removeListener()
+  }, 300_000)
+
+  removeListener = onEvent((event, data) => {
+    if (event !== 'session_update') return
+    if (!data?.filePath?.includes(sessionId)) return
+    // Response started — wait a bit for completion, then clean up
+    setTimeout(() => {
+      try { fs.unlinkSync(filePath) } catch { /* already gone */ }
+      clearTimeout(timeout)
+      removeListener()
+    }, 5000)
+  })
+}
+
+function cleanupUploadedFile(req) {
+  if (req.file) try { fs.unlinkSync(req.file.path) } catch { /* ignore */ }
+}
+
 export const router = Router()
+
+// Multer error handler — must be on the router so file-too-large / invalid-type
+// errors return a clean 400 instead of a raw 500 stack trace.
+router.use((err, _req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'Image too large (max 5MB)' })
+  }
+  if (err.message?.includes('images are allowed')) {
+    return res.status(400).json({ error: err.message })
+  }
+  next(err)
+})
 
 // Note: concurrency control for queries is handled by pty-session.js isQueryActive()
 
@@ -147,49 +222,58 @@ router.get('/:sessionId/intelligence', async (req, res) => {
 // Interaction endpoints
 // ──────────────────────────────────────────────────────────────────────────────
 
-router.post('/:sessionId/message', async (req, res) => {
+router.post('/:sessionId/message', upload.single('image'), async (req, res) => {
   const { sessionId } = req.params
-  const { message, options } = req.body
+
+  // Support both JSON body and multipart form-data
+  const message = req.body.message
+  let options
+  try {
+    options = typeof req.body.options === 'string'
+      ? JSON.parse(req.body.options)
+      : req.body.options
+  } catch {
+    cleanupUploadedFile(req)
+    return res.status(400).json({ error: 'Invalid options JSON' })
+  }
 
   if (!message || typeof message !== 'string' || !message.trim()) {
+    cleanupUploadedFile(req)
     return res.status(400).json({ error: 'message is required' })
   }
 
   const session = getSessionById(sessionId)
-  if (!session) return res.status(404).json({ error: 'Session not found' })
+  if (!session) {
+    cleanupUploadedFile(req)
+    return res.status(404).json({ error: 'Session not found' })
+  }
 
   if (isQueryActive(sessionId)) {
+    cleanupUploadedFile(req)
     return res.status(409).json({ error: 'A query is already active for this session' })
   }
 
-  // Use CLI subprocess with --resume -p to send message.
+  // Build prompt — append image reference if an image was uploaded
+  let prompt = message.trim()
+  if (req.file) {
+    const imgPath = req.file.path.replace(/\\/g, '/')
+    prompt += `\n\n[User attached an image. View it using the Read tool at: ${imgPath}]`
+  }
+
+  // Use PTY (interactive mode) to send messages — uses subscription auth, not API credits.
   // Response data flows through the JSONL watcher → session_update SSE.
   try {
-    const args = buildCliArgs([
-      '--resume', sessionId,
-      '-p', message.trim(),
-      '--output-format', 'json',
-    ], options)
-
-    // Run async — return 202 immediately, result arrives via SSE
-    emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
-
-    runClaude({ args, cwd: session.cwd || undefined, timeoutMs: 300_000 })
-      .then(() => {
-        emit('sdk_result', { sessionId, subtype: 'success' })
-      })
-      .catch(err => {
-        const isCreditError = /credit balance/i.test(err.message) || /credit balance/i.test(err.stderrOutput || '')
-        emit(isCreditError ? 'sdk_error' : 'sdk_result', {
-          sessionId,
-          ...(isCreditError
-            ? { error: 'Credit balance is too low', errorType: 'credit_balance' }
-            : { subtype: 'error', error: err.message }),
-        })
-      })
-
-    res.status(202).json({ ok: true, streaming: true })
+    const result = await startQuery({
+      sessionId,
+      prompt,
+      cwd: session.cwd || undefined,
+      sdkOptions: buildSdkOptions(options),
+    })
+    // Start temp file cleanup only after query is successfully started
+    if (req.file) cleanupTempFile(req.file.path, sessionId)
+    res.status(202).json(result)
   } catch (err) {
+    cleanupUploadedFile(req)
     res.status(503).json({
       error: 'send_failed',
       detail: err.message,
@@ -215,19 +299,13 @@ router.post('/:sessionId/skill', async (req, res) => {
   const prompt = skillArgs ? `/${skill} ${skillArgs}` : `/${skill}`
 
   try {
-    const args = buildCliArgs([
-      '--resume', sessionId,
-      '-p', prompt,
-      '--output-format', 'json',
-    ], options)
-
-    emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
-
-    runClaude({ args, cwd: session.cwd || undefined, timeoutMs: 300_000 })
-      .then(() => { emit('sdk_result', { sessionId, subtype: 'success' }) })
-      .catch(err => { emit('sdk_result', { sessionId, subtype: 'error', error: err.message }) })
-
-    res.status(202).json({ ok: true, streaming: true })
+    const result = await startQuery({
+      sessionId,
+      prompt,
+      cwd: session.cwd || undefined,
+      sdkOptions: buildSdkOptions(options),
+    })
+    res.status(202).json(result)
   } catch (err) {
     res.status(503).json({
       error: 'skill_failed',
