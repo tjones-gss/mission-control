@@ -2,6 +2,9 @@ import * as pty from 'node-pty'
 import crypto from 'crypto'
 import { emit } from './sse.js'
 
+// On Windows, node-pty needs the .exe extension to find executables in PATH
+const CLAUDE_CMD = process.platform === 'win32' ? 'claude.exe' : 'claude'
+
 // Validation whitelists (shared with routes/sessions.js)
 export const VALID_PERMISSION_MODES = new Set(['plan', 'auto', 'default', 'acceptEdits', 'dontAsk', 'bypassPermissions'])
 export const VALID_MODEL_SHORTCUTS = new Set(['sonnet', 'opus', 'haiku'])
@@ -136,12 +139,17 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
       args.push('--model', sdkOptions.model)
     }
 
-    const term = pty.spawn('claude', args, {
-      cwd: cwd || undefined,
-      env: cleanEnv(),
-      cols: 200,
-      rows: 50,
-    })
+    let term
+    try {
+      term = pty.spawn(CLAUDE_CMD, args, {
+        cwd: cwd || undefined,
+        env: cleanEnv(),
+        cols: 200,
+        rows: 50,
+      })
+    } catch (spawnErr) {
+      throw new Error(`Failed to spawn PTY: ${spawnErr.message}`)
+    }
 
     s = {
       term,
@@ -196,8 +204,8 @@ function waitForReady(s) {
 
     const cleanup = () => {
       if (silenceTimer) clearTimeout(silenceTimer)
-      s.term.off('data', onData)
-      s.term.off('exit', onExit)
+      s.term.removeListener('data', onData)
+      s.term.removeListener('exit', onExit)
     }
 
     const onData = () => {

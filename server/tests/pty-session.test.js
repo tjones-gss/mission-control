@@ -19,7 +19,7 @@ function createMockTerm() {
       if (!capturedOn[event]) capturedOn[event] = []
       capturedOn[event].push(handler)
     }),
-    off: vi.fn((event, handler) => {
+    removeListener: vi.fn((event, handler) => {
       if (capturedOn[event]) {
         capturedOn[event] = capturedOn[event].filter(h => h !== handler)
       }
@@ -188,8 +188,9 @@ describe('startQuery()', () => {
   it('spawns PTY with --resume and sessionId', async () => {
     const sid = uniqueSession()
     await bootSession(sid)
+    const expectedCmd = process.platform === 'win32' ? 'claude.exe' : 'claude'
     expect(pty.spawn).toHaveBeenCalledWith(
-      'claude',
+      expectedCmd,
       expect.arrayContaining(['--resume', sid]),
       expect.objectContaining({ cols: 200, rows: 50 }),
     )
@@ -198,8 +199,9 @@ describe('startQuery()', () => {
   it('passes cwd to pty.spawn', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { cwd: '/my/project' })
+    const expectedCmd = process.platform === 'win32' ? 'claude.exe' : 'claude'
     expect(pty.spawn).toHaveBeenCalledWith(
-      'claude',
+      expectedCmd,
       expect.any(Array),
       expect.objectContaining({ cwd: '/my/project' }),
     )
