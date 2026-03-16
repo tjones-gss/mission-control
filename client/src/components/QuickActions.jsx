@@ -3,7 +3,7 @@ import { MessageSquare } from 'lucide-react'
 
 const DEFAULT_REPLIES = ['yes', 'continue', 'approve']
 
-export function QuickActions({ sessionId, onReply, replies = DEFAULT_REPLIES }) {
+export function QuickActions({ sessionId, onReply, replies = DEFAULT_REPLIES, options }) {
   const [sending, setSending] = useState(null)
   const [error, setError] = useState(null)
 
@@ -20,7 +20,7 @@ export function QuickActions({ sessionId, onReply, replies = DEFAULT_REPLIES }) 
       const res = await fetch(`/api/sessions/${sessionId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, ...(options && Object.keys(options).some(k => options[k]) ? { options } : {}) }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))

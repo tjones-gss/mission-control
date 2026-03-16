@@ -3,6 +3,7 @@ import { Bot, GitBranch, MessageSquare, GitCommit, Zap } from 'lucide-react'
 import { ConversationView } from './ConversationView.jsx'
 import { TimelineView } from './TimelineView.jsx'
 import { IntelView } from './IntelView.jsx'
+import { SessionControlBar } from './SessionControlBar.jsx'
 
 function timeRange(start, end) {
   if (!start || !end) return ''
@@ -89,6 +90,7 @@ function SkillPicker({ sessionId, skills }) {
 
 export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, skills }) {
   const [subTab, setSubTab] = useState('conversation')
+  const [sessionOptions, setSessionOptions] = useState({ permissionMode: '', model: '', effort: '' })
 
   if (!session) return (
     <div className="p-6 text-gray-600 text-sm">Select a session to inspect</div>
@@ -118,6 +120,13 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
         </div>
       </div>
 
+      {/* Session control bar */}
+      <SessionControlBar
+        session={session}
+        sessionOptions={sessionOptions}
+        onOptionsChange={setSessionOptions}
+      />
+
       {/* Sub-tab content */}
       {subTab === 'conversation' && (
         <div className="flex-1 overflow-hidden">
@@ -125,6 +134,8 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
             sessionId={session?.sessionId}
             sessionUpdateVersion={sessionUpdateVersion}
             active={subTab === 'conversation'}
+            sessionOptions={sessionOptions}
+            skills={skills}
           />
         </div>
       )}

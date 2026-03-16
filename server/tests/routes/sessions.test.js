@@ -34,12 +34,12 @@ beforeEach(() => {
 // ─── GET / ──────────────────────────────────────────────────────────────────
 
 describe('GET /', () => {
-  it('returns getAllSessions() result', async () => {
+  it('returns getAllSessions() result with displayName', async () => {
     const sessions = [{ id: 'abc', messages: [] }]
     getAllSessions.mockReturnValue(sessions)
     const res = await request(app).get('/')
     expect(res.status).toBe(200)
-    expect(res.body).toEqual(sessions)
+    expect(res.body).toEqual([{ id: 'abc', messages: [], displayName: null }])
   })
 
   it('returns empty array when no sessions', async () => {
@@ -65,7 +65,7 @@ describe('GET /:sessionId', () => {
     getSessionById.mockReturnValue(session)
     const res = await request(app).get('/abc123')
     expect(res.status).toBe(200)
-    expect(res.body).toEqual(session)
+    expect(res.body).toEqual({ ...session, displayName: null })
   })
 })
 

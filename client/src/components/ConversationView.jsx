@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send } from 'lucide-react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
@@ -79,15 +79,127 @@ function AssistantMessage({ blocks }) {
   )
 }
 
-function MessageInput({ sessionId, sending, onSend }) {
+function OptionPills({ options }) {
+  const pills = []
+  if (options.permissionMode) pills.push(options.permissionMode)
+  if (options.model) pills.push(options.model)
+  if (options.effort) pills.push(options.effort)
+  if (pills.length === 0) return null
+  return (
+    <div className="flex items-center gap-1">
+      {pills.map(p => (
+        <span key={p} className="px-1.5 py-0.5 rounded bg-indigo-900/40 text-indigo-300 text-[10px] font-mono">
+          {p}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function SlashAutocomplete({ filter, skills, selectedIndex, onSelect }) {
+  if (!skills || skills.length === 0) return null
+
+  const filtered = skills.filter(s => {
+    const name = s.command || `/${s.name}`
+    return name.toLowerCase().includes(filter.toLowerCase())
+  })
+
+  if (filtered.length === 0) return null
+
+  return (
+    <div className="absolute bottom-full left-0 right-0 mb-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto z-50">
+      {filtered.map((s, i) => (
+        <button
+          key={s.name}
+          className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+            i === selectedIndex
+              ? 'bg-indigo-900/50 text-indigo-200'
+              : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+          }`}
+          onMouseDown={e => { e.preventDefault(); onSelect(s) }}
+        >
+          <span className="font-mono text-indigo-400">{s.command || `/${s.name}`}</span>
+          {s.description && <span className="text-gray-600 truncate">{s.description}</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function MessageInput({ sessionId, sending, onSend, sessionOptions, skills }) {
   const [text, setText] = useState('')
+  const [showAutocomplete, setShowAutocomplete] = useState(false)
+  const [acIndex, setAcIndex] = useState(0)
   const inputRef = useRef(null)
+
+  const allSkills = useMemo(() => {
+    if (!skills) return []
+    const user = skills.userSkills || []
+    const plugins = (skills.plugins || skills.pluginSkills || [])
+    // plugins may be an array of skills or an array of {skills: [...]}
+    const flat = Array.isArray(plugins) && plugins[0]?.skills
+      ? plugins.flatMap(p => p.skills)
+      : plugins
+    return [...user, ...flat]
+  }, [skills])
+
+  const slashFilter = useMemo(() => {
+    if (!text.startsWith('/')) return ''
+    return text.split(/\s/)[0]
+  }, [text])
+
+  const filteredSkills = useMemo(() => {
+    if (!slashFilter) return []
+    return allSkills.filter(s => {
+      const name = s.command || `/${s.name}`
+      return name.toLowerCase().includes(slashFilter.toLowerCase())
+    })
+  }, [slashFilter, allSkills])
+
+  useEffect(() => {
+    setShowAutocomplete(slashFilter.length > 0 && filteredSkills.length > 0)
+    setAcIndex(0)
+  }, [slashFilter, filteredSkills.length])
+
+  const selectSkill = useCallback((skill) => {
+    const cmd = skill.command || `/${skill.name}`
+    const rest = text.includes(' ') ? text.slice(text.indexOf(' ')) : ' '
+    setText(cmd + rest)
+    setShowAutocomplete(false)
+    inputRef.current?.focus()
+  }, [text])
+
+  const handleKeyDown = (e) => {
+    if (showAutocomplete) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setAcIndex(i => Math.min(i + 1, filteredSkills.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setAcIndex(i => Math.max(i - 1, 0))
+        return
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && filteredSkills[acIndex])) {
+        e.preventDefault()
+        selectSkill(filteredSkills[acIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setShowAutocomplete(false)
+        return
+      }
+    }
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!text.trim() || sending) return
     onSend(text.trim())
     setText('')
+    setShowAutocomplete(false)
   }
 
   useEffect(() => {
@@ -95,29 +207,41 @@ function MessageInput({ sessionId, sending, onSend }) {
   }, [sending])
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2 px-3 py-2 border-t border-gray-800 bg-gray-950">
-      <input
-        ref={inputRef}
-        type="text"
-        value={text}
-        onChange={e => setText(e.target.value)}
-        disabled={sending}
-        placeholder={sending ? 'Sending...' : 'Send a message to this session...'}
-        className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
-      />
-      <button
-        type="submit"
-        disabled={!text.trim() || sending}
-        className="px-3 py-1.5 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-      >
-        <Send size={12} />
-        Send
-      </button>
+    <form onSubmit={handleSubmit} className="relative px-3 py-2 border-t border-gray-800 bg-gray-950">
+      {showAutocomplete && (
+        <SlashAutocomplete
+          filter={slashFilter}
+          skills={allSkills}
+          selectedIndex={acIndex}
+          onSelect={selectSkill}
+        />
+      )}
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={sending}
+          placeholder={sending ? 'Sending...' : 'Send a message (/ for commands)...'}
+          className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+        />
+        {sessionOptions && <OptionPills options={sessionOptions} />}
+        <button
+          type="submit"
+          disabled={!text.trim() || sending}
+          className="px-3 py-1.5 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+        >
+          <Send size={12} />
+          Send
+        </button>
+      </div>
     </form>
   )
 }
 
-export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
+export function ConversationView({ sessionId, sessionUpdateVersion, active, sessionOptions, skills }) {
   const url = active && sessionId ? `/api/sessions/${sessionId}/messages` : null
   const { data, loading } = useApi(url, [sessionUpdateVersion])
   const messages = data?.messages || []
@@ -127,19 +251,32 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(null)
 
+  // Build clean options object (omit empty values)
+  const cleanOptions = useMemo(() => {
+    if (!sessionOptions) return undefined
+    const o = {}
+    if (sessionOptions.permissionMode) o.permissionMode = sessionOptions.permissionMode
+    if (sessionOptions.model) o.model = sessionOptions.model
+    if (sessionOptions.effort) o.effort = sessionOptions.effort
+    return Object.keys(o).length > 0 ? o : undefined
+  }, [sessionOptions])
+
   const handleSend = useCallback(async (text) => {
     if (!sessionId) return
     setSending(true)
     setSendError(null)
     try {
+      const body = { message: text }
+      if (cleanOptions) body.options = cleanOptions
+
       const res = await fetch(`/api/sessions/${sessionId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.detail || body.error || `HTTP ${res.status}`)
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || data.error || `HTTP ${res.status}`)
       }
       // SSE will trigger a session_update which refetches messages
     } catch (e) {
@@ -147,7 +284,7 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
     } finally {
       setSending(false)
     }
-  }, [sessionId])
+  }, [sessionId, cleanOptions])
 
   useEffect(() => {
     if (!paused && scrollRef.current) {
@@ -197,7 +334,13 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active }) {
         </div>
       )}
 
-      <MessageInput sessionId={sessionId} sending={sending} onSend={handleSend} />
+      <MessageInput
+        sessionId={sessionId}
+        sending={sending}
+        onSend={handleSend}
+        sessionOptions={sessionOptions}
+        skills={skills}
+      />
     </div>
   )
 }
