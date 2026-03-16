@@ -193,8 +193,13 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
 
   // Completion detection: the PTY stays alive for reuse, so we can't rely on exit.
   // Instead, listen for session_update SSE events (fired by the file watcher when
-  // the JSONL changes). When updates stop for 3s, the response is complete.
+  // the JSONL changes). When updates stop for 8s, the response is complete.
   // The PTY output itself may be empty (Claude Code's TUI doesn't produce parseable output).
+  //
+  // The first session_update after sending is the user message being written to JSONL.
+  // We skip it and only start the silence timer after a second update arrives,
+  // which indicates the assistant has started responding.
+  let updateCount = 0
   const removeListener = onEvent((event, data) => {
     if (event !== 'session_update') return
     // session_update data contains filePath like "projects/.../sessionId.jsonl"
@@ -202,7 +207,12 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
     const current = sessions.get(sessionId)
     if (!current || !current.busy) { removeListener(); return }
 
-    // Reset completion timer on each file update
+    updateCount++
+
+    // Skip the first update — it's just our user message being recorded
+    if (updateCount < 2) return
+
+    // Reset completion timer on each file update (assistant streaming chunks)
     if (current.completionTimer) clearTimeout(current.completionTimer)
     current.completionTimer = setTimeout(() => {
       const c = sessions.get(sessionId)
@@ -213,7 +223,7 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
       if (c.timeoutId) clearTimeout(c.timeoutId)
       removeListener()
       emit('sdk_result', { sessionId, subtype: 'success' })
-    }, 3000)
+    }, 8000)
   })
   s.removeCompletionListener = removeListener
 
