@@ -218,6 +218,22 @@ describe('useKeyboardShortcuts — persistence', () => {
     expect(stored.nextSession).toBe('j')
   })
 
+  it('updateShortcut clears conflicting binding from other action', () => {
+    const handlers = { nextSession: vi.fn(), prevSession: vi.fn() }
+    const { result } = renderHook(() => useKeyboardShortcuts(handlers))
+
+    // Bind nextSession to 'k' (which is prevSession's default)
+    act(() => { result.current.updateShortcut('nextSession', 'k') })
+
+    expect(result.current.shortcuts.nextSession).toBe('k')
+    expect(result.current.shortcuts.prevSession).toBe('') // cleared
+
+    // Pressing 'k' should trigger nextSession, not prevSession
+    act(() => { fireKey('k') })
+    expect(handlers.nextSession).toHaveBeenCalledTimes(1)
+    expect(handlers.prevSession).not.toHaveBeenCalled()
+  })
+
   it('handles corrupted localStorage gracefully', () => {
     localStorage.setItem('oversight.shortcuts', 'not json')
     const handlers = { nextSession: vi.fn() }

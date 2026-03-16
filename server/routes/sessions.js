@@ -48,15 +48,21 @@ function buildCliArgs(baseArgs, options) {
 // Session names store
 // ──────────────────────────────────────────────────────────────────────────────
 
+// In-memory cache — loaded once, updated on writes
+let sessionNamesCache = null
+
 export function loadSessionNames() {
+  if (sessionNamesCache) return sessionNamesCache
   try {
-    return JSON.parse(fs.readFileSync(NAMES_FILE, 'utf-8'))
+    sessionNamesCache = JSON.parse(fs.readFileSync(NAMES_FILE, 'utf-8'))
   } catch {
-    return {}
+    sessionNamesCache = {}
   }
+  return sessionNamesCache
 }
 
 function saveSessionNames(names) {
+  sessionNamesCache = names
   fs.writeFileSync(NAMES_FILE, JSON.stringify(names, null, 2))
 }
 

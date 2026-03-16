@@ -91,7 +91,14 @@ export function useKeyboardShortcuts(handlers) {
 
   const updateShortcut = useCallback((action, newKey) => {
     setShortcuts(prev => {
-      const next = { ...prev, [action]: newKey }
+      // Detect conflicts: if another action already uses this key, clear it
+      const next = { ...prev }
+      for (const [existingAction, existingKey] of Object.entries(next)) {
+        if (existingAction !== action && existingKey === newKey) {
+          next[existingAction] = ''
+        }
+      }
+      next[action] = newKey
       saveShortcuts(next)
       return next
     })

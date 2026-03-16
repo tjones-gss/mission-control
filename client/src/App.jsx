@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell, Settings, Plus } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
@@ -34,6 +34,25 @@ const SSE_SOUND_MAP = {
   history_update: 'historyUpdate',
 }
 
+// Throttle interval for session_update sounds (ms)
+const SESSION_UPDATE_SOUND_COOLDOWN = 5000
+
+async function sendQuickReply(sessionId, message) {
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      console.warn(`Quick reply failed: ${data.detail || data.error || `HTTP ${res.status}`}`)
+    }
+  } catch (err) {
+    console.warn('Quick reply failed:', err.message)
+  }
+}
+
 export default function App() {
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [activeTab, setActiveTab] = useState('agents')
@@ -66,6 +85,7 @@ export default function App() {
 
   // Sound engine
   const soundEngine = useSound()
+  const lastSessionSoundRef = useRef(0)
 
   const { connected } = useSSE(useCallback(evt => {
     setEvents(prev => [...prev.slice(-199), evt])
@@ -82,6 +102,12 @@ export default function App() {
     // Play sound for non-session events (needsInput is handled by useNotifications)
     const soundEvent = SSE_SOUND_MAP[evt.type]
     if (soundEvent && getNotificationPrefs().sound) {
+      // Throttle session_update sounds to avoid noise
+      if (evt.type === 'session_update') {
+        const now = Date.now()
+        if (now - lastSessionSoundRef.current < SESSION_UPDATE_SOUND_COOLDOWN) return
+        lastSessionSoundRef.current = now
+      }
       soundEngine.play(soundEvent, evt.sessionId ? { projectLabel: evt.projectLabel || 'session' } : undefined)
     }
   }, [soundEngine]))
@@ -116,20 +142,12 @@ export default function App() {
     tabSkills: () => setActiveTab('skills'),
     quickApprove: () => {
       if (selectedSession?.needsInput) {
-        fetch(`/api/sessions/${selectedSession.sessionId}/reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'yes' }),
-        })
+        sendQuickReply(selectedSession.sessionId, 'yes')
       }
     },
     quickContinue: () => {
       if (selectedSession?.needsInput) {
-        fetch(`/api/sessions/${selectedSession.sessionId}/reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'continue' }),
-        })
+        sendQuickReply(selectedSession.sessionId, 'continue')
       }
     },
     focusInput: () => {

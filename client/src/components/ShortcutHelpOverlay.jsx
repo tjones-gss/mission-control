@@ -1,22 +1,7 @@
 import { Keyboard, X } from 'lucide-react'
+import { ACTION_LABELS } from '../hooks/useKeyboardShortcuts.js'
 
 export function ShortcutHelpOverlay({ shortcuts, open, onToggle }) {
-  const ACTION_LABELS = {
-    nextSession:    'Next session',
-    prevSession:    'Previous session',
-    openDetail:     'Open detail view',
-    backToBoard:    'Back to board',
-    tabAgents:      'Agents tab',
-    tabTasks:       'Tasks tab',
-    tabWorkflows:   'Workflows tab',
-    tabSkills:      'Skills tab',
-    quickApprove:   'Approve (send "yes")',
-    quickContinue:  'Continue session',
-    focusInput:     'Focus message input',
-    showHelp:       'Show shortcut help',
-    toggleSettings: 'Open settings',
-    toggleMute:     'Mute session',
-  }
 
   if (!open) {
     return (
