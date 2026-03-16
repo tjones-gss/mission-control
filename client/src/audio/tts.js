@@ -2,7 +2,6 @@
  * Text-to-speech utilities wrapping the Web Speech API.
  */
 
-let voicesLoaded = false
 let voicesPromise = null
 
 export function getAvailableVoices() {
@@ -13,15 +12,24 @@ export function getAvailableVoices() {
 
   if (voicesPromise) return voicesPromise
   voicesPromise = new Promise(resolve => {
+    let resolved = false
     const handler = () => {
-      voicesLoaded = true
-      resolve(speechSynthesis.getVoices())
+      resolved = true
+      const v = speechSynthesis.getVoices()
+      // Reset cache if empty so future calls retry
+      if (v.length === 0) voicesPromise = null
+      resolve(v)
       speechSynthesis.removeEventListener('voiceschanged', handler)
     }
     speechSynthesis.addEventListener('voiceschanged', handler)
     // Fallback if event never fires
     setTimeout(() => {
-      if (!voicesLoaded) resolve(speechSynthesis.getVoices())
+      if (!resolved) {
+        const v = speechSynthesis.getVoices()
+        // Reset cache if empty so future calls retry
+        if (v.length === 0) voicesPromise = null
+        resolve(v)
+      }
     }, 1000)
   })
   return voicesPromise
@@ -29,6 +37,8 @@ export function getAvailableVoices() {
 
 export function speak(text, voiceName, volume = 0.7) {
   if (typeof speechSynthesis === 'undefined') return
+  // Cancel any in-progress speech to prevent queue pile-up
+  speechSynthesis.cancel()
   const utterance = new SpeechSynthesisUtterance(text)
   utterance.volume = volume
   if (voiceName) {

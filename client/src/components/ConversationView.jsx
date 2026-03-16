@@ -224,6 +224,7 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills }) {
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={sending}
+          data-shortcut-focus="message-input"
           placeholder={sending ? 'Sending...' : 'Send a message (/ for commands)...'}
           className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
         />

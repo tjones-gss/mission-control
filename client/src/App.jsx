@@ -116,24 +116,38 @@ export default function App() {
   const { requestPermission, muteSession, mutedIds } = useNotifications(sessions, soundEngine)
   const needsInputSessions = sessions?.filter(s => s.needsInput && !mutedIds.current.has(s.sessionId)) || []
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — use refs so handler identity is stable and keydown listener
+  // doesn't churn on every session update
+  const sessionsRef = useRef(sessions)
+  const selectedSessionIdRef = useRef(selectedSessionId)
+  const selectedSessionRef = useRef(selectedSession)
+  const showSettingsRef = useRef(showSettings)
+  const showLegendRef = useRef(showLegend)
+  useEffect(() => { sessionsRef.current = sessions }, [sessions])
+  useEffect(() => { selectedSessionIdRef.current = selectedSessionId }, [selectedSessionId])
+  useEffect(() => { selectedSessionRef.current = selectedSession }, [selectedSession])
+  useEffect(() => { showSettingsRef.current = showSettings }, [showSettings])
+  useEffect(() => { showLegendRef.current = showLegend }, [showLegend])
+
   const shortcutHandlers = useMemo(() => ({
     nextSession: () => {
-      if (!sessions?.length) return
-      const idx = sessions.findIndex(s => s.sessionId === selectedSessionId)
-      const next = sessions[(idx + 1) % sessions.length]
+      const s = sessionsRef.current
+      if (!s?.length) return
+      const idx = s.findIndex(x => x.sessionId === selectedSessionIdRef.current)
+      const next = s[(idx + 1) % s.length]
       if (next) setSelectedSessionId(next.sessionId)
     },
     prevSession: () => {
-      if (!sessions?.length) return
-      const idx = sessions.findIndex(s => s.sessionId === selectedSessionId)
-      const prev = sessions[(idx - 1 + sessions.length) % sessions.length]
+      const s = sessionsRef.current
+      if (!s?.length) return
+      const idx = s.findIndex(x => x.sessionId === selectedSessionIdRef.current)
+      const prev = s[(idx - 1 + s.length) % s.length]
       if (prev) setSelectedSessionId(prev.sessionId)
     },
     openDetail: () => setAgentView('detail'),
     backToBoard: () => {
-      if (showSettings) setShowSettings(false)
-      else if (showLegend) setShowLegend(false)
+      if (showSettingsRef.current) setShowSettings(false)
+      else if (showLegendRef.current) setShowLegend(false)
       else setAgentView('board')
     },
     tabAgents: () => setActiveTab('agents'),
@@ -141,13 +155,15 @@ export default function App() {
     tabWorkflows: () => setActiveTab('workflows'),
     tabSkills: () => setActiveTab('skills'),
     quickApprove: () => {
-      if (selectedSession?.needsInput) {
-        sendQuickReply(selectedSession.sessionId, 'yes')
+      const session = selectedSessionRef.current
+      if (session?.needsInput) {
+        sendQuickReply(session.sessionId, 'yes')
       }
     },
     quickContinue: () => {
-      if (selectedSession?.needsInput) {
-        sendQuickReply(selectedSession.sessionId, 'continue')
+      const session = selectedSessionRef.current
+      if (session?.needsInput) {
+        sendQuickReply(session.sessionId, 'continue')
       }
     },
     focusInput: () => {
@@ -157,9 +173,10 @@ export default function App() {
     showHelp: () => setShowShortcutHelp(prev => !prev),
     toggleSettings: () => setShowSettings(prev => !prev),
     toggleMute: () => {
-      if (selectedSessionId) muteSession(selectedSessionId)
+      const id = selectedSessionIdRef.current
+      if (id) muteSession(id)
     },
-  }), [sessions, selectedSessionId, selectedSession, showSettings, showLegend, muteSession])
+  }), [muteSession]) // stable — only depends on muteSession which is a useCallback
 
   const { shortcuts, updateShortcut, resetDefaults: resetShortcuts } = useKeyboardShortcuts(shortcutHandlers)
 

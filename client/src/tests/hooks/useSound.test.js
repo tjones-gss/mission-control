@@ -25,6 +25,7 @@ const MockAudioContext = vi.fn(function () {
   this.currentTime = 0
   this.state = 'running'
   this.resume = vi.fn()
+  this.close = vi.fn()
 })
 
 // Mock speechSynthesis
@@ -164,6 +165,40 @@ describe('useSound — addCustomSound / removeCustomSound', () => {
 
     expect(ok).toBe(false)
     expect(result.current.getPrefs().customSounds.big).toBeUndefined()
+  })
+
+  it('addCustomSound rejects names with special characters', () => {
+    const { result } = renderHook(() => useSound())
+
+    let ok
+    act(() => { ok = result.current.addCustomSound('bad name!', 'AQID') })
+    expect(ok).toBe(false)
+
+    act(() => { ok = result.current.addCustomSound('../path', 'AQID') })
+    expect(ok).toBe(false)
+
+    act(() => { ok = result.current.addCustomSound('good-name_1', 'AQID') })
+    expect(ok).toBe(true)
+  })
+
+  it('addCustomSound rejects when aggregate budget exceeded', () => {
+    const { result } = renderHook(() => useSound())
+
+    // Add a sound that's under per-file cap but will fill aggregate budget
+    const chunk = 'A'.repeat(600 * 1024) // ~600KB base64
+    let ok
+    act(() => { ok = result.current.addCustomSound('s1', chunk) })
+    expect(ok).toBe(true)
+
+    act(() => { ok = result.current.addCustomSound('s2', chunk) })
+    expect(ok).toBe(true)
+
+    act(() => { ok = result.current.addCustomSound('s3', chunk) })
+    expect(ok).toBe(true)
+
+    // 4th should exceed 2MB aggregate
+    act(() => { ok = result.current.addCustomSound('s4', chunk) })
+    expect(ok).toBe(false)
   })
 
   it('removeCustomSound deletes and persists', () => {

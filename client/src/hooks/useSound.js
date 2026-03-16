@@ -3,6 +3,9 @@ import { PRESETS } from '../audio/presets.js'
 import { speak, cancelSpeech, TTS_TEMPLATES } from '../audio/tts.js'
 
 const STORAGE_KEY = 'oversight.sound'
+const MAX_CUSTOM_SOUNDS_BYTES = 2 * 1024 * 1024 // 2MB aggregate cap
+const MAX_SINGLE_SOUND_BYTES = 500 * 1024 * 1.37 // ~500KB raw, accounting for base64 overhead
+const SOUND_NAME_RE = /^[a-zA-Z0-9_-]+$/
 
 const DEFAULT_PREFS = {
   masterVolume: 0.7,
@@ -36,6 +39,14 @@ export function setSoundPrefs(prefs) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
 }
 
+function getCustomSoundsSize(customSounds) {
+  let total = 0
+  for (const v of Object.values(customSounds)) {
+    total += v.length
+  }
+  return total
+}
+
 export function useSound() {
   const audioCtxRef = useRef(null)
   const masterGainRef = useRef(null)
@@ -56,7 +67,10 @@ export function useSound() {
       document.removeEventListener('click', initAudio)
     }
     document.addEventListener('click', initAudio)
-    return () => document.removeEventListener('click', initAudio)
+    return () => {
+      document.removeEventListener('click', initAudio)
+      audioCtxRef.current?.close()
+    }
   }, [])
 
   const ensureContext = useCallback(() => {
@@ -73,19 +87,24 @@ export function useSound() {
     const base64 = prefs.customSounds[name]
     if (!base64) return
 
-    let buffer = decodedCacheRef.current.get(name)
-    if (!buffer) {
-      const binary = atob(base64)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-      buffer = await ctx.decodeAudioData(bytes.buffer.slice(0))
-      decodedCacheRef.current.set(name, buffer)
-    }
+    try {
+      let buffer = decodedCacheRef.current.get(name)
+      if (!buffer) {
+        const binary = atob(base64)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        buffer = await ctx.decodeAudioData(bytes.buffer.slice(0))
+        decodedCacheRef.current.set(name, buffer)
+      }
 
-    const source = ctx.createBufferSource()
-    source.buffer = buffer
-    source.connect(masterGainRef.current)
-    source.start()
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      source.connect(masterGainRef.current)
+      source.start()
+    } catch (err) {
+      console.warn(`Failed to play custom sound "${name}":`, err.message)
+      decodedCacheRef.current.delete(name)
+    }
   }, [ensureContext])
 
   const playPreset = useCallback((presetName) => {
@@ -113,7 +132,7 @@ export function useSound() {
       playPreset(soundName)
     }
 
-    // TTS
+    // TTS — cancel previous to prevent queue pile-up
     if (eventConfig.voice && sessionContext) {
       const template = TTS_TEMPLATES[eventName]
       if (template) {
@@ -147,9 +166,15 @@ export function useSound() {
   }, [])
 
   const addCustomSound = useCallback((name, base64) => {
-    // 500KB cap
-    if (base64.length > 500 * 1024 * 1.37) return false // base64 overhead
+    // Sanitize name: alphanumeric, hyphens, underscores only
+    if (!SOUND_NAME_RE.test(name)) return false
+    // Per-sound size cap
+    if (base64.length > MAX_SINGLE_SOUND_BYTES) return false
+    // Aggregate budget check
     const prefs = prefsRef.current
+    const currentSize = getCustomSoundsSize(prefs.customSounds)
+    if (currentSize + base64.length > MAX_CUSTOM_SOUNDS_BYTES) return false
+
     const next = { ...prefs, customSounds: { ...prefs.customSounds, [name]: base64 } }
     prefsRef.current = next
     setSoundPrefs(next)

@@ -48,6 +48,16 @@ describe('speak', () => {
     expect(utterance.voice).toBeNull()
   })
 
+  it('cancels previous speech before speaking', () => {
+    speak('First')
+    expect(mockCancel).toHaveBeenCalledTimes(1)
+    expect(mockSpeak).toHaveBeenCalledTimes(1)
+
+    speak('Second')
+    expect(mockCancel).toHaveBeenCalledTimes(2)
+    expect(mockSpeak).toHaveBeenCalledTimes(2)
+  })
+
   it('does not throw when speechSynthesis is undefined', () => {
     delete global.speechSynthesis
     expect(() => speak('Test')).not.toThrow()
