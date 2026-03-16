@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { addClient } from '../watcher.js'
+import { addClient, removeClient } from '../watcher.js'
 
 export const router = Router()
 
@@ -11,9 +11,17 @@ router.get('/', (req, res) => {
 
   // Send a heartbeat every 30s to keep connection alive
   const heartbeat = setInterval(() => {
-    res.write('event: heartbeat\ndata: {}\n\n')
+    try {
+      res.write('event: heartbeat\ndata: {}\n\n')
+    } catch {
+      clearInterval(heartbeat)
+      removeClient(res)
+    }
   }, 30000)
 
-  res.on('close', () => clearInterval(heartbeat))
+  res.on('close', () => {
+    clearInterval(heartbeat)
+    removeClient(res)
+  })
   addClient(res)
 })

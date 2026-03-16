@@ -49,7 +49,7 @@ export default function App() {
 
   const selectedSession = sessions?.find(s => s.sessionId === selectedSessionId)
 
-  useSSE(useCallback(evt => {
+  const { connected } = useSSE(useCallback(evt => {
     setEvents(prev => [...prev.slice(-199), evt])
     if (evt.type === 'session_update' || evt.type === 'new_session') {
       setSessionsVersion(v => v + 1)
@@ -100,6 +100,12 @@ export default function App() {
       <header className="flex items-center px-4 py-3 border-b border-gray-800 shrink-0">
         <span className="text-sm font-bold text-gray-200 tracking-tight">Oversight</span>
         <span className="ml-2 text-xs text-gray-600 tracking-tight">behind the agent curtain</span>
+        {!connected && (
+          <span className="ml-3 flex items-center gap-1.5 text-xs text-red-400" title="Live connection lost — reconnecting...">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+            disconnected
+          </span>
+        )}
         {activeSessions.length > 0 && (
           <span className="ml-3 flex items-center gap-1.5 text-xs text-green-400">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />

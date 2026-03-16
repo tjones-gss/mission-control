@@ -1,13 +1,21 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { MessageSquare } from 'lucide-react'
 
 const DEFAULT_REPLIES = ['yes', 'continue', 'approve']
 
 export function QuickActions({ sessionId, onReply, replies = DEFAULT_REPLIES }) {
   const [sending, setSending] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!error) return
+    const t = setTimeout(() => setError(null), 3000)
+    return () => clearTimeout(t)
+  }, [error])
 
   const send = useCallback(async (message) => {
     setSending(message)
+    setError(null)
     try {
       const res = await fetch(`/api/sessions/${sessionId}/message`, {
         method: 'POST',
@@ -18,8 +26,8 @@ export function QuickActions({ sessionId, onReply, replies = DEFAULT_REPLIES }) 
         const body = await res.json().catch(() => ({}))
         throw new Error(body.detail || body.error || `HTTP ${res.status}`)
       }
-    } catch {
-      // Errors are transient; session will update via SSE
+    } catch (e) {
+      setError(message)
     } finally {
       setSending(null)
     }
@@ -34,9 +42,13 @@ export function QuickActions({ sessionId, onReply, replies = DEFAULT_REPLIES }) 
           tabIndex={0}
           onClick={() => { if (sending === null) send(msg) }}
           onKeyDown={e => { if (e.key === 'Enter' && sending === null) send(msg) }}
-          className={`px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-300 text-[10px] hover:bg-amber-800/60 transition-colors cursor-pointer ${sending !== null ? 'opacity-30 pointer-events-none' : ''}`}
+          className={`px-1.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer ${
+            error === msg
+              ? 'bg-red-900/50 text-red-300'
+              : 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60'
+          } ${sending !== null ? 'opacity-30 pointer-events-none' : ''}`}
         >
-          {sending === msg ? '...' : msg}
+          {sending === msg ? '...' : error === msg ? 'failed' : msg}
         </span>
       ))}
       {onReply && (

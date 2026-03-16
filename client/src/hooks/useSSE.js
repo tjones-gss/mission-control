@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export function useSSE(onMessage) {
   const onMessageRef = useRef(onMessage)
   onMessageRef.current = onMessage
+  const [connected, setConnected] = useState(true)
 
   useEffect(() => {
     const es = new EventSource('/api/stream')
@@ -14,10 +15,15 @@ export function useSSE(onMessage) {
       })
     })
 
-    es.onerror = () => {
-      // auto-reconnects by default
-    }
+    let wasOpen = false
+    es.onopen = () => { wasOpen = true; setConnected(true) }
+    es.onerror = () => { if (wasOpen) setConnected(false) }
 
-    return () => es.close()
+    return () => {
+      es.close()
+      setConnected(false)
+    }
   }, [])
+
+  return { connected }
 }

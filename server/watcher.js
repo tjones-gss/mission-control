@@ -4,7 +4,7 @@ import os from 'os'
 import { emit } from './sse.js'
 import { onSessionEvent } from './intelligence/triggers.js'
 
-export { addClient, emit } from './sse.js'
+export { addClient, removeClient, emit } from './sse.js'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude')
 
