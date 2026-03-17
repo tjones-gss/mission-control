@@ -174,13 +174,25 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
       throw new Error('PTY exited before message could be sent')
     }
   } else {
-    s.busy = true
-    s.recentOutput = ''
+    // PTY reuse is unreliable — the TUI input state after a response cycle
+    // doesn't reliably accept new bracketed paste input. Close gracefully
+    // with Escape + /exit, wait for PTY to exit, then respawn.
+    s.term.write('\x1b')
+    await new Promise(resolve => setTimeout(resolve, 50))
+    s.term.write('\x1b[200~/exit\x1b[201~')
+    await new Promise(resolve => setTimeout(resolve, 100))
+    s.term.write('\r')
+    // Wait for the PTY to exit (up to 5s)
+    await new Promise(resolve => {
+      const timeout = setTimeout(() => {
+        try { s.term.kill() } catch { /* ignore */ }
+        resolve()
+      }, 5000)
+      s.term.on('exit', () => { clearTimeout(timeout); resolve() })
+    })
+    sessions.delete(sessionId)
+    return startQuery({ sessionId, prompt, cwd, sdkOptions })
   }
-
-  // Reset TUI input state before sending (Escape clears any partial input or mode)
-  s.term.write('\x1b')
-  await new Promise(resolve => setTimeout(resolve, 50))
 
   // Send the message using bracketed paste mode.
   const sanitized = sanitizePrompt(prompt)
@@ -190,25 +202,16 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
   emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
 
   // Completion detection: listen for session_update SSE events (fired by the
-  // file watcher when the JSONL changes). When updates stop for 8s after the
-  // assistant starts responding, the response is complete.
-  //
-  // The first session_update is the user message being written — skip it.
-  // After completion, kill the PTY so the next query spawns fresh (the TUI's
-  // input state is unreliable after a response cycle).
-  let updateCount = 0
+  // file watcher when the JSONL changes). When updates stop for 8s, the
+  // response is likely complete. The timer resets on each update to handle
+  // streaming responses that write multiple chunks.
   const removeListener = onEvent((event, data) => {
     if (event !== 'session_update') return
     if (!data?.filePath?.includes(sessionId)) return
     const current = sessions.get(sessionId)
     if (!current || !current.busy) { removeListener(); return }
 
-    updateCount++
-
-    // Skip the first update — it's just our user message being recorded
-    if (updateCount < 2) return
-
-    // Reset completion timer on each file update (assistant streaming chunks)
+    // Reset completion timer on each file update
     if (current.completionTimer) clearTimeout(current.completionTimer)
     current.completionTimer = setTimeout(() => {
       const c = sessions.get(sessionId)
@@ -274,15 +277,13 @@ function waitForReady(s) {
         return  // Wait for more data before starting any timer
       }
 
-      // Phase 2: Detect the message input field being ready.
-      // The TUI emits \x1b[?2004h (bracketed paste enable) twice:
-      //   1st: when the trust prompt's select input renders
-      //   2nd: when the actual message input field renders (after MCP loading)
-      // If trust was already accepted, the first \x1b[?2004h is the trust prompt
-      // and the second one is the message input. We also require "Claude Code"
-      // in the accumulated output to confirm the full UI has loaded.
-      const pasteEnableCount = (accumulated.match(/\x1b\[\?2004h/g) || []).length
-      if (pasteEnableCount >= 2 && accumulated.includes('Claude Code')) {
+      // Phase 2: Detect the message input prompt.
+      // After trust is accepted and MCP servers connect, the TUI renders the
+      // full UI with the input prompt character. We detect the prompt by looking
+      // for the status bar indicators (model info, effort level) which only
+      // appear when the full UI is loaded and the input field is ready.
+      const clean = stripAnsi(accumulated)
+      if (accumulated.includes('Claude Code') && clean.includes('/effort')) {
         if (silenceTimer) clearTimeout(silenceTimer)
         silenceTimer = setTimeout(() => {
           cleanup()
@@ -292,12 +293,13 @@ function waitForReady(s) {
       }
 
       // Fallback: silence-based detection (covers cases where the UI text
-      // changes in future versions)
+      // changes in future versions). Set to 10s because the TUI takes 4-10s
+      // to fully initialize (trust prompt → MCP servers → full UI render).
       if (silenceTimer) clearTimeout(silenceTimer)
       silenceTimer = setTimeout(() => {
         cleanup()
         resolve()
-      }, 3000)
+      }, 10000)
     }
 
     const onExit = () => {

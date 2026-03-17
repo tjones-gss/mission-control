@@ -109,8 +109,8 @@ async function bootSession(sessionId, opts = {}) {
   }
   await Promise.resolve()
 
-  // Phase 2: After trust accepted, full UI loads with second bracketed paste enable + "Claude Code"
-  const uiData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76'
+  // Phase 2: After trust accepted, full UI loads with "Claude Code" + status bar with /effort
+  const uiData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76\x1b[38;2;153;153;153m\x1b[16;181H\xe2\x97\x90 medium \xc2\xb7 /effort'
   if (capturedOn['data'] && capturedOn['data'].length > 0) {
     capturedOn['data'].forEach(h => h(uiData))
   }
@@ -160,7 +160,7 @@ describe('isQueryActive()', () => {
     // Finish the boot so the session is cleaned up for the module
     if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004htrust this folder'))
     await Promise.resolve()
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76'))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(100)
     await promise
@@ -237,7 +237,7 @@ describe('startQuery()', () => {
     // Clean up
     if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004htrust this folder'))
     await Promise.resolve()
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76'))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(100)
     await first
@@ -380,7 +380,7 @@ describe('waitForReady() trust prompt acceptance', () => {
     expect(mockTerm.write).toHaveBeenCalledWith('\r')
 
     // Now fire Claude Code UI (includes second bracketed paste enable)
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76'))
+    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(100)
     await promise
