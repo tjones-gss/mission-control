@@ -118,8 +118,8 @@ async function bootSession(sessionId, opts = {}) {
   // Advance past the 500ms post-detection pause in waitForReady
   vi.advanceTimersByTime(500)
 
-  // Yield for the startQuery async flow (100ms delay between paste and Enter)
-  await vi.advanceTimersByTimeAsync(100)
+  // Yield for the startQuery async flow (50ms Ctrl+C delay + 100ms paste delay)
+  await vi.advanceTimersByTimeAsync(150)
 
   return promise
 }
@@ -162,7 +162,7 @@ describe('isQueryActive()', () => {
     await Promise.resolve()
     if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
-    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(150)
     await promise
   })
 })
@@ -239,13 +239,14 @@ describe('startQuery()', () => {
     await Promise.resolve()
     if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
-    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(150)
     await first
   })
 
-  it('writes prompt in bracketed paste mode after waitForReady completes', async () => {
+  it('writes Ctrl+C + bracketed paste + Enter after waitForReady completes', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { prompt: 'my prompt' })
+    expect(mockTerm.write).toHaveBeenCalledWith('\x03')
     expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~my prompt\x1b[201~')
     expect(mockTerm.write).toHaveBeenCalledWith('\r')
   })
@@ -357,10 +358,11 @@ describe('waitForReady() hard timeout', () => {
 
     vi.advanceTimersByTime(15000)
     // Advance past the 100ms delay between paste and Enter
-    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(150)
 
     const result = await promise
     expect(result).toEqual({ ok: true, streaming: true })
+    expect(mockTerm.write).toHaveBeenCalledWith('\x03')
     expect(mockTerm.write).toHaveBeenCalledWith('\x1b[200~hi\x1b[201~')
     expect(mockTerm.write).toHaveBeenCalledWith('\r')
   })
@@ -382,7 +384,7 @@ describe('waitForReady() trust prompt acceptance', () => {
     // Now fire Claude Code UI (includes second bracketed paste enable)
     if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
-    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(150)
     await promise
   })
 })

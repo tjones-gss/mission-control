@@ -174,28 +174,19 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
       throw new Error('PTY exited before message could be sent')
     }
   } else {
-    // PTY reuse is unreliable — the TUI input state after a response cycle
-    // doesn't reliably accept new bracketed paste input. Close gracefully
-    // with Escape + /exit, wait for PTY to exit, then respawn.
-    s.term.write('\x1b')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    s.term.write('\x1b[200~/exit\x1b[201~')
-    await new Promise(resolve => setTimeout(resolve, 100))
-    s.term.write('\r')
-    // Wait for the PTY to exit (up to 5s)
-    await new Promise(resolve => {
-      const timeout = setTimeout(() => {
-        try { s.term.kill() } catch { /* ignore */ }
-        resolve()
-      }, 5000)
-      s.term.on('exit', () => { clearTimeout(timeout); resolve() })
-    })
-    sessions.delete(sessionId)
-    return startQuery({ sessionId, prompt, cwd, sdkOptions })
+    // Reuse the existing PTY — send Ctrl+C first to reset the TUI input focus.
+    // After a response cycle the cursor may be stuck in the response view;
+    // Ctrl+C returns focus to the input prompt without killing the process.
+    s.busy = true
+    s.recentOutput = ''
   }
 
   // Send the message using bracketed paste mode.
+  // Ctrl+C resets TUI focus to the input field (must be a separate write call
+  // so it bypasses sanitizePrompt, which strips \x03).
   const sanitized = sanitizePrompt(prompt)
+  s.term.write('\x03')
+  await new Promise(resolve => setTimeout(resolve, 50))
   s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
   await new Promise(resolve => setTimeout(resolve, 100))
   s.term.write('\r')
