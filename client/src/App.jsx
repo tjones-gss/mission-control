@@ -92,13 +92,19 @@ export default function App() {
   const soundEngine = useSound()
   const lastSessionSoundRef = useRef(0)
 
+  const sessionsDebounceRef = useRef(null)
   const { connected } = useSSE(useCallback(evt => {
     // Forward SDK events to streaming handler
     streaming.handleSdkEvent(evt)
 
     setEvents(prev => [...prev.slice(-199), evt])
     if (evt.type === 'session_update' || evt.type === 'new_session') {
-      setSessionsVersion(v => v + 1)
+      if (!sessionsDebounceRef.current) {
+        sessionsDebounceRef.current = setTimeout(() => {
+          sessionsDebounceRef.current = null
+          setSessionsVersion(v => v + 1)
+        }, 100)
+      }
     }
     if (evt.type === 'task_update') {
       setTasksVersion(v => v + 1)

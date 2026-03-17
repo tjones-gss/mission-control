@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import { Send, Info, X, Loader, Terminal, ChevronDown, ChevronUp, ImagePlus } from 'lucide-react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
@@ -118,7 +118,7 @@ function ImageBlock({ source }) {
   )
 }
 
-function UserMessage({ blocks, toolNameMap }) {
+const UserMessage = memo(function UserMessage({ blocks, toolNameMap }) {
   const textBlocks = blocks.filter(b => b.type === 'text')
   const imageBlocks = blocks.filter(b => b.type === 'image')
   const resultBlocks = blocks.filter(b => b.type === 'tool_result')
@@ -145,9 +145,9 @@ function UserMessage({ blocks, toolNameMap }) {
       )}
     </>
   )
-}
+})
 
-function AssistantMessage({ blocks }) {
+const AssistantMessage = memo(function AssistantMessage({ blocks }) {
   return (
     <div className="space-y-2">
       {blocks.map((block, i) => {
@@ -158,7 +158,7 @@ function AssistantMessage({ blocks }) {
       })}
     </div>
   )
-}
+})
 
 function OptionPills({ options }) {
   const pills = []
@@ -457,13 +457,14 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
   const { data, loading } = useApi(url, [sessionUpdateVersion])
   const messages = data?.messages || []
 
-  // Build tool_use_id → tool_name lookup so tool results show which tool produced them
+  // Build tool_use_id → tool_name lookup — append-only via ref to avoid re-renders
+  const toolNameMapRef = useRef({})
   const toolNameMap = useMemo(() => {
-    const map = {}
+    const map = toolNameMapRef.current
     for (const msg of messages) {
       if (msg.type === 'assistant') {
         for (const block of msg.blocks) {
-          if (block.type === 'tool_use' && block.id) {
+          if (block.type === 'tool_use' && block.id && !map[block.id]) {
             map[block.id] = block.name
           }
         }
