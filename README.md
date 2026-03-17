@@ -52,6 +52,29 @@ If you use Claude Code teams, Oversight shows your team task boards alongside th
 
 ---
 
+## Workflows
+
+Build reusable multi-step playbooks. Each workflow is a named sequence of steps:
+
+- **Instruction** — plain text for Claude to follow
+- **Command** — a shell command to run
+- **Agent** — spawn a subagent (general-purpose, Explore, Plan, etc.) with a custom prompt
+- **Skill** — invoke any user or plugin skill
+
+Create, reorder, edit, and delete steps with the visual editor. Click **Export as Skill** to turn a workflow into a reusable Claude Code skill file (saved to `~/.claude/skills/`).
+
+Workflows are stored as JSON in `server/data/workflows/`.
+
+---
+
+## Skills Browser
+
+Browse, search, create, edit, and delete skills from the **Skills** tab. Skills are grouped by source: user skills (editable), and plugin skills (read-only). Each skill shows its description, command, and full content (expandable). Filter by plugin name or search across all skills.
+
+User skills map to files in `~/.claude/skills/`. Plugin skills are read from installed Claude Code plugins.
+
+---
+
 ## Notifications & Sound
 
 Oversight detects when a Claude Code session is waiting for human input — either Claude finished speaking (`end_turn`) or a tool call is pending approval. When this happens:
@@ -133,9 +156,13 @@ A **"reply"** button opens the session detail view with the conversation input f
 
 The sub-tab bar in the detail view includes a **skill picker** dropdown. Select a skill (e.g., `/commit`, `/review-pr`) and click Run to invoke it on the current session.
 
+### Image messages
+
+Attach images to your messages via the **paperclip button**, **drag-and-drop**, or **Ctrl+V paste**. Supported formats: PNG, JPEG, GIF, WebP (max 5MB). A thumbnail preview appears before sending. The image is uploaded to the server as a temp file and passed to Claude's Read tool — then cleaned up after the response (or after 5 minutes).
+
 ### New sessions
 
-Click the **+** button in the Sessions sidebar header to spawn a new Claude Code session. Provide a working directory and a prompt, and Oversight will start a fresh `claude -p` subprocess.
+Click the **+** button in the Sessions sidebar header to spawn a new Claude Code session. Fill in a working directory, prompt, and optionally a session name, model (sonnet/opus/haiku), permission mode, and effort level. Sessions are created via an interactive PTY (subscription auth) — no API credits consumed. Worktree sessions use the CLI subprocess path with `--worktree`.
 
 ### Interactive Session Control (PTY)
 
@@ -152,7 +179,7 @@ The PTY stays alive between messages for the same session, so subsequent message
 
 ### Architecture
 
-Interaction goes through two paths: **PTY sessions** (`server/pty-session.js`) for interactive messaging (uses subscription auth), and the **CLI subprocess** (`server/claude-cli.js`) for one-shot operations like forking and named session creation. This reuses Claude Code's own session persistence — no custom protocol, no API keys, no Agent SDK dependency. The subprocess writes to the JSONL file, chokidar sees the change, and SSE pushes the update to all browser tabs.
+Interaction goes through two paths: **PTY sessions** (`server/pty-session.js`) for interactive messaging and new session creation (uses subscription auth), and the **CLI subprocess** (`server/claude-cli.js`) for one-shot operations like forking and worktree sessions. This reuses Claude Code's own session persistence — no custom protocol, no API keys, no Agent SDK dependency. The subprocess writes to the JSONL file, chokidar sees the change, and SSE pushes the update to all browser tabs.
 
 Concurrent writes to the same session are blocked (409 Conflict) to prevent race conditions.
 

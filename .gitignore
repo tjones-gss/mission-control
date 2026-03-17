@@ -6,3 +6,8 @@ dist/
 .playwright-mcp/
 playwright-report/
 test-results/
+.claude/
+qa-*.png
+snapshot-*.md
+test-upload.png
+*.output
