@@ -53,6 +53,7 @@ vi.mock('multer', () => {
 })
 vi.mock('../../pty-session.js', () => ({
   startQuery: vi.fn().mockResolvedValue({ ok: true, streaming: true }),
+  spawnNewSession: vi.fn().mockResolvedValue({ ok: true, sessionId: 'new-pty-123', streaming: true }),
   isQueryActive: vi.fn().mockReturnValue(false),
   getQueryStatus: vi.fn().mockReturnValue({ active: false, pendingApprovals: [] }),
   resolveApproval: vi.fn().mockReturnValue(true),
@@ -67,7 +68,7 @@ import fs from 'fs'
 import { getAllSessions, getSessionById } from '../../parsers/sessions.js'
 import { getSessionMessages } from '../../parsers/messages.js'
 import { runClaude } from '../../claude-cli.js'
-import { startQuery, isQueryActive, getQueryStatus, resolveApproval, cancelQuery } from '../../pty-session.js'
+import { startQuery, spawnNewSession, isQueryActive, getQueryStatus, resolveApproval, cancelQuery } from '../../pty-session.js'
 import { onEvent } from '../../sse.js'
 import { router } from '../../routes/sessions.js'
 
@@ -306,28 +307,41 @@ describe('POST /new', () => {
     expect(res.body.error).toMatch(/cwd is required/i)
   })
 
-  it('201 when new session created via CLI', async () => {
-    runClaude.mockResolvedValue({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 })
+  it('202 when new session created via PTY', async () => {
+    spawnNewSession.mockResolvedValue({ ok: true, sessionId: 'new-pty-123', streaming: true })
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
-    expect(res.status).toBe(201)
+    expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['-p', 'hello', '--output-format', 'json']),
+    expect(res.body.sessionId).toBe('new-pty-123')
+    expect(spawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'hello',
+      cwd: '/tmp',
     }))
   })
 
-  it('201 when session created via CLI with name', async () => {
-    runClaude.mockResolvedValue({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 })
+  it('202 when session created via PTY with name', async () => {
+    spawnNewSession.mockResolvedValue({ ok: true, sessionId: 'new-pty-456', streaming: true })
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello', name: 'test' })
-    expect(res.status).toBe(201)
+    expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['-p', 'hello', '--name', 'test']),
+    expect(spawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'hello',
+      name: 'test',
     }))
   })
 
-  it('503 when CLI fails', async () => {
-    runClaude.mockRejectedValue(new Error('spawn failed'))
+  it('201 when worktree session created via CLI', async () => {
+    runClaude.mockResolvedValue({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 })
+    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello', worktree: true })
+    expect(res.status).toBe(201)
+    expect(res.body.ok).toBe(true)
+    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
+      args: expect.arrayContaining(['-p', 'hello', '--worktree']),
+    }))
+  })
+
+  it('503 when PTY spawn fails', async () => {
+    spawnNewSession.mockRejectedValue(new Error('spawn failed'))
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
     expect(res.status).toBe(503)
     expect(res.body.error).toBe('session_create_failed')

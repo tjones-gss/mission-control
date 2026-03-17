@@ -115,6 +115,131 @@ export function cancelQuery(sessionId) {
 }
 
 /**
+ * Spawn a brand-new interactive session via PTY (subscription auth, no API credits).
+ * Detects the created session ID by listening for `new_session` SSE events from the watcher.
+ * Returns the session ID so the client can track it.
+ */
+export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
+  const args = []
+  if (name && typeof name === 'string' && name.trim()) {
+    args.push('--name', name.trim())
+  }
+  if (sdkOptions.permissionMode && VALID_PERMISSION_MODES.has(sdkOptions.permissionMode)) {
+    args.push('--permission-mode', sdkOptions.permissionMode)
+  }
+  if (sdkOptions.model && (VALID_MODEL_SHORTCUTS.has(sdkOptions.model) || /^claude-/.test(sdkOptions.model))) {
+    args.push('--model', sdkOptions.model)
+  }
+
+  let term
+  try {
+    term = pty.spawn(CLAUDE_CMD, args, {
+      cwd: cwd || undefined,
+      env: cleanEnv(),
+      cols: 200,
+      rows: 50,
+    })
+  } catch (spawnErr) {
+    throw new Error(`Failed to spawn PTY: ${spawnErr.message}`)
+  }
+
+  // Use a temporary key until we discover the real session ID
+  const tempId = `_new_${crypto.randomUUID()}`
+  const s = {
+    term,
+    sessionId: tempId,
+    busy: true,
+    exited: false,
+    recentOutput: '',
+    approvals: new Map(),
+  }
+  sessions.set(tempId, s)
+
+  term.onData(data => handlePtyData(s.sessionId, data))
+  term.onExit(({ exitCode }) => handlePtyExit(s.sessionId, exitCode))
+
+  await waitForReady(s)
+  if (s.exited) {
+    sessions.delete(tempId)
+    throw new Error('PTY exited before message could be sent')
+  }
+
+  // Listen for the new_session event to discover the real session ID
+  const sessionIdPromise = new Promise((resolve) => {
+    const timeout = setTimeout(() => { removeListener(); resolve(null) }, 30_000)
+    const removeListener = onEvent((event, data) => {
+      if (event !== 'new_session') return
+      // Match by cwd — normalize both paths for comparison
+      const evtCwd = data?.cwd || data?.session?.cwd || ''
+      const targetCwd = cwd.replace(/\\/g, '/')
+      if (evtCwd.replace(/\\/g, '/') === targetCwd) {
+        const id = data?.sessionId || data?.session?.sessionId
+        if (id) {
+          clearTimeout(timeout)
+          removeListener()
+          resolve(id)
+        }
+      }
+    })
+  })
+
+  // Send the prompt
+  const sanitized = sanitizePrompt(prompt)
+  s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
+  await new Promise(resolve => setTimeout(resolve, 100))
+  s.term.write('\r')
+
+  // Wait for the session ID (the watcher fires new_session when the JSONL appears)
+  const realId = await sessionIdPromise
+
+  if (realId) {
+    // Re-key the PTY under the real session ID
+    sessions.delete(tempId)
+    s.sessionId = realId
+    sessions.set(realId, s)
+
+    emit('sdk_message', { sessionId: realId, ts: Date.now(), msg: { type: 'system', subtype: 'message_sent' } })
+
+    // Set up completion detection (same as startQuery)
+    const removeListener = onEvent((event, data) => {
+      if (event !== 'session_update') return
+      if (!data?.filePath?.includes(realId)) return
+      const current = sessions.get(realId)
+      if (!current || !current.busy) { removeListener(); return }
+      if (current.completionTimer) clearTimeout(current.completionTimer)
+      current.completionTimer = setTimeout(() => {
+        const c = sessions.get(realId)
+        if (!c || !c.busy) return
+        const hasUnresolved = [...c.approvals.values()].some(a => !a.resolved)
+        if (hasUnresolved) return
+        c.busy = false
+        if (c.timeoutId) clearTimeout(c.timeoutId)
+        removeListener()
+        emit('sdk_result', { sessionId: realId, subtype: 'success', ts: Date.now() })
+      }, 8000)
+    })
+    s.removeCompletionListener = removeListener
+
+    const timeoutId = setTimeout(() => {
+      const current = sessions.get(realId)
+      if (current?.busy) {
+        current.busy = false
+        if (current.removeCompletionListener) current.removeCompletionListener()
+        emit('sdk_result', { sessionId: realId, subtype: 'timeout', ts: Date.now() })
+      }
+    }, 600_000)
+    s.timeoutId = timeoutId
+  } else {
+    // Couldn't detect session ID — kill PTY, let client retry
+    s.term.kill()
+    sessions.delete(tempId)
+    throw new Error('New session created but session ID could not be detected')
+  }
+
+  return { ok: true, sessionId: realId, streaming: true }
+}
+
+/**
  * Send a message to a session via pseudo-terminal (uses subscription auth, not API credits).
  * Spawns `claude --resume <id>` in a PTY so the CLI treats it as interactive.
  * Response data comes via the JSONL watcher, not from PTY output.

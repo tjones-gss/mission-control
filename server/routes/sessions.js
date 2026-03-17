@@ -9,7 +9,7 @@ import { getSessionMessages } from '../parsers/messages.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
-import { startQuery, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
+import { startQuery, spawnNewSession, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
 import { onEvent } from '../sse.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -337,25 +337,41 @@ router.post('/new', async (req, res) => {
     return res.status(400).json({ error: 'cwd is required' })
   }
 
-  // New sessions always use CLI path (PTY requires a sessionId to --resume)
-  try {
-    const baseArgs = ['-p', prompt.trim(), '--output-format', 'json']
-    if (name && typeof name === 'string' && name.trim()) {
-      baseArgs.push('--name', name.trim())
-    }
-    if (worktree === true) {
+  // Worktree sessions need --worktree flag which only the CLI subprocess supports
+  if (worktree === true) {
+    try {
+      const baseArgs = ['-p', prompt.trim(), '--output-format', 'json']
+      if (name && typeof name === 'string' && name.trim()) {
+        baseArgs.push('--name', name.trim())
+      }
       baseArgs.push('--worktree')
+      const args = buildCliArgs(baseArgs, options)
+      const { stdout, stderr } = await runClaude({ args, cwd, timeoutMs: 120_000 })
+      let result
+      try { result = JSON.parse(stdout) } catch { result = { raw: stdout } }
+      return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
+    } catch (err) {
+      return res.status(503).json({
+        error: 'session_create_failed',
+        detail: err.message,
+        stderr: err.stderrOutput || null,
+      })
     }
-    const args = buildCliArgs(baseArgs, options)
-    const { stdout, stderr } = await runClaude({ args, cwd, timeoutMs: 120_000 })
-    let result
-    try { result = JSON.parse(stdout) } catch { result = { raw: stdout } }
-    return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
+  }
+
+  // Default: spawn via PTY (uses subscription auth, not API credits)
+  try {
+    const result = await spawnNewSession({
+      prompt: prompt.trim(),
+      cwd,
+      name: name || undefined,
+      sdkOptions: buildSdkOptions(options),
+    })
+    return res.status(202).json(result)
   } catch (err) {
     return res.status(503).json({
       error: 'session_create_failed',
       detail: err.message,
-      stderr: err.stderrOutput || null,
     })
   }
 })
