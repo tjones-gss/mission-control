@@ -26,6 +26,19 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
 // Ensure upload dir exists
 fs.mkdirSync(UPLOAD_DIR, { recursive: true })
 
+// Clean up stale temp files on startup (timers are lost on server restart)
+const STALE_AGE_MS = 5 * 60 * 1000 // 5 minutes
+try {
+  const now = Date.now()
+  for (const file of fs.readdirSync(UPLOAD_DIR)) {
+    const filePath = path.join(UPLOAD_DIR, file)
+    const stat = fs.statSync(filePath)
+    if (now - stat.mtimeMs > STALE_AGE_MS) {
+      fs.unlinkSync(filePath)
+    }
+  }
+} catch { /* ignore cleanup errors */ }
+
 const storage = multer.diskStorage({
   destination: UPLOAD_DIR,
   filename: (_req, file, cb) => {

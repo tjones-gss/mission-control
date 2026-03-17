@@ -12,6 +12,20 @@ vi.mock('../../intelligence/cache.js', () => ({
 vi.mock('../../intelligence/triggers.js', () => ({
   runAnalysis: vi.fn().mockResolvedValue({ summary: 'ok' }),
 }))
+vi.mock('fs', () => ({
+  default: {
+    mkdirSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    readFileSync: vi.fn(() => '{}'),
+    writeFileSync: vi.fn(),
+    existsSync: vi.fn(() => true),
+  },
+  mkdirSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  readFileSync: vi.fn(() => '{}'),
+  writeFileSync: vi.fn(),
+  existsSync: vi.fn(() => true),
+}))
 vi.mock('../../claude-cli.js', () => ({
   runClaude: vi.fn().mockResolvedValue({ stdout: '{"result":"ok"}', stderr: '', exitCode: 0 }),
 }))
@@ -21,7 +35,17 @@ vi.mock('../../sse.js', () => ({
 }))
 vi.mock('multer', () => {
   const multerInstance = {
-    single: () => (req, _res, next) => { next() },
+    single: () => (req, _res, next) => {
+      if (req.headers['x-test-file']) {
+        req.file = {
+          path: 'C:\\tmp\\oversight-uploads\\1234-abcdef.png',
+          originalname: 'screenshot.png',
+          mimetype: 'image/png',
+          size: 1024,
+        }
+      }
+      next()
+    },
   }
   const fn = () => multerInstance
   fn.diskStorage = () => ({})
@@ -39,10 +63,12 @@ vi.mock('../../pty-session.js', () => ({
 
 import express from 'express'
 import request from 'supertest'
+import fs from 'fs'
 import { getAllSessions, getSessionById } from '../../parsers/sessions.js'
 import { getSessionMessages } from '../../parsers/messages.js'
 import { runClaude } from '../../claude-cli.js'
 import { startQuery, isQueryActive, getQueryStatus, resolveApproval, cancelQuery } from '../../pty-session.js'
+import { onEvent } from '../../sse.js'
 import { router } from '../../routes/sessions.js'
 
 const app = express()
@@ -361,5 +387,107 @@ describe('GET /:sessionId/query-status', () => {
     expect(res.status).toBe(200)
     expect(res.body.active).toBe(true)
     expect(res.body.pendingApprovals).toHaveLength(1)
+  })
+})
+
+// ─── POST /:sessionId/message — image upload ────────────────────────────────
+
+describe('POST /:sessionId/message — image upload', () => {
+  it('appends image path to prompt when file uploaded', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
+    const res = await request(app)
+      .post('/abc123/message')
+      .set('x-test-file', '1')
+      .send({ message: 'check this' })
+    expect(res.status).toBe(202)
+    expect(startQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('[User attached an image. View it using the Read tool at: C:/tmp/oversight-uploads/1234-abcdef.png]'),
+      })
+    )
+  })
+
+  it('sends plain prompt without image reference when no file', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
+    const res = await request(app)
+      .post('/abc123/message')
+      .send({ message: 'hello' })
+    expect(res.status).toBe(202)
+    const calledPrompt = startQuery.mock.calls[0][0].prompt
+    expect(calledPrompt).not.toContain('[User attached an image')
+  })
+
+  it('registers cleanup listener after successful startQuery with image', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
+    await request(app)
+      .post('/abc123/message')
+      .set('x-test-file', '1')
+      .send({ message: 'check this' })
+    expect(onEvent).toHaveBeenCalled()
+  })
+
+  it('cleans up file on 400 malformed options JSON', async () => {
+    const res = await request(app)
+      .post('/abc123/message')
+      .set('x-test-file', '1')
+      .send({ message: 'hello', options: '{bad' })
+    expect(res.status).toBe(400)
+    expect(fs.unlinkSync).toHaveBeenCalledWith('C:\\tmp\\oversight-uploads\\1234-abcdef.png')
+  })
+
+  it('cleans up file on 400 missing message', async () => {
+    const res = await request(app)
+      .post('/abc123/message')
+      .set('x-test-file', '1')
+      .send({})
+    expect(res.status).toBe(400)
+    expect(fs.unlinkSync).toHaveBeenCalledWith('C:\\tmp\\oversight-uploads\\1234-abcdef.png')
+  })
+
+  it('cleans up file on 404 session not found', async () => {
+    getSessionById.mockReturnValue(null)
+    const res = await request(app)
+      .post('/abc123/message')
+      .set('x-test-file', '1')
+      .send({ message: 'hello' })
+    expect(res.status).toBe(404)
+    expect(fs.unlinkSync).toHaveBeenCalledWith('C:\\tmp\\oversight-uploads\\1234-abcdef.png')
+  })
+
+  it('cleans up file on 409 active query', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    isQueryActive.mockReturnValue(true)
+    const res = await request(app)
+      .post('/abc123/message')
+      .set('x-test-file', '1')
+      .send({ message: 'hello' })
+    expect(res.status).toBe(409)
+    expect(fs.unlinkSync).toHaveBeenCalledWith('C:\\tmp\\oversight-uploads\\1234-abcdef.png')
+  })
+
+  it('cleans up file on 503 startQuery failure', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockRejectedValue(new Error('PTY spawn failed'))
+    const res = await request(app)
+      .post('/abc123/message')
+      .set('x-test-file', '1')
+      .send({ message: 'hello' })
+    expect(res.status).toBe(503)
+    expect(fs.unlinkSync).toHaveBeenCalledWith('C:\\tmp\\oversight-uploads\\1234-abcdef.png')
+  })
+
+  it('handles undefined options gracefully', async () => {
+    getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
+    startQuery.mockResolvedValue({ ok: true, streaming: true })
+    const res = await request(app)
+      .post('/abc123/message')
+      .send({ message: 'hi' })
+    expect(res.status).toBe(202)
+    expect(startQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ sdkOptions: {} })
+    )
   })
 })

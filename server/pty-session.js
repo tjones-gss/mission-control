@@ -85,7 +85,7 @@ export function resolveApproval(sessionId, approvalId, decision) {
   // Reset output buffer so we don't re-detect the same prompt
   s.recentOutput = ''
 
-  emit('tool_approval_resolved', { sessionId, approvalId })
+  emit('tool_approval_resolved', { sessionId, approvalId, ts: Date.now() })
   return true
 }
 
@@ -99,7 +99,7 @@ export function cancelQuery(sessionId) {
       approval.resolved = true
       if (approval.timeoutId) clearTimeout(approval.timeoutId)
       pendingApprovals.delete(id)
-      emit('tool_approval_resolved', { sessionId, approvalId: id })
+      emit('tool_approval_resolved', { sessionId, approvalId: id, ts: Date.now() })
     }
   }
 
@@ -110,7 +110,7 @@ export function cancelQuery(sessionId) {
   s.busy = false
   s.exited = true
   sessions.delete(sessionId)
-  emit('sdk_result', { sessionId, subtype: 'cancelled' })
+  emit('sdk_result', { sessionId, subtype: 'cancelled', ts: Date.now() })
   return true
 }
 
@@ -190,7 +190,7 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
   s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
   await new Promise(resolve => setTimeout(resolve, 100))
   s.term.write('\r')
-  emit('sdk_message', { sessionId, msg: { type: 'system', subtype: 'message_sent' } })
+  emit('sdk_message', { sessionId, ts: Date.now(), msg: { type: 'system', subtype: 'message_sent' } })
 
   // Completion detection: listen for session_update SSE events (fired by the
   // file watcher when the JSONL changes). When updates stop for 8s, the
@@ -212,7 +212,7 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
       c.busy = false
       if (c.timeoutId) clearTimeout(c.timeoutId)
       removeListener()
-      emit('sdk_result', { sessionId, subtype: 'success' })
+      emit('sdk_result', { sessionId, subtype: 'success', ts: Date.now() })
     }, 8000)
   })
   s.removeCompletionListener = removeListener
@@ -223,7 +223,7 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
     if (current?.busy) {
       current.busy = false
       if (current.removeCompletionListener) current.removeCompletionListener()
-      emit('sdk_result', { sessionId, subtype: 'timeout' })
+      emit('sdk_result', { sessionId, subtype: 'timeout', ts: Date.now() })
     }
   }, 600_000)
   s.timeoutId = timeoutId
@@ -348,6 +348,7 @@ function handlePtyData(sessionId, data) {
         approvalId,
         toolName,
         input: { raw: lines },
+        ts: Date.now(),
       })
 
       // Auto-deny after 120s
@@ -383,6 +384,7 @@ function handlePtyExit(sessionId, exitCode) {
     emit('sdk_result', {
       sessionId,
       subtype: exitCode === 0 ? 'success' : 'error',
+      ts: Date.now(),
     })
   }
 

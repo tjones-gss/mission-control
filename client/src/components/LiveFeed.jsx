@@ -41,6 +41,7 @@ function describeEvent(evt) {
 }
 
 function formatTime(ts) {
+  if (!ts) return ''
   return new Date(ts).toLocaleTimeString('en-US', { hour12: false })
 }
 

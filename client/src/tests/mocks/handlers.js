@@ -13,4 +13,6 @@ export const handlers = [
   http.post('/api/skills', () => HttpResponse.json({ ok: true }, { status: 201 })),
   http.get('/api/sessions', () => HttpResponse.json([])),
   http.get('/api/tasks', () => HttpResponse.json([])),
+  http.get('/api/sessions/:sessionId/messages', () => HttpResponse.json({ sessionId: 'test', messages: [] })),
+  http.post('/api/sessions/:sessionId/message', () => HttpResponse.json({ ok: true, streaming: true }, { status: 202 })),
 ]
