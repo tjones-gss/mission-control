@@ -1,16 +1,10 @@
 vi.mock('fs', () => {
   const promises = {
     access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    mkdir: vi.fn(), readdir: vi.fn(), unlink: vi.fn(),
   }
   return {
-    default: {
-      existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
-      mkdirSync: vi.fn(), writeFileSync: vi.fn(), unlinkSync: vi.fn(),
-      promises,
-    },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
-    mkdirSync: vi.fn(), writeFileSync: vi.fn(), unlinkSync: vi.fn(),
+    default: { promises },
     promises,
   }
 })
@@ -21,7 +15,7 @@ vi.mock('../../parsers/tasks.js', () => ({
 
 import express from 'express'
 import request from 'supertest'
-import fs from 'fs'
+import { promises as fsp } from 'fs'
 import { getAllTaskSessions, getTasksForSession } from '../../parsers/tasks.js'
 import { router } from '../../routes/tasks.js'
 
@@ -31,6 +25,12 @@ app.use('/', router)
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // Default: async operations resolve successfully
+  fsp.mkdir.mockResolvedValue(undefined)
+  fsp.readdir.mockResolvedValue([])
+  fsp.writeFile.mockResolvedValue(undefined)
+  fsp.access.mockResolvedValue(undefined)
+  fsp.unlink.mockResolvedValue(undefined)
 })
 
 // ─── GET / ──────────────────────────────────────────────────────────────────
@@ -67,10 +67,7 @@ describe('POST /:sessionId', () => {
   })
 
   it('201 creates a new task with auto-incremented id', async () => {
-    fs.existsSync.mockReturnValue(false) // session dir does not exist
-    fs.mkdirSync.mockReturnValue(undefined)
-    fs.readdirSync.mockReturnValue([]) // no existing tasks
-    fs.writeFileSync.mockReturnValue(undefined)
+    fsp.readdir.mockResolvedValue([]) // no existing tasks
 
     const res = await request(app).post('/mysession').send({
       subject: 'Write tests',
@@ -84,12 +81,12 @@ describe('POST /:sessionId', () => {
       description: 'Write route tests',
       status: 'in_progress',
     })
+    expect(fsp.mkdir).toHaveBeenCalledTimes(1)
+    expect(fsp.writeFile).toHaveBeenCalledTimes(1)
   })
 
   it('auto-increments id beyond existing tasks', async () => {
-    fs.existsSync.mockReturnValue(true)
-    fs.readdirSync.mockReturnValue(['1.json', '2.json', '3.json'])
-    fs.writeFileSync.mockReturnValue(undefined)
+    fsp.readdir.mockResolvedValue(['1.json', '2.json', '3.json'])
 
     const res = await request(app).post('/mysession').send({ subject: 'New task' })
     expect(res.status).toBe(201)
@@ -97,9 +94,7 @@ describe('POST /:sessionId', () => {
   })
 
   it('task defaults to pending status when not provided', async () => {
-    fs.existsSync.mockReturnValue(true)
-    fs.readdirSync.mockReturnValue([])
-    fs.writeFileSync.mockReturnValue(undefined)
+    fsp.readdir.mockResolvedValue([])
 
     const res = await request(app).post('/mysession').send({})
     expect(res.status).toBe(201)
@@ -123,15 +118,14 @@ describe('PUT /:sessionId/:taskId', () => {
   })
 
   it('404 when task not found', async () => {
-    fs.existsSync.mockReturnValue(false)
+    fsp.access.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
     const res = await request(app).put('/mysession/99').send({ subject: 'x' })
     expect(res.status).toBe(404)
     expect(res.body.error).toMatch(/task not found/i)
   })
 
   it('200 with updated task', async () => {
-    fs.existsSync.mockReturnValue(true)
-    fs.writeFileSync.mockReturnValue(undefined)
+    fsp.access.mockResolvedValue(undefined)
 
     const res = await request(app).put('/mysession/1').send({
       subject: 'Updated task',
@@ -143,6 +137,7 @@ describe('PUT /:sessionId/:taskId', () => {
       subject: 'Updated task',
       status: 'completed',
     })
+    expect(fsp.writeFile).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -162,15 +157,14 @@ describe('DELETE /:sessionId/:taskId', () => {
   })
 
   it('404 when task not found', async () => {
-    fs.existsSync.mockReturnValue(false)
+    fsp.unlink.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
     const res = await request(app).delete('/mysession/99')
     expect(res.status).toBe(404)
     expect(res.body.error).toMatch(/task not found/i)
   })
 
   it('200 ok when task deleted', async () => {
-    fs.existsSync.mockReturnValue(true)
-    fs.unlinkSync.mockReturnValue(undefined)
+    fsp.unlink.mockResolvedValue(undefined)
     const res = await request(app).delete('/mysession/1')
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ ok: true })

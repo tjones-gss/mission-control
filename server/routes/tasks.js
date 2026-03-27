@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { getTasksForSession, getAllTaskSessions } from '../parsers/tasks.js'
-import fs from 'fs'
+import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 
@@ -17,21 +17,19 @@ router.get('/:sessionId', (req, res) => {
   res.json(getTasksForSession(req.params.sessionId))
 })
 
-router.post('/:sessionId', (req, res) => {
+router.post('/:sessionId', async (req, res) => {
   const { sessionId } = req.params
   if (!VALID_ID.test(sessionId)) {
     return res.status(400).json({ error: 'Invalid sessionId' })
   }
 
   const sessionDir = path.join(TASKS_DIR, sessionId)
-  if (!fs.existsSync(sessionDir)) {
-    fs.mkdirSync(sessionDir, { recursive: true })
-  }
+  await fs.mkdir(sessionDir, { recursive: true })
 
   // Find max existing id to auto-increment
   let maxId = 0
   try {
-    const files = fs.readdirSync(sessionDir)
+    const files = await fs.readdir(sessionDir)
     for (const file of files) {
       if (file.endsWith('.json')) {
         const num = parseInt(file.replace('.json', ''), 10)
@@ -55,18 +53,20 @@ router.post('/:sessionId', (req, res) => {
   }
 
   const filePath = path.join(sessionDir, `${newId}.json`)
-  fs.writeFileSync(filePath, JSON.stringify(task, null, 2))
+  await fs.writeFile(filePath, JSON.stringify(task, null, 2))
   res.status(201).json(task)
 })
 
-router.put('/:sessionId/:taskId', (req, res) => {
+router.put('/:sessionId/:taskId', async (req, res) => {
   const { sessionId, taskId } = req.params
   if (!VALID_ID.test(sessionId) || !VALID_ID.test(taskId)) {
     return res.status(400).json({ error: 'Invalid sessionId or taskId' })
   }
 
   const filePath = path.join(TASKS_DIR, sessionId, `${taskId}.json`)
-  if (!fs.existsSync(filePath)) {
+  try {
+    await fs.access(filePath)
+  } catch {
     return res.status(404).json({ error: 'Task not found' })
   }
 
@@ -81,21 +81,22 @@ router.put('/:sessionId/:taskId', (req, res) => {
     blockedBy: req.body.blockedBy || [],
   }
 
-  fs.writeFileSync(filePath, JSON.stringify(task, null, 2))
+  await fs.writeFile(filePath, JSON.stringify(task, null, 2))
   res.json(task)
 })
 
-router.delete('/:sessionId/:taskId', (req, res) => {
+router.delete('/:sessionId/:taskId', async (req, res) => {
   const { sessionId, taskId } = req.params
   if (!VALID_ID.test(sessionId) || !VALID_ID.test(taskId)) {
     return res.status(400).json({ error: 'Invalid sessionId or taskId' })
   }
 
   const filePath = path.join(TASKS_DIR, sessionId, `${taskId}.json`)
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Task not found' })
+  try {
+    await fs.unlink(filePath)
+    res.json({ ok: true })
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'Task not found' })
+    throw err
   }
-
-  fs.unlinkSync(filePath)
-  res.json({ ok: true })
 })
