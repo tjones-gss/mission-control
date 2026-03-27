@@ -111,11 +111,13 @@ describe('SkillsPanel — search', () => {
 // Copy command
 // ──────────────────────────────────────────────────────────────────────────────
 describe('SkillsPanel — copy command', () => {
-  it('clicking clipboard button copies the command', () => {
+  it('clicking clipboard button copies the command', async () => {
     render(<SkillsPanel skills={FULL_SKILLS} loading={false} refetch={vi.fn()} />)
     const copyButtons = screen.getAllByTitle('Copy command')
     fireEvent.click(copyButtons[0])
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('/my-skill')
+    // Wait for the setCopied state update triggered by the clipboard promise
+    await waitFor(() => {})
   })
 })
 

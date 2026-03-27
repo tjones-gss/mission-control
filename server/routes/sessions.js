@@ -11,6 +11,7 @@ import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
 import { startQuery, spawnNewSession, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
 import { onEvent } from '../sse.js'
+import { validateSessionId } from '../utils/validate.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
@@ -104,6 +105,12 @@ router.use((err, _req, res, next) => {
 })
 
 // Note: concurrency control for queries is handled by pty-session.js isQueryActive()
+
+// Validate :sessionId param when present (alphanumeric, hyphens, underscores only)
+router.param('sessionId', (req, res, next, id) => {
+  if (!validateSessionId(id, res)) return
+  next()
+})
 
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI options helper
