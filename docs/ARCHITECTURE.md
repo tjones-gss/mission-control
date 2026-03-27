@@ -225,7 +225,9 @@ AI-powered session analysis using the `claude` CLI.
 | `TaskBoard.jsx` | Task management for selected session |
 | `WorkflowsPanel.jsx` | Workflow/branch listing |
 | `SkillsPanel.jsx` | Installed skills viewer |
-| `TeamsPanel.jsx` | Team configs and inboxes |
+| `TeamsPanel/` | Team configs, inbox feed, compose input |
+| `HistoryTab/` | Command history stats, feed, search, filters |
+| `ErrorBoundary.jsx` | React error boundary with retry |
 | `LiveFeed.jsx` | Right sidebar — real-time SSE event stream |
 | `LegendModal.jsx` | Help overlay with layout, color, shortcut reference |
 | `QuickActions.jsx` | One-click reply buttons (yes/continue/approve) |
@@ -270,17 +272,18 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 
 ## Testing
 
-**~489 total tests** (255 server + 234 client) — all must pass before pushing.
+**~697 total tests** (339 server + 358 client) — all must pass before pushing.
 
 | Suite | Runner | Count | Location |
 |-------|--------|-------|----------|
 | Server parsers | Vitest | ~99 | `server/tests/parsers/` (7 files) |
-| Server routes | Vitest | ~84 | `server/tests/routes/` (6 files) |
-| Server intelligence | Vitest | 8 | `server/tests/intelligence/` |
+| Server routes | Vitest | ~93 | `server/tests/routes/` (7 files incl. stream) |
+| Server intelligence | Vitest | ~37 | `server/tests/intelligence/` (cache, analyzer, triggers) |
+| Server infrastructure | Vitest | ~22 | `server/tests/` (sse, watcher) |
 | Server PTY | Vitest | 59 | `server/tests/` |
 | Client hooks | Vitest + RTL | ~100 | `client/src/tests/hooks/` |
 | Client audio | Vitest | 25 | `client/src/tests/audio/` |
-| Client components | Vitest + RTL | ~109 | `client/src/tests/components/` |
+| Client components | Vitest + RTL | ~233 | `client/src/tests/components/` (17 files) |
 | E2E | Playwright | — | `e2e/` (not yet populated) |
 
 **Test infrastructure:**
@@ -334,7 +337,7 @@ oversight/
 │   │   │   └── useStreamingSession.js
 │   │   ├── tests/
 │   │   │   ├── audio/           # presets.test.js, tts.test.js
-│   │   │   ├── components/      # 5 component test files
+│   │   │   ├── components/      # 17 component test files
 │   │   │   ├── hooks/           # 4 hook test files
 │   │   │   ├── mocks/           # MSW handlers + server
 │   │   │   └── setup.js         # Test globals, MockEventSource
@@ -357,8 +360,10 @@ oversight/
 │   │   └── validate.js           # Shared input validation helpers
 │   ├── tests/
 │   │   ├── parsers/              # 7 parser test files
-│   │   ├── routes/               # 6 route test files
-│   │   └── intelligence/         # Cache tests
+│   │   ├── routes/               # 7 route test files (incl. stream)
+│   │   ├── intelligence/         # Cache, analyzer, triggers tests
+│   │   ├── sse.test.js           # SSE registry tests
+│   │   └── watcher.test.js       # File watcher tests
 │   ├── claude-cli.js
 │   ├── pty-session.js
 │   ├── index.js
