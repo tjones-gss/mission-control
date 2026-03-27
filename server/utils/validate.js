@@ -32,3 +32,25 @@ export function validateSessionId(sessionId, res) {
   }
   return true
 }
+
+// Team names: same rules as workflow names
+const TEAM_NAME_RE = /^[a-zA-Z0-9_-]+$/
+
+export function validateTeamName(name, res) {
+  if (!name || !TEAM_NAME_RE.test(name)) {
+    res.status(400).json({ error: 'Invalid team name. Only letters, digits, underscores, and hyphens are allowed.' })
+    return false
+  }
+  return true
+}
+
+// Message IDs: UUID format or alphanumeric with hyphens
+const MESSAGE_ID_RE = /^[a-zA-Z0-9_-]+$/
+
+export function validateMessageId(id, res) {
+  if (!id || !MESSAGE_ID_RE.test(id)) {
+    res.status(400).json({ error: 'Invalid message ID' })
+    return false
+  }
+  return true
+}

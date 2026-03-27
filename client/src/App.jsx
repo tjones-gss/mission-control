@@ -14,6 +14,7 @@ import { WorkflowsPanel } from './components/WorkflowsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { TeamsPanel } from './components/TeamsPanel/TeamsPanel.jsx'
 import { HistoryTab } from './components/HistoryTab/HistoryTab.jsx'
+import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
@@ -468,8 +469,8 @@ export default function App() {
           )}
           {activeTab === 'workflows' && <WorkflowsPanel workflows={workflows} loading={workflowsLoading} refetch={refetchWorkflows} skills={skills} />}
           {activeTab === 'skills' && <SkillsPanel skills={skills} loading={skillsLoading} refetch={refetchSkills} />}
-          {activeTab === 'teams' && <TeamsPanel teams={teams} refetch={refetchTeams} />}
-          {activeTab === 'history' && <HistoryTab historyVersion={historyVersion} />}
+          {activeTab === 'teams' && <ErrorBoundary><TeamsPanel teams={teams} refetch={refetchTeams} /></ErrorBoundary>}
+          {activeTab === 'history' && <ErrorBoundary><HistoryTab historyVersion={historyVersion} /></ErrorBoundary>}
         </main>
 
         {/* Right: Live Feed */}

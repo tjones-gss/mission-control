@@ -48,8 +48,8 @@ router.post('/:sessionId', async (req, res) => {
       activeForm: req.body.activeForm || '',
       status: req.body.status || 'pending',
       owner: req.body.owner || '',
-      blocks: req.body.blocks || [],
-      blockedBy: req.body.blockedBy || [],
+      blocks: Array.isArray(req.body.blocks) ? req.body.blocks : [],
+      blockedBy: Array.isArray(req.body.blockedBy) ? req.body.blockedBy : [],
     }
 
     const filePath = path.join(sessionDir, `${newId}.json`)
@@ -82,8 +82,8 @@ router.put('/:sessionId/:taskId', async (req, res) => {
       activeForm: req.body.activeForm || '',
       status: req.body.status || 'pending',
       owner: req.body.owner || '',
-      blocks: req.body.blocks || [],
-      blockedBy: req.body.blockedBy || [],
+      blocks: Array.isArray(req.body.blocks) ? req.body.blocks : [],
+      blockedBy: Array.isArray(req.body.blockedBy) ? req.body.blockedBy : [],
     }
 
     await fs.writeFile(filePath, JSON.stringify(task, null, 2))

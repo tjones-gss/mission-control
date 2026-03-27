@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import fs from 'fs'
+import { promises as fsp } from 'fs'
 import path from 'path'
 import os from 'os'
 import { fileURLToPath } from 'url'
@@ -161,28 +162,29 @@ function buildSdkOptions(options) {
 // In-memory cache — loaded once, updated on writes
 let sessionNamesCache = null
 
-export function loadSessionNames() {
+export async function loadSessionNames() {
   if (sessionNamesCache) return sessionNamesCache
   try {
-    sessionNamesCache = JSON.parse(fs.readFileSync(NAMES_FILE, 'utf-8'))
+    sessionNamesCache = JSON.parse(await fsp.readFile(NAMES_FILE, 'utf-8'))
   } catch {
     sessionNamesCache = {}
   }
   return sessionNamesCache
 }
 
-function saveSessionNames(names) {
+async function saveSessionNames(names) {
   sessionNamesCache = names
-  fs.writeFileSync(NAMES_FILE, JSON.stringify(names, null, 2))
+  await fsp.mkdir(path.dirname(NAMES_FILE), { recursive: true })
+  await fsp.writeFile(NAMES_FILE, JSON.stringify(names, null, 2))
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Read endpoints
 // ──────────────────────────────────────────────────────────────────────────────
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const sessions = getAllSessions()
-  const names = loadSessionNames()
+  const names = await loadSessionNames()
   const enriched = sessions.map(s => ({
     ...s,
     displayName: names[s.sessionId] || null,
@@ -190,10 +192,10 @@ router.get('/', (req, res) => {
   res.json(enriched)
 })
 
-router.get('/:sessionId', (req, res) => {
+router.get('/:sessionId', async (req, res) => {
   const session = getSessionById(req.params.sessionId)
   if (!session) return res.status(404).json({ error: 'Session not found' })
-  const names = loadSessionNames()
+  const names = await loadSessionNames()
   res.json({ ...session, displayName: names[session.sessionId] || null })
 })
 
@@ -433,7 +435,7 @@ router.post('/:sessionId/fork', async (req, res) => {
 // Name endpoint
 // ──────────────────────────────────────────────────────────────────────────────
 
-router.post('/:sessionId/name', (req, res) => {
+router.post('/:sessionId/name', async (req, res) => {
   const { sessionId } = req.params
   const { name } = req.body
 
@@ -441,9 +443,9 @@ router.post('/:sessionId/name', (req, res) => {
     return res.status(400).json({ error: 'name is required' })
   }
 
-  const names = loadSessionNames()
+  const names = await loadSessionNames()
   names[sessionId] = name.trim()
-  saveSessionNames(names)
+  await saveSessionNames(names)
 
   res.json({ ok: true, sessionId, displayName: name.trim() })
 })

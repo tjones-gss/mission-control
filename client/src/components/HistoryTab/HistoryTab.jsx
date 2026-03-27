@@ -13,12 +13,13 @@ export function HistoryTab({ historyVersion }) {
   const [search, setSearch] = useState('')
   const [projectFilter, setProjectFilter] = useState('')
   const [grouped, setGrouped] = useState(false)
+  const [fetchError, setFetchError] = useState(null)
 
   const fetchStats = useCallback(async () => {
     try {
       const res = await fetch('/api/history/stats')
       if (res.ok) setStats(await res.json())
-    } catch {}
+    } catch (err) { console.error('Failed to fetch stats:', err) }
   }, [])
 
   const fetchPage = useCallback(async (newOffset = 0, replace = true) => {
@@ -31,7 +32,7 @@ export function HistoryTab({ historyVersion }) {
       setEntries(prev => replace ? data : [...prev, ...data])
       setHasMore(data.length === PAGE_SIZE)
       setOffset(newOffset + data.length)
-    } catch {}
+    } catch (err) { setFetchError('Failed to load history'); console.error('Failed to fetch history:', err) }
   }, [projectFilter])
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export function HistoryTab({ historyVersion }) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <HistoryStatsBar stats={stats} />
+      {fetchError && <div className="px-3 py-1.5 text-xs text-red-400">{fetchError}</div>}
 
       {/* Controls */}
       <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-gray-800">

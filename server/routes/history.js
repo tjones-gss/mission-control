@@ -8,8 +8,8 @@ router.get('/stats', (req, res) => {
 })
 
 router.get('/', (req, res) => {
-  const limit = parseInt(req.query.limit) || 100
-  const offset = parseInt(req.query.offset) || 0
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 100, 1), 1000)
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0)
   const { project, from, to } = req.query
   res.json(getHistory(limit, offset, {
     project,

@@ -26,6 +26,14 @@ app.use('/api/workflows', workflowsRouter)
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }))
 
+// Global error handler — catches thrown errors from async route handlers
+app.use((err, req, res, _next) => {
+  console.error(`[${req.method} ${req.originalUrl}]`, err.message || err)
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 app.listen(PORT, () => {
   console.log(`Server → http://localhost:${PORT}`)
   startWatcher()

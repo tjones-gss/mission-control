@@ -19,12 +19,16 @@ export function TeamInboxFeed({ teamName, messages, onUpdate }) {
   }, [active.length, paused])
 
   async function patchMessage(id, updates) {
-    const res = await fetch(`/api/teams/${teamName}/inbox/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    })
-    if (res.ok) onUpdate?.()
+    try {
+      const res = await fetch(`/api/teams/${teamName}/inbox/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+      if (res.ok) onUpdate?.()
+    } catch (err) {
+      console.error('Failed to update message:', err)
+    }
   }
 
   if (!active.length && !archived.length) {

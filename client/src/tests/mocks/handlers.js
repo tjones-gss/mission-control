@@ -31,4 +31,16 @@ export const handlers = [
   http.get('/api/history/stats', () => HttpResponse.json({
     total: 0, topCommand: null, topProject: null, today: 0, dailyActivity: [],
   })),
+
+  // Tasks
+  http.get('/api/tasks/:sessionId', () => HttpResponse.json([])),
+  http.post('/api/tasks/:sessionId', () => HttpResponse.json({ id: '1', subject: 'test', status: 'pending' }, { status: 201 })),
+  http.put('/api/tasks/:sessionId/:taskId', () => HttpResponse.json({ id: '1', subject: 'updated', status: 'pending' })),
+  http.delete('/api/tasks/:sessionId/:taskId', () => HttpResponse.json({ ok: true })),
+
+  // Session actions
+  http.post('/api/sessions/:sessionId/fork', () => HttpResponse.json({ ok: true }, { status: 201 })),
+  http.post('/api/sessions/:sessionId/name', () => HttpResponse.json({ ok: true })),
+  http.post('/api/sessions/:sessionId/skill', () => HttpResponse.json({ ok: true }, { status: 202 })),
+  http.get('/api/sessions/:sessionId/intelligence', () => HttpResponse.json({ goal: 'test goal', progress: 'in progress', flags: [], subagents: 'none', recommendation: null, analyzedAt: Date.now() })),
 ]
