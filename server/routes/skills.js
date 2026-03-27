@@ -49,8 +49,9 @@ router.put('/:name', async (req, res) => {
   const filePath = path.join(SKILLS_DIR, `${name}.md`)
   try {
     await fs.access(filePath)
-  } catch {
-    return res.status(404).json({ error: 'Skill not found.' })
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })
+    throw err
   }
   await fs.writeFile(filePath, content, 'utf8')
   res.json({ ok: true, name })

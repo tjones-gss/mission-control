@@ -6,7 +6,7 @@ const SKILL_NAME_RE = /^[a-zA-Z0-9_:-]+$/
 // Workflow names: letters, digits, underscores, hyphens
 const WORKFLOW_NAME_RE = /^[a-zA-Z0-9_-]+$/
 
-// Session IDs: UUID format or alphanumeric with hyphens/underscores
+// Session IDs: alphanumeric with hyphens and underscores
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/
 
 export function validateSkillName(name, res) {

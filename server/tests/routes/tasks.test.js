@@ -8,6 +8,7 @@ vi.mock('fs', () => {
     promises,
   }
 })
+vi.mock('../../utils/validate.js', async (importOriginal) => importOriginal())
 vi.mock('../../parsers/tasks.js', () => ({
   getAllTaskSessions: vi.fn().mockReturnValue([]),
   getTasksForSession: vi.fn().mockReturnValue([]),
@@ -63,7 +64,7 @@ describe('POST /:sessionId', () => {
   it('400 when sessionId is invalid', async () => {
     const res = await request(app).post('/bad session id').send({ subject: 'Test' })
     expect(res.status).toBe(400)
-    expect(res.body.error).toMatch(/invalid sessionId/i)
+    expect(res.body.error).toMatch(/invalid session/i)
   })
 
   it('201 creates a new task with auto-incremented id', async () => {
