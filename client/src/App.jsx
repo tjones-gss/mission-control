@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell, Settings, Plus } from 'lucide-react'
+import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell, Settings, Plus, Users, History } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
 import { useNotifications, getNotificationPrefs } from './hooks/useNotifications.js'
@@ -12,6 +12,8 @@ import { KanbanBoard } from './components/KanbanBoard.jsx'
 import { TaskBoard } from './components/TaskBoard.jsx'
 import { WorkflowsPanel } from './components/WorkflowsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
+import { TeamsPanel } from './components/TeamsPanel/TeamsPanel.jsx'
+import { HistoryTab } from './components/HistoryTab/HistoryTab.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
@@ -23,6 +25,8 @@ const TABS = [
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
+  { id: 'teams', label: 'Teams', icon: Users },
+  { id: 'history', label: 'History', icon: History },
 ]
 
 // Map SSE event types to sound event names
@@ -66,6 +70,8 @@ export default function App() {
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
   const [intelligenceVersion, setIntelligenceVersion] = useState(0)
+  const [teamsVersion, setTeamsVersion] = useState(0)
+  const [historyVersion, setHistoryVersion] = useState(0)
 
   const { data: sessions, refetch: refetchSessions } = useApi('/api/sessions', [sessionsVersion])
   const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useApi(
@@ -74,6 +80,7 @@ export default function App() {
   )
   const { data: workflows, loading: workflowsLoading, refetch: refetchWorkflows } = useApi('/api/workflows')
   const { data: skills, loading: skillsLoading, refetch: refetchSkills } = useApi('/api/skills')
+  const { data: teams, refetch: refetchTeams } = useApi('/api/teams', [teamsVersion])
 
   // Auto-select first active session
   useEffect(() => {
@@ -111,6 +118,12 @@ export default function App() {
     }
     if (evt.type === 'intelligence_update') {
       setIntelligenceVersion(v => v + 1)
+    }
+    if (evt.type === 'team_update') {
+      setTeamsVersion(v => v + 1)
+    }
+    if (evt.type === 'history_update') {
+      setHistoryVersion(v => v + 1)
     }
 
     // Play sound for non-session events (needsInput is handled by useNotifications)
@@ -455,6 +468,8 @@ export default function App() {
           )}
           {activeTab === 'workflows' && <WorkflowsPanel workflows={workflows} loading={workflowsLoading} refetch={refetchWorkflows} skills={skills} />}
           {activeTab === 'skills' && <SkillsPanel skills={skills} loading={skillsLoading} refetch={refetchSkills} />}
+          {activeTab === 'teams' && <TeamsPanel teams={teams} refetch={refetchTeams} />}
+          {activeTab === 'history' && <HistoryTab historyVersion={historyVersion} />}
         </main>
 
         {/* Right: Live Feed */}

@@ -97,6 +97,7 @@ Oversight is a local web dashboard that monitors Claude Code agent activity in r
 | File | Purpose |
 |------|---------|
 | `server/index.js` | Express app setup, mounts all route modules, starts watcher |
+| `server/utils/validate.js` | Shared input validation helpers (`validateSessionId`, `validateSkillName`, `validateWorkflowName`) used by route modules |
 
 ### Parsers
 
@@ -104,7 +105,7 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 
 | File | Input | Output |
 |------|-------|--------|
-| `parsers/sessions.js` | `projects/*/*.jsonl` | Session list with metadata, agent trees, `needsInput` detection |
+| `parsers/sessions.js` | `projects/*/*.jsonl` | Session list with metadata, agent trees, `needsInput` detection. `getSessionById()` does a targeted file lookup instead of parsing all sessions. |
 | `parsers/messages.js` | `projects/*/*.jsonl` | Parsed message blocks (text, thinking, tool calls) for a session |
 | `parsers/tasks.js` | `tasks/{sessionId}/*.json` | Task board items per session |
 | `parsers/teams.js` | `teams/*/config.json` + `inboxes/` | Team configs and inbox messages |
@@ -116,8 +117,8 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 
 | Module | Key Endpoints |
 |--------|--------------|
-| `routes/sessions.js` | `GET /`, `GET /:id`, `GET /:id/messages`, `POST /:id/message`, `POST /:id/skill`, `POST /:id/fork`, `POST /:id/name`, `POST /new`, `POST /:id/tool-approval`, `POST /:id/cancel`, `GET /:id/query-status` |
-| `routes/tasks.js` | `GET /:sessionId`, task CRUD |
+| `routes/sessions.js` | `GET /`, `GET /:id`, `GET /:id/messages`, `POST /:id/message`, `POST /:id/skill`, `POST /:id/fork`, `POST /:id/name`, `POST /new`, `POST /:id/tool-approval`, `POST /:id/cancel`, `GET /:id/query-status`. Uses `router.param('sessionId')` middleware for input validation. |
+| `routes/tasks.js` | `GET /:sessionId`, task CRUD (async `fs/promises`) |
 | `routes/skills.js` | `GET /`, skill listing |
 | `routes/teams.js` | `GET /`, `POST /:name/inbox`, `PATCH /:name/inbox/:messageId` |
 | `routes/workflows.js` | `GET /`, workflow listing |
@@ -269,15 +270,17 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 
 ## Testing
 
-**~375 total tests** — all must pass before pushing.
+**~489 total tests** (255 server + 234 client) — all must pass before pushing.
 
 | Suite | Runner | Count | Location |
 |-------|--------|-------|----------|
-| Server parsers | Vitest | 91 | `server/tests/parsers/` |
-| Server routes | Vitest | ~70 | `server/tests/routes/` |
-| Client hooks | Vitest + RTL | ~85 | `client/src/tests/hooks/` |
+| Server parsers | Vitest | ~99 | `server/tests/parsers/` (7 files) |
+| Server routes | Vitest | ~84 | `server/tests/routes/` (6 files) |
+| Server intelligence | Vitest | 8 | `server/tests/intelligence/` |
+| Server PTY | Vitest | 59 | `server/tests/` |
+| Client hooks | Vitest + RTL | ~100 | `client/src/tests/hooks/` |
 | Client audio | Vitest | 25 | `client/src/tests/audio/` |
-| Client components | Vitest + RTL | ~104 | `client/src/tests/components/` |
+| Client components | Vitest + RTL | ~109 | `client/src/tests/components/` |
 | E2E | Playwright | — | `e2e/` (not yet populated) |
 
 **Test infrastructure:**
@@ -350,9 +353,12 @@ oversight/
 │   │   └── triggers.js
 │   ├── parsers/                  # 7 parser modules
 │   ├── routes/                   # 7 route modules
+│   ├── utils/
+│   │   └── validate.js           # Shared input validation helpers
 │   ├── tests/
-│   │   ├── parsers/              # 6 parser test files
-│   │   └── routes/               # 4 route test files
+│   │   ├── parsers/              # 7 parser test files
+│   │   ├── routes/               # 6 route test files
+│   │   └── intelligence/         # Cache tests
 │   ├── claude-cli.js
 │   ├── pty-session.js
 │   ├── index.js
