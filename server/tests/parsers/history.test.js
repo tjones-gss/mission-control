@@ -104,3 +104,126 @@ describe('getHistory()', () => {
     expect(result).toEqual([])
   })
 })
+
+// ─── getHistory() with offset and filters ────────────────────────────────────
+
+describe('getHistory() with offset', () => {
+  it('returns entries starting at offset', () => {
+    const lines = Array.from({ length: 5 }, (_, i) =>
+      JSON.stringify({ display: `cmd-${i}`, timestamp: i * 1000, project: '/p' })
+    )
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(lines.join('\n'))
+
+    // All 5 reversed = [cmd-4, cmd-3, cmd-2, cmd-1, cmd-0]. offset=2, limit=2 → [cmd-2, cmd-1]
+    const result = getHistory(2, 2)
+    expect(result).toHaveLength(2)
+    expect(result[0].display).toBe('cmd-2')
+    expect(result[1].display).toBe('cmd-1')
+  })
+
+  it('filters by project', () => {
+    const lines = [
+      JSON.stringify({ display: 'a', timestamp: 1000, project: '/projectA' }),
+      JSON.stringify({ display: 'b', timestamp: 2000, project: '/projectB' }),
+      JSON.stringify({ display: 'c', timestamp: 3000, project: '/projectA' }),
+    ]
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(lines.join('\n'))
+
+    const result = getHistory(100, 0, { project: '/projectA' })
+    expect(result).toHaveLength(2)
+    expect(result.every(e => e.project === '/projectA')).toBe(true)
+  })
+
+  it('filters by from timestamp', () => {
+    const lines = [
+      JSON.stringify({ display: 'old', timestamp: 1000, project: '/p' }),
+      JSON.stringify({ display: 'new', timestamp: 5000, project: '/p' }),
+    ]
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(lines.join('\n'))
+
+    const result = getHistory(100, 0, { from: 3000 })
+    expect(result).toHaveLength(1)
+    expect(result[0].display).toBe('new')
+  })
+
+  it('filters by to timestamp', () => {
+    const lines = [
+      JSON.stringify({ display: 'old', timestamp: 1000, project: '/p' }),
+      JSON.stringify({ display: 'new', timestamp: 5000, project: '/p' }),
+    ]
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(lines.join('\n'))
+
+    const result = getHistory(100, 0, { to: 2000 })
+    expect(result).toHaveLength(1)
+    expect(result[0].display).toBe('old')
+  })
+})
+
+// ─── getHistoryStats() ────────────────────────────────────────────────────────
+
+import { getHistoryStats } from '../../parsers/history.js'
+
+describe('getHistoryStats()', () => {
+  it('returns zeroed stats when file does not exist', () => {
+    fs.existsSync.mockReturnValue(false)
+    const stats = getHistoryStats()
+    expect(stats.total).toBe(0)
+    expect(stats.topCommand).toBeNull()
+    expect(stats.topProject).toBeNull()
+    expect(stats.today).toBe(0)
+    expect(stats.dailyActivity).toHaveLength(7)
+    expect(stats.dailyActivity.every(d => d.count === 0)).toBe(true)
+  })
+
+  it('counts total entries', () => {
+    const lines = [
+      JSON.stringify({ display: 'a', timestamp: 1000, project: '/p' }),
+      JSON.stringify({ display: 'b', timestamp: 2000, project: '/p' }),
+    ]
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(lines.join('\n'))
+    expect(getHistoryStats().total).toBe(2)
+  })
+
+  it('identifies top command', () => {
+    const lines = [
+      JSON.stringify({ display: 'git status', timestamp: 1000, project: '/p' }),
+      JSON.stringify({ display: 'git status', timestamp: 2000, project: '/p' }),
+      JSON.stringify({ display: 'ls', timestamp: 3000, project: '/p' }),
+    ]
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(lines.join('\n'))
+    expect(getHistoryStats().topCommand).toBe('git status')
+  })
+
+  it('identifies top project', () => {
+    const lines = [
+      JSON.stringify({ display: 'a', timestamp: 1000, project: '/projectA' }),
+      JSON.stringify({ display: 'b', timestamp: 2000, project: '/projectA' }),
+      JSON.stringify({ display: 'c', timestamp: 3000, project: '/projectB' }),
+    ]
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(lines.join('\n'))
+    expect(getHistoryStats().topProject).toBe('/projectA')
+  })
+
+  it('returns 7 daily activity buckets', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(
+      JSON.stringify({ display: 'a', timestamp: Date.now(), project: '/p' })
+    )
+    const { dailyActivity } = getHistoryStats()
+    expect(dailyActivity).toHaveLength(7)
+    expect(dailyActivity[6].count).toBeGreaterThanOrEqual(1) // today
+  })
+
+  it('skips malformed lines', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue('NOT JSON\n' + JSON.stringify({ display: 'a', timestamp: 1000, project: '/p' }))
+    expect(getHistoryStats().total).toBe(1)
+  })
+})

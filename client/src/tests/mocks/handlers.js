@@ -15,4 +15,20 @@ export const handlers = [
   http.get('/api/tasks', () => HttpResponse.json([])),
   http.get('/api/sessions/:sessionId/messages', () => HttpResponse.json({ sessionId: 'test', messages: [] })),
   http.post('/api/sessions/:sessionId/message', () => HttpResponse.json({ ok: true, streaming: true }, { status: 202 })),
+
+  // Teams
+  http.get('/api/teams', () => HttpResponse.json([])),
+  http.post('/api/teams/:name/inbox', () => HttpResponse.json(
+    { id: 'mock-id', sender: 'user', content: 'test', timestamp: new Date().toISOString(), read: false, archived: false },
+    { status: 201 }
+  )),
+  http.patch('/api/teams/:name/inbox/:messageId', () => HttpResponse.json(
+    { id: 'mock-id', sender: 'user', content: 'test', timestamp: new Date().toISOString(), read: true, archived: false }
+  )),
+
+  // History
+  http.get('/api/history', () => HttpResponse.json([])),
+  http.get('/api/history/stats', () => HttpResponse.json({
+    total: 0, topCommand: null, topProject: null, today: 0, dailyActivity: [],
+  })),
 ]
