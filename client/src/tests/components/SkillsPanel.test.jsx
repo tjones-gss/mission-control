@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server.js'
@@ -116,8 +116,8 @@ describe('SkillsPanel — copy command', () => {
     const copyButtons = screen.getAllByTitle('Copy command')
     fireEvent.click(copyButtons[0])
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('/my-skill')
-    // Wait for the setCopied state update triggered by the clipboard promise
-    await waitFor(() => {})
+    // Flush the setCopied state update triggered by the clipboard promise
+    await act(async () => {})
   })
 })
 
