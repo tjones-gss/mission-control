@@ -36,8 +36,12 @@ router.post('/', async (req, res) => {
   } catch {
     // file does not exist — proceed
   }
-  await fs.mkdir(SKILLS_DIR, { recursive: true })
-  await fs.writeFile(filePath, content, 'utf8')
+  try {
+    await fs.mkdir(SKILLS_DIR, { recursive: true })
+    await fs.writeFile(filePath, content, 'utf8')
+  } catch (err) {
+    throw err
+  }
   res.status(201).json({ ok: true, name })
 })
 
@@ -53,7 +57,11 @@ router.put('/:name', async (req, res) => {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })
     throw err
   }
-  await fs.writeFile(filePath, content, 'utf8')
+  try {
+    await fs.writeFile(filePath, content, 'utf8')
+  } catch (err) {
+    throw err
+  }
   res.json({ ok: true, name })
 })
 

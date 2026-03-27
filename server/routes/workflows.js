@@ -81,8 +81,12 @@ router.post('/', async (req, res) => {
     updatedAt: now,
   }
 
-  await fs.mkdir(WORKFLOWS_DIR, { recursive: true })
-  await fs.writeFile(filePath, JSON.stringify(workflow, null, 2), 'utf8')
+  try {
+    await fs.mkdir(WORKFLOWS_DIR, { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify(workflow, null, 2), 'utf8')
+  } catch (err) {
+    throw err
+  }
   res.status(201).json(workflow)
 })
 
@@ -112,7 +116,11 @@ router.put('/:name', async (req, res) => {
     updatedAt: Date.now(),
   }
 
-  await fs.writeFile(filePath, JSON.stringify(updated, null, 2), 'utf8')
+  try {
+    await fs.writeFile(filePath, JSON.stringify(updated, null, 2), 'utf8')
+  } catch (err) {
+    throw err
+  }
   res.json(updated)
 })
 
@@ -161,7 +169,11 @@ router.post('/:name/export', async (req, res) => {
   }
 
   const content = generateSkillMd(workflow)
-  await fs.mkdir(SKILLS_DIR, { recursive: true })
-  await fs.writeFile(skillPath, content, 'utf8')
+  try {
+    await fs.mkdir(SKILLS_DIR, { recursive: true })
+    await fs.writeFile(skillPath, content, 'utf8')
+  } catch (err) {
+    throw err
+  }
   res.json({ ok: true, name, skillPath })
 })
