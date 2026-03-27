@@ -28,8 +28,21 @@ export function getAllSessions() {
 }
 
 export function getSessionById(sessionId) {
-  const all = getAllSessions()
-  return all.find(s => s.sessionId === sessionId) || null
+  if (!fs.existsSync(CLAUDE_DIR)) return null
+
+  // Search project dirs for the specific session file instead of parsing everything
+  const projectDirs = fs.readdirSync(CLAUDE_DIR, { withFileTypes: true })
+    .filter(d => d.isDirectory())
+
+  const targetFile = `${sessionId}.jsonl`
+  for (const projectDir of projectDirs) {
+    const filePath = path.join(CLAUDE_DIR, projectDir.name, targetFile)
+    if (fs.existsSync(filePath)) {
+      return parseSessionFile(filePath, projectDir.name, targetFile)
+    }
+  }
+
+  return null
 }
 
 function parseSessionFile(filePath, projectDirName, filename) {

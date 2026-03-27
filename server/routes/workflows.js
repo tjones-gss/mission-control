@@ -3,20 +3,12 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import { getAllWorkflows } from '../parsers/workflows.js'
+import { validateWorkflowName as validateName } from '../utils/validate.js'
 
 export const router = Router()
 
 const WORKFLOWS_DIR = path.join(os.homedir(), '.claude', 'workflows')
 const SKILLS_DIR = path.join(os.homedir(), '.claude', 'skills')
-const NAME_RE = /^[a-zA-Z0-9_-]+$/
-
-function validateName(name, res) {
-  if (!NAME_RE.test(name)) {
-    res.status(400).json({ error: 'Invalid workflow name. Only letters, digits, underscores, and hyphens are allowed.' })
-    return false
-  }
-  return true
-}
 
 function generateSkillMd(workflow) {
   const lines = [

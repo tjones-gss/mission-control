@@ -416,22 +416,55 @@ describe('needsInput detection', () => {
 })
 
 describe('getSessionById()', () => {
-  it('returns null when session not found', () => {
+  it('returns null when projects dir does not exist', () => {
     fs.existsSync.mockReturnValue(false)
     expect(getSessionById('nonexistent')).toBeNull()
   })
 
-  it('returns the matching session when found', () => {
+  it('returns null when session file not found in any project dir', () => {
+    fs.existsSync.mockImplementation((p) => {
+      // Projects dir exists, but session file does not
+      if (p.endsWith('projects')) return true
+      return false
+    })
+    fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
+
+    expect(getSessionById('nonexistent')).toBeNull()
+  })
+
+  it('returns the matching session without scanning all files', () => {
     const record = makeRecord({ slug: 'my-proj' })
+
     fs.existsSync.mockReturnValue(true)
-    fs.readdirSync
-      .mockReturnValueOnce([makeProjectDirEntry('C--project')])
-      .mockReturnValueOnce(['target-session.jsonl'])
+    fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
     fs.statSync.mockReturnValue(makeStat())
     fs.readFileSync.mockReturnValue(JSON.stringify(record))
 
     const result = getSessionById('target-session')
     expect(result).not.toBeNull()
     expect(result.sessionId).toBe('target-session')
+    // Verify it only called readFileSync once (for the target file, not all files)
+    expect(fs.readFileSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('searches across multiple project dirs', () => {
+    const record = makeRecord({ slug: 'found-it' })
+
+    fs.existsSync.mockImplementation((p) => {
+      // Only the second project dir has the session file
+      if (p.includes('C--project-2') && p.endsWith('.jsonl')) return true
+      if (p.endsWith('.jsonl')) return false
+      return true // dirs exist
+    })
+    fs.readdirSync.mockReturnValue([
+      makeProjectDirEntry('C--project-1'),
+      makeProjectDirEntry('C--project-2'),
+    ])
+    fs.statSync.mockReturnValue(makeStat())
+    fs.readFileSync.mockReturnValue(JSON.stringify(record))
+
+    const result = getSessionById('my-session')
+    expect(result).not.toBeNull()
+    expect(result.sessionId).toBe('my-session')
   })
 })
