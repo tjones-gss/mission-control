@@ -4,7 +4,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import { randomUUID } from 'crypto'
-import { validateTeamName, validateMessageId } from '../utils/validate.js'
+import { validateTeamName, validateMessageId, sanitizeSender } from '../utils/validate.js'
 
 const TEAMS_DIR = path.join(os.homedir(), '.claude', 'teams')
 
@@ -16,7 +16,8 @@ router.post('/:name/inbox', async (req, res) => {
   const { name } = req.params
   if (!validateTeamName(name, res)) return
 
-  const { content, sender = 'user' } = req.body
+  const { content, sender: rawSender } = req.body
+  const sender = sanitizeSender(rawSender)
 
   if (!content || typeof content !== 'string' || !content.trim()) {
     return res.status(400).json({ error: 'content is required' })

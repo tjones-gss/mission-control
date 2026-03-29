@@ -54,3 +54,13 @@ export function validateMessageId(id, res) {
   }
   return true
 }
+
+// Sender names: letters, digits, underscores, hyphens, spaces
+const SENDER_RE = /^[a-zA-Z0-9_ -]+$/
+
+export function sanitizeSender(raw) {
+  if (!raw || typeof raw !== 'string') return 'user'
+  const trimmed = raw.trim().slice(0, 50)
+  if (!SENDER_RE.test(trimmed)) return 'user'
+  return trimmed
+}

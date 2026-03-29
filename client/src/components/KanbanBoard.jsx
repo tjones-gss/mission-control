@@ -105,11 +105,11 @@ function Column({ title, titleClass, sessions, selectedId, onSelect, emptyLabel 
         <h3 className={`text-xs font-semibold uppercase tracking-wider ${titleClass}`}>
           {title}
         </h3>
-        <span className="text-xs text-gray-600 font-mono">{sessions.length}</span>
+        <span className="text-xs text-gray-500 font-mono">{sessions.length}</span>
       </div>
       <div className="flex flex-col gap-2 overflow-y-auto">
         {sessions.length === 0 ? (
-          <p className="text-xs text-gray-700 italic px-1">{emptyLabel}</p>
+          <p className="text-xs text-gray-500 italic px-1">{emptyLabel}</p>
         ) : (
           sessions.map((session) => (
             <SessionCard

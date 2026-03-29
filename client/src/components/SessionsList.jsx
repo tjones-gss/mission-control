@@ -37,7 +37,7 @@ function SectionHeader({ title, count, collapsed, onToggle, titleClass }) {
     >
       <Chevron size={12} className="text-gray-600 shrink-0" />
       <span className={`text-xs font-semibold uppercase tracking-wider ${titleClass}`}>{title}</span>
-      <span className="text-xs text-gray-700 ml-auto">{count}</span>
+      <span className="text-xs text-gray-500 ml-auto">{count}</span>
     </button>
   )
 }
@@ -107,14 +107,14 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
 
       {/* Footer: model + tokens */}
       {(session.model || session.tokenUsage) && (
-        <div className="mt-1.5 flex items-center gap-2 text-xs text-gray-700">
+        <div className="mt-1.5 flex items-center gap-2 text-xs text-gray-500">
           {modelShort(session.model) && (
             <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-mono text-[10px]">
               {modelShort(session.model)}
             </span>
           )}
           {totalTokens(session.tokenUsage) && (
-            <span className="text-gray-700">{totalTokens(session.tokenUsage)} tok</span>
+            <span className="text-gray-500">{totalTokens(session.tokenUsage)} tok</span>
           )}
         </div>
       )}
@@ -149,6 +149,14 @@ export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, on
   }, [selectedId, sessions])
 
   if (!sessions) return <div className="p-4 text-gray-500">Loading...</div>
+
+  if (sessions.length === 0) {
+    return (
+      <div className="p-4 text-center text-gray-500 text-xs">
+        No sessions yet — start a Claude Code session to see it here.
+      </div>
+    )
+  }
 
   const toggle = key => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
 

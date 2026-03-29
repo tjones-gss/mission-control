@@ -25,6 +25,11 @@
   }
 }
 
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
 body {
   @apply bg-gray-950 text-gray-100 font-mono;
 }

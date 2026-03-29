@@ -15,29 +15,38 @@ export function HistoryTab({ historyVersion }) {
   const [grouped, setGrouped] = useState(false)
   const [fetchError, setFetchError] = useState(null)
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (signal) => {
     try {
-      const res = await fetch('/api/history/stats')
+      const res = await fetch('/api/history/stats', { signal })
       if (res.ok) setStats(await res.json())
-    } catch (err) { console.error('Failed to fetch stats:', err) }
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      console.error('Failed to fetch stats:', err)
+    }
   }, [])
 
-  const fetchPage = useCallback(async (newOffset = 0, replace = true) => {
+  const fetchPage = useCallback(async (newOffset = 0, replace = true, signal) => {
     const params = new URLSearchParams({ limit: PAGE_SIZE, offset: newOffset })
     if (projectFilter) params.set('project', projectFilter)
     try {
-      const res = await fetch(`/api/history?${params}`)
+      const res = await fetch(`/api/history?${params}`, { signal })
       if (!res.ok) return
       const data = await res.json()
       setEntries(prev => replace ? data : [...prev, ...data])
       setHasMore(data.length === PAGE_SIZE)
       setOffset(newOffset + data.length)
-    } catch (err) { setFetchError('Failed to load history'); console.error('Failed to fetch history:', err) }
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      setFetchError('Failed to load history')
+      console.error('Failed to fetch history:', err)
+    }
   }, [projectFilter])
 
   useEffect(() => {
-    fetchStats()
-    fetchPage(0, true)
+    const controller = new AbortController()
+    fetchStats(controller.signal)
+    fetchPage(0, true, controller.signal)
+    return () => controller.abort()
   }, [fetchStats, fetchPage, historyVersion])
 
   const allProjects = [...new Set(entries.map(e => e.project).filter(Boolean))]

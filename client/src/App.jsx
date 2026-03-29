@@ -258,9 +258,9 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
       {/* Header */}
-      <header className="flex items-center px-4 py-3 border-b border-gray-800 shrink-0">
+      <header className="flex flex-wrap items-center px-4 py-2 border-b border-gray-800 shrink-0 gap-y-1">
         <span className="text-sm font-bold text-gray-200 tracking-tight">Oversight</span>
-        <span className="ml-2 text-xs text-gray-600 tracking-tight">behind the agent curtain</span>
+        <span className="ml-2 text-xs text-gray-600 tracking-tight hidden sm:inline">behind the agent curtain</span>
         {!connected && (
           <span className="ml-3 flex items-center gap-1.5 text-xs text-red-400" title="Live connection lost — reconnecting...">
             <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
@@ -284,7 +284,7 @@ export default function App() {
             {needsInputSessions.length} waiting
           </button>
         )}
-        <nav className="ml-auto flex items-center gap-1">
+        <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full md:w-auto md:ml-auto order-last md:order-none">
           {TABS.map(tab => {
             const Icon = tab.icon
             return (
@@ -322,11 +322,11 @@ export default function App() {
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Sessions list */}
-        <aside className="w-56 shrink-0 border-r border-gray-800 overflow-hidden flex flex-col">
+        <aside className="hidden md:flex w-56 shrink-0 border-r border-gray-800 overflow-hidden flex-col">
           <div className="px-3 py-2 border-b border-gray-800 flex items-center">
             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Sessions</span>
             {sessions && (
-              <span className="ml-2 text-xs text-gray-700">{sessions.length}</span>
+              <span className="ml-2 text-xs text-gray-500">{sessions.length}</span>
             )}
             <button
               onClick={() => setShowNewSession(s => !s)}
@@ -474,7 +474,7 @@ export default function App() {
         </main>
 
         {/* Right: Live Feed */}
-        <aside className="w-64 shrink-0 border-l border-gray-800 overflow-hidden">
+        <aside className="hidden lg:block w-64 shrink-0 border-l border-gray-800 overflow-hidden">
           <LiveFeed events={events} />
         </aside>
       </div>
