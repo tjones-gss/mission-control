@@ -1,5 +1,8 @@
 import * as pty from 'node-pty'
 import crypto from 'crypto'
+import path from 'path'
+import fs from 'fs'
+import os from 'os'
 import { emit, onEvent } from './sse.js'
 
 // On Windows, node-pty needs the .exe extension to find executables in PATH
@@ -37,6 +40,22 @@ const CONTROL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g
 
 function sanitizePrompt(str) {
   return str.replace(ANSI_RE, '').replace(CONTROL_RE, '')
+}
+
+// Collect all existing session IDs from ~/.claude/projects/ (quick fs scan)
+function getExistingSessionIds() {
+  const ids = new Set()
+  const projectsDir = path.join(os.homedir(), '.claude', 'projects')
+  try {
+    for (const dir of fs.readdirSync(projectsDir, { withFileTypes: true })) {
+      if (!dir.isDirectory()) continue
+      const dirPath = path.join(projectsDir, dir.name)
+      for (const f of fs.readdirSync(dirPath)) {
+        if (f.endsWith('.jsonl')) ids.add(f.replace('.jsonl', ''))
+      }
+    }
+  } catch { /* projects dir may not exist */ }
+  return ids
 }
 
 // Patterns that indicate the CLI is asking for tool approval.
@@ -106,12 +125,78 @@ export function cancelQuery(sessionId) {
   if (s.timeoutId) clearTimeout(s.timeoutId)
   if (s.completionTimer) clearTimeout(s.completionTimer)
   if (s.removeCompletionListener) s.removeCompletionListener()
+  if (s._completionState?.promptDetectTimer) {
+    clearTimeout(s._completionState.promptDetectTimer)
+  }
+  s._completionState = null
   s.term.kill()
   s.busy = false
   s.exited = true
   sessions.delete(sessionId)
   emit('sdk_result', { sessionId, subtype: 'cancelled', ts: Date.now() })
   return true
+}
+
+/**
+ * Mark a query as complete — idempotent so both detection mechanisms can race safely.
+ */
+function markComplete(sessionId, subtype) {
+  const s = sessions.get(sessionId)
+  if (!s || !s.busy) return
+
+  s.busy = false
+  if (s.timeoutId) clearTimeout(s.timeoutId)
+  if (s.completionTimer) clearTimeout(s.completionTimer)
+  if (s.removeCompletionListener) s.removeCompletionListener()
+  if (s._completionState?.promptDetectTimer) {
+    clearTimeout(s._completionState.promptDetectTimer)
+  }
+  s._completionState = null
+  s.recentOutput = ''
+
+  emit('sdk_result', { sessionId, subtype, ts: Date.now() })
+}
+
+/**
+ * Set up dual completion detection for an active query:
+ * 1. JSONL silence fallback — 8s of no file-watcher updates
+ * 2. PTY output silence — 3s of no PTY data (handled in handlePtyData)
+ * 3. Safety timeout — 10 minutes hard cap
+ */
+function setupCompletionDetection(sessionId) {
+  const s = sessions.get(sessionId)
+  if (!s) return
+
+  // State for PTY silence-based detection (consumed by handlePtyData).
+  // Each PTY data chunk resets the 3s timer; when PTY goes quiet, response is done.
+  s._completionState = { promptDetectTimer: null }
+
+  // Mechanism 1: JSONL silence fallback (8s)
+  const removeJsonlListener = onEvent((event, data) => {
+    if (event !== 'session_update') return
+    if (!data?.filePath?.includes(sessionId)) return
+    const current = sessions.get(sessionId)
+    if (!current || !current.busy) { removeJsonlListener(); return }
+
+    if (current.completionTimer) clearTimeout(current.completionTimer)
+    current.completionTimer = setTimeout(() => {
+      const c = sessions.get(sessionId)
+      if (!c || !c.busy) return
+      const hasUnresolved = [...c.approvals.values()].some(a => !a.resolved)
+      if (hasUnresolved) return
+      markComplete(sessionId, 'success')
+    }, 8000)
+  })
+  s.removeCompletionListener = removeJsonlListener
+
+  // Mechanism 3: Safety timeout (10 min)
+  const timeoutId = setTimeout(() => {
+    const current = sessions.get(sessionId)
+    if (current?.busy) {
+      markComplete(sessionId, 'timeout')
+    }
+  }, 600_000)
+  s.timeoutId = timeoutId
 }
 
 /**
@@ -164,21 +249,24 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
     throw new Error('PTY exited before message could be sent')
   }
 
-  // Listen for the new_session event to discover the real session ID
+  // Listen for watcher events to discover the real session ID.
+  // On Windows, chokidar's awaitWriteFinish can cause `change` to fire instead
+  // of `add`, so we listen for both `new_session` and `session_update`.
+  // Snapshot ALL existing session IDs from the filesystem before spawning,
+  // then detect the first truly new one.
+  const existingIds = getExistingSessionIds()
   const sessionIdPromise = new Promise((resolve) => {
     const timeout = setTimeout(() => { removeListener(); resolve(null) }, 30_000)
     const removeListener = onEvent((event, data) => {
-      if (event !== 'new_session') return
-      // Match by cwd — normalize both paths for comparison
-      const evtCwd = data?.cwd || data?.session?.cwd || ''
-      const targetCwd = cwd.replace(/\\/g, '/')
-      if (evtCwd.replace(/\\/g, '/') === targetCwd) {
-        const id = data?.sessionId || data?.session?.sessionId
-        if (id) {
-          clearTimeout(timeout)
-          removeListener()
-          resolve(id)
-        }
+      if (event !== 'new_session' && event !== 'session_update') return
+      if (!data?.filePath) return
+      const parts = data.filePath.replace(/\\/g, '/').split('/')
+      if (parts.length < 3 || parts[0] !== 'projects') return
+      const id = path.basename(data.filePath, '.jsonl')
+      if (id && !existingIds.has(id)) {
+        clearTimeout(timeout)
+        removeListener()
+        resolve(id)
       }
     })
   })
@@ -200,38 +288,10 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
 
     emit('sdk_message', { sessionId: realId, ts: Date.now(), msg: { type: 'system', subtype: 'message_sent' } })
 
-    // Set up completion detection (same as startQuery)
-    const removeListener = onEvent((event, data) => {
-      if (event !== 'session_update') return
-      if (!data?.filePath?.includes(realId)) return
-      const current = sessions.get(realId)
-      if (!current || !current.busy) { removeListener(); return }
-      if (current.completionTimer) clearTimeout(current.completionTimer)
-      current.completionTimer = setTimeout(() => {
-        const c = sessions.get(realId)
-        if (!c || !c.busy) return
-        const hasUnresolved = [...c.approvals.values()].some(a => !a.resolved)
-        if (hasUnresolved) return
-        c.busy = false
-        if (c.timeoutId) clearTimeout(c.timeoutId)
-        removeListener()
-        emit('sdk_result', { sessionId: realId, subtype: 'success', ts: Date.now() })
-      }, 8000)
-    })
-    s.removeCompletionListener = removeListener
-
-    const timeoutId = setTimeout(() => {
-      const current = sessions.get(realId)
-      if (current?.busy) {
-        current.busy = false
-        if (current.removeCompletionListener) current.removeCompletionListener()
-        emit('sdk_result', { sessionId: realId, subtype: 'timeout', ts: Date.now() })
-      }
-    }, 600_000)
-    s.timeoutId = timeoutId
+    setupCompletionDetection(realId)
   } else {
     // Couldn't detect session ID — kill PTY, let client retry
-    s.term.kill()
+    try { s.term.kill() } catch { /* node-pty ConPTY can throw on Windows */ }
     sessions.delete(tempId)
     throw new Error('New session created but session ID could not be detected')
   }
@@ -306,6 +366,10 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
     s.recentOutput = ''
   }
 
+  // Set up completion detection BEFORE sending the message so that PTY output
+  // from the Ctrl+C re-render is tracked (sawActivity, prompt detection).
+  setupCompletionDetection(sessionId)
+
   // Send the message using bracketed paste mode.
   // Ctrl+C resets TUI focus to the input field (must be a separate write call
   // so it bypasses sanitizePrompt, which strips \x03).
@@ -316,42 +380,6 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
   await new Promise(resolve => setTimeout(resolve, 100))
   s.term.write('\r')
   emit('sdk_message', { sessionId, ts: Date.now(), msg: { type: 'system', subtype: 'message_sent' } })
-
-  // Completion detection: listen for session_update SSE events (fired by the
-  // file watcher when the JSONL changes). When updates stop for 8s, the
-  // response is likely complete. The timer resets on each update to handle
-  // streaming responses that write multiple chunks.
-  const removeListener = onEvent((event, data) => {
-    if (event !== 'session_update') return
-    if (!data?.filePath?.includes(sessionId)) return
-    const current = sessions.get(sessionId)
-    if (!current || !current.busy) { removeListener(); return }
-
-    // Reset completion timer on each file update
-    if (current.completionTimer) clearTimeout(current.completionTimer)
-    current.completionTimer = setTimeout(() => {
-      const c = sessions.get(sessionId)
-      if (!c || !c.busy) return
-      const hasUnresolved = [...c.approvals.values()].some(a => !a.resolved)
-      if (hasUnresolved) return
-      c.busy = false
-      if (c.timeoutId) clearTimeout(c.timeoutId)
-      removeListener()
-      emit('sdk_result', { sessionId, subtype: 'success', ts: Date.now() })
-    }, 8000)
-  })
-  s.removeCompletionListener = removeListener
-
-  // Safety timeout: if the query runs for more than 10 minutes, mark as no longer busy
-  const timeoutId = setTimeout(() => {
-    const current = sessions.get(sessionId)
-    if (current?.busy) {
-      current.busy = false
-      if (current.removeCompletionListener) current.removeCompletionListener()
-      emit('sdk_result', { sessionId, subtype: 'timeout', ts: Date.now() })
-    }
-  }, 600_000)
-  s.timeoutId = timeoutId
 
   return { ok: true, streaming: true }
 }
@@ -467,6 +495,7 @@ function handlePtyData(sessionId, data) {
       }
       s.approvals.set(approvalId, approval)
       pendingApprovals.set(approvalId, approval)
+      if (s._completionState) s._completionState.sawActivity = true
 
       emit('tool_approval_request', {
         sessionId,
@@ -493,6 +522,24 @@ function handlePtyData(sessionId, data) {
   if (s.recentOutput.length > 4096) {
     s.recentOutput = s.recentOutput.slice(-2048)
   }
+
+  // --- PTY-based completion detection ---
+  // Use PTY output silence: during a response the TUI constantly redraws.
+  // When the response finishes, PTY output stops. 3s of silence = likely done.
+  // This is faster and more reliable than the 8s JSONL silence fallback,
+  // and specific to THIS PTY (unaffected by other sessions writing to JSONL).
+  const state = s._completionState
+  if (state) {
+    state.sawActivity = true
+    if (state.promptDetectTimer) clearTimeout(state.promptDetectTimer)
+    state.promptDetectTimer = setTimeout(() => {
+      const c = sessions.get(sessionId)
+      if (!c || !c.busy) return
+      const hasUnresolved = [...c.approvals.values()].some(a => !a.resolved)
+      if (hasUnresolved) return
+      markComplete(sessionId, 'success')
+    }, 3000)
+  }
 }
 
 function handlePtyExit(sessionId, exitCode) {
@@ -503,6 +550,10 @@ function handlePtyExit(sessionId, exitCode) {
   if (s.timeoutId) clearTimeout(s.timeoutId)
   if (s.completionTimer) clearTimeout(s.completionTimer)
   if (s.removeCompletionListener) s.removeCompletionListener()
+  if (s._completionState?.promptDetectTimer) {
+    clearTimeout(s._completionState.promptDetectTimer)
+  }
+  s._completionState = null
 
   if (s.busy) {
     s.busy = false
