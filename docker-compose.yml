@@ -1,0 +1,11 @@
+services:
+  oversight:
+    build: .
+    ports:
+      - '3001:3001'
+    volumes:
+      - ~/.claude:/root/.claude:ro
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    restart: unless-stopped

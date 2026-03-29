@@ -24,7 +24,7 @@ export function startWatcher() {
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
   })
 
-  watcher.on('change', filePath => {
+  watcher.on('change', (filePath) => {
     const rel = path.relative(CLAUDE_DIR, filePath)
 
     if (rel.startsWith('projects') && filePath.endsWith('.jsonl')) {
@@ -40,7 +40,7 @@ export function startWatcher() {
     }
   })
 
-  watcher.on('add', filePath => {
+  watcher.on('add', (filePath) => {
     const rel = path.relative(CLAUDE_DIR, filePath)
     if (rel.startsWith('projects') && filePath.endsWith('.jsonl')) {
       emit('new_session', { filePath: rel, ts: Date.now() })
@@ -50,4 +50,5 @@ export function startWatcher() {
   })
 
   console.log(`Watching ${CLAUDE_DIR}`)
+  return watcher
 }

@@ -96,7 +96,15 @@ Oversight is a local web dashboard that monitors Claude Code agent activity in r
 
 | File | Purpose |
 |------|---------|
-| `server/index.js` | Express app setup, mounts all route modules, starts watcher |
+| `server/index.js` | Express app setup, mounts middleware stack + route modules, starts watcher, registers graceful shutdown |
+| `server/lib/config.js` | Centralized env var config with defaults (PORT, HOST, LOG_LEVEL, etc.) |
+| `server/lib/logger.js` | Pino structured logger, configurable via LOG_LEVEL env var |
+| `server/lib/lifecycle.js` | Graceful shutdown (SIGTERM/SIGINT), readiness state, process error handlers |
+| `server/lib/apiError.js` | Standardized `ApiError` class + factory helpers (badRequest, notFound, conflict, unauthorized) |
+| `server/middleware/security.js` | Helmet security headers, express-rate-limit, optional API key auth |
+| `server/middleware/requestLogger.js` | pino-http request logging with correlation IDs (X-Request-Id) |
+| `server/middleware/performance.js` | Response compression, cache headers, connection timeouts |
+| `server/middleware/errorHandler.js` | Global error handler with structured logging and standardized JSON responses |
 | `server/utils/validate.js` | Shared input validation helpers (`validateSessionId`, `validateSkillName`, `validateWorkflowName`) used by route modules |
 
 ### Parsers
@@ -272,24 +280,31 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 
 ## Testing
 
-**~697 total tests** (339 server + 358 client) — all must pass before pushing.
+**~748 total tests** (390 server + 358 client) — all must pass before pushing.
 
 | Suite | Runner | Count | Location |
 |-------|--------|-------|----------|
 | Server parsers | Vitest | ~99 | `server/tests/parsers/` (7 files) |
-| Server routes | Vitest | ~93 | `server/tests/routes/` (7 files incl. stream) |
+| Server routes | Vitest | ~97 | `server/tests/routes/` (8 files incl. stream, health) |
 | Server intelligence | Vitest | ~37 | `server/tests/intelligence/` (cache, analyzer, triggers) |
 | Server infrastructure | Vitest | ~22 | `server/tests/` (sse, watcher) |
 | Server PTY | Vitest | 59 | `server/tests/` |
+| Server middleware | Vitest | ~20 | `server/tests/middleware/` (security, requestLogger, performance, errorHandler) |
+| Server lib | Vitest | ~20 | `server/tests/lib/` (config, apiError, lifecycle, logger) |
 | Client hooks | Vitest + RTL | ~100 | `client/src/tests/hooks/` |
 | Client audio | Vitest | 25 | `client/src/tests/audio/` |
 | Client components | Vitest + RTL | ~233 | `client/src/tests/components/` (17 files) |
-| E2E | Playwright | — | `e2e/` (not yet populated) |
+| E2E | Playwright | — | `e2e/` (5 spec files) |
 
 **Test infrastructure:**
 - MSW (Mock Service Worker) for API mocking in client tests
 - `MockEventSource` in `client/src/tests/setup.js` for SSE testing
 - `MockAudioContext` in useSound tests (with `close()` method)
+
+**CI/CD:**
+- GitHub Actions workflow: lint → test (Node 20+22 matrix) → e2e
+- Pre-commit hooks via husky + lint-staged (Prettier auto-format)
+- Branch protection requires all CI jobs to pass before merge
 
 ---
 
@@ -356,12 +371,24 @@ oversight/
 │   │   └── triggers.js
 │   ├── parsers/                  # 7 parser modules
 │   ├── routes/                   # 7 route modules
+│   ├── lib/
+│   │   ├── config.js             # Centralized env var config
+│   │   ├── logger.js             # Pino structured logger
+│   │   ├── lifecycle.js          # Graceful shutdown + readiness
+│   │   └── apiError.js           # Standardized error class
+│   ├── middleware/
+│   │   ├── security.js           # Helmet, rate limiting, API key auth
+│   │   ├── requestLogger.js      # pino-http + correlation IDs
+│   │   ├── performance.js        # Compression, cache, timeout
+│   │   └── errorHandler.js       # Global error handler
 │   ├── utils/
 │   │   └── validate.js           # Shared input validation helpers
 │   ├── tests/
 │   │   ├── parsers/              # 7 parser test files
-│   │   ├── routes/               # 7 route test files (incl. stream)
+│   │   ├── routes/               # 8 route test files (incl. stream, health)
 │   │   ├── intelligence/         # Cache, analyzer, triggers tests
+│   │   ├── middleware/           # Security, logging, perf, error tests
+│   │   ├── lib/                  # Config, apiError, lifecycle, logger tests
 │   │   ├── sse.test.js           # SSE registry tests
 │   │   └── watcher.test.js       # File watcher tests
 │   ├── claude-cli.js
@@ -370,14 +397,22 @@ oversight/
 │   ├── sse.js
 │   ├── watcher.js
 │   └── package.json
+├── .github/
+│   └── workflows/ci.yml          # CI pipeline (lint, test, e2e)
+├── .husky/
+│   └── pre-commit                # Runs lint-staged on commit
 ├── docs/
 │   ├── ARCHITECTURE.md           # ← this file
 │   ├── screenshots/              # 5 PNG screenshots
 │   └── superpowers/
 │       ├── plans/                # Implementation plans
 │       └── specs/                # Design specifications
+├── .env.example                  # Documented env var template
+├── .prettierrc                   # Code formatting config
+├── Dockerfile                    # Multi-stage production build
+├── docker-compose.yml            # Container deployment
 ├── README.md
-└── package.json                  # Root scripts (dev, test, test:e2e)
+└── package.json                  # Root scripts (dev, test, lint)
 ```
 
 ---
@@ -392,3 +427,38 @@ oversight/
 | `npm run test:client` | Client tests only (Vitest + RTL) |
 | `npm run test:e2e` | End-to-end tests (Playwright) |
 | `npm run test:coverage` | Both suites with V8 coverage |
+| `npm run lint` | Prettier format check |
+| `npm run lint:fix` | Auto-fix formatting issues |
+| `npm run format` | Format all files with Prettier |
+
+## Configuration
+
+All enterprise features are opt-in via environment variables (see `.env.example`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | Server port |
+| `HOST` | `0.0.0.0` | Server bind address |
+| `LOG_LEVEL` | `info` | Pino log level (debug, info, warn, error) |
+| `OVERSIGHT_API_KEY` | *(empty)* | Set to require API key auth on all endpoints |
+| `OVERSIGHT_CORS_ORIGIN` | *(localhost)* | Comma-separated allowed CORS origins |
+| `OVERSIGHT_RATE_LIMIT` | `100` | Max requests per 15min per IP (0 = disabled) |
+| `OVERSIGHT_CSP` | `true` | Content Security Policy headers |
+
+## Deployment
+
+**Docker:**
+```bash
+docker build -t oversight .
+docker run -p 3001:3001 -v ~/.claude:/root/.claude:ro oversight
+```
+
+**Docker Compose:**
+```bash
+docker compose up
+```
+
+**Health checks:**
+- `GET /api/health` — basic health (backwards compatible)
+- `GET /api/health/live` — liveness probe (uptime)
+- `GET /api/health/ready` — readiness probe (memory stats, 503 until ready)
