@@ -415,6 +415,128 @@ describe('needsInput detection', () => {
   })
 })
 
+describe('permissionMode extraction', () => {
+  function setupSession(records, mtimeMs = Date.now() - 10_000) {
+    const jsonl = records.map(r => JSON.stringify(r)).join('\n')
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync
+      .mockReturnValueOnce([makeProjectDirEntry('C--project')])
+      .mockReturnValueOnce(['sess.jsonl'])
+    fs.statSync.mockReturnValue({ mtimeMs })
+    fs.readFileSync.mockReturnValue(jsonl)
+    return getAllSessions()[0]
+  }
+
+  it('extracts permissionMode from user records', () => {
+    const user = makeRecord({ type: 'user', permissionMode: 'plan' })
+    const sess = setupSession([user])
+    expect(sess.permissionMode).toBe('plan')
+  })
+
+  it('uses the most recent permissionMode when mode changes mid-session', () => {
+    const user1 = makeRecord({ uuid: 'u1', type: 'user', permissionMode: 'default' })
+    const user2 = makeRecord({ uuid: 'u2', type: 'user', permissionMode: 'bypassPermissions' })
+    const sess = setupSession([user1, user2])
+    expect(sess.permissionMode).toBe('bypassPermissions')
+  })
+
+  it('returns null when no user record has permissionMode', () => {
+    const user = makeRecord({ type: 'user' })
+    const sess = setupSession([user])
+    expect(sess.permissionMode).toBeNull()
+  })
+})
+
+describe('subagent type enrichment', () => {
+  function setupSession(records, metaFiles = {}, mtimeMs = Date.now() - 10_000) {
+    const jsonl = records.map(r => JSON.stringify(r)).join('\n')
+    fs.existsSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.includes('subagents')) return Object.keys(metaFiles).length > 0
+      return true
+    })
+    let readdirCall = 0
+    fs.readdirSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.includes('subagents')) {
+        return Object.keys(metaFiles).map(k => `agent-${k}.meta.json`)
+      }
+      // First call: project dirs listing (returns objects with isDirectory)
+      // Second call: jsonl files listing (returns strings)
+      readdirCall++
+      if (readdirCall === 1) return [makeProjectDirEntry('C--project')]
+      return ['sess.jsonl']
+    })
+    fs.statSync.mockReturnValue({ mtimeMs })
+    fs.readFileSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.includes('.meta.json')) {
+        const agentId = Object.keys(metaFiles).find(k => p.includes(k))
+        return agentId ? JSON.stringify(metaFiles[agentId]) : '{}'
+      }
+      return jsonl
+    })
+    return getAllSessions()[0]
+  }
+
+  it('enriches subagent with agentType from meta file', () => {
+    const main = makeRecord({ uuid: 'u1', isSidechain: false })
+    const side = makeRecord({ uuid: 'u2', isSidechain: true, parentToolUseID: 'abc123' })
+    const meta = { abc123: { agentType: 'Explore', description: 'Explore the codebase' } }
+    const sess = setupSession([main, side], meta)
+    const sub = sess.agentTree.subagents.find(s => s.toolUseId === 'abc123')
+    expect(sub.agentType).toBe('Explore')
+    expect(sub.description).toBe('Explore the codebase')
+  })
+
+  it('returns null agentType when no meta file matches', () => {
+    const main = makeRecord({ uuid: 'u1', isSidechain: false })
+    const side = makeRecord({ uuid: 'u2', isSidechain: true, parentToolUseID: 'nomatch' })
+    const sess = setupSession([main, side])
+    const sub = sess.agentTree.subagents.find(s => s.toolUseId === 'nomatch')
+    expect(sub.agentType).toBeNull()
+  })
+})
+
+describe('compaction detection', () => {
+  function setupSession(records, mtimeMs = Date.now() - 10_000) {
+    const jsonl = records.map(r => JSON.stringify(r)).join('\n')
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync
+      .mockReturnValueOnce([makeProjectDirEntry('C--project')])
+      .mockReturnValueOnce(['sess.jsonl'])
+    fs.statSync.mockReturnValue({ mtimeMs })
+    fs.readFileSync.mockReturnValue(jsonl)
+    return getAllSessions()[0]
+  }
+
+  it('detects compaction from system message with continuation preamble', () => {
+    const systemMsg = makeRecord({
+      uuid: 's1',
+      type: 'system',
+      message: { content: 'This session is being continued from a previous conversation that ran out of context.' },
+    })
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const sess = setupSession([systemMsg, user])
+    expect(sess.hasBeenCompacted).toBe(true)
+    expect(sess.compactionSummary).toContain('continued from a previous conversation')
+  })
+
+  it('detects compaction from string message field', () => {
+    const systemMsg = makeRecord({
+      uuid: 's1',
+      type: 'system',
+      message: 'This session is being continued from a previous conversation that ran out of context.',
+    })
+    const sess = setupSession([systemMsg])
+    expect(sess.hasBeenCompacted).toBe(true)
+  })
+
+  it('sets hasBeenCompacted=false when no compaction preamble found', () => {
+    const user = makeRecord({ uuid: 'u1', type: 'user' })
+    const sess = setupSession([user])
+    expect(sess.hasBeenCompacted).toBe(false)
+    expect(sess.compactionSummary).toBeNull()
+  })
+})
+
 describe('getSessionById()', () => {
   it('returns null when projects dir does not exist', () => {
     fs.existsSync.mockReturnValue(false)

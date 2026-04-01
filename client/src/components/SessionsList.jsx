@@ -1,9 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Clock, Activity, ChevronRight, ChevronDown, X } from 'lucide-react'
+import { Clock, Activity, ChevronRight, ChevronDown, X, Shield } from 'lucide-react'
 import { projectLabel } from '../utils/session.js'
 import { QuickActions } from './QuickActions.jsx'
 
 const ONE_HOUR = 3_600_000
+
+const PERM_COLORS = {
+  bypassPermissions: 'text-green-400',
+  dontAsk:           'text-green-400',
+  acceptEdits:       'text-amber-400',
+  auto:              'text-amber-400',
+  plan:              'text-purple-400',
+  default:           'text-gray-500',
+}
 
 function timeAgo(ms) {
   const diff = Date.now() - ms
@@ -105,8 +114,8 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
         </span>
       </div>
 
-      {/* Footer: model + tokens */}
-      {(session.model || session.tokenUsage) && (
+      {/* Footer: model + tokens + permission mode */}
+      {(session.model || session.tokenUsage || session.permissionMode) && (
         <div className="mt-1.5 flex items-center gap-2 text-xs text-gray-500">
           {modelShort(session.model) && (
             <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-mono text-[10px]">
@@ -115,6 +124,12 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
           )}
           {totalTokens(session.tokenUsage) && (
             <span className="text-gray-500">{totalTokens(session.tokenUsage)} tok</span>
+          )}
+          {session.permissionMode && PERM_COLORS[session.permissionMode] && (
+            <span className={`flex items-center gap-0.5 ${PERM_COLORS[session.permissionMode]}`}>
+              <Shield size={9} />
+              <span className="text-[10px]">{session.permissionMode}</span>
+            </span>
           )}
         </div>
       )}

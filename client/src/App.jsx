@@ -73,6 +73,9 @@ export default function App() {
   const [intelligenceVersion, setIntelligenceVersion] = useState(0)
   const [teamsVersion, setTeamsVersion] = useState(0)
   const [historyVersion, setHistoryVersion] = useState(0)
+  const [planVersion, setPlanVersion] = useState(0)
+  const [configVersion, setConfigVersion] = useState(0)
+  const [memoryVersion, setMemoryVersion] = useState(0)
 
   const { data: sessions, refetch: refetchSessions } = useApi('/api/sessions', [sessionsVersion])
   const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useApi(
@@ -125,6 +128,15 @@ export default function App() {
     }
     if (evt.type === 'history_update') {
       setHistoryVersion(v => v + 1)
+    }
+    if (evt.type === 'plan_update') {
+      setPlanVersion(v => v + 1)
+    }
+    if (evt.type === 'config_update') {
+      setConfigVersion(v => v + 1)
+    }
+    if (evt.type === 'memory_update') {
+      setMemoryVersion(v => v + 1)
     }
 
     // Play sound for non-session events (needsInput is handled by useNotifications)

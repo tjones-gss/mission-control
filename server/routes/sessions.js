@@ -6,7 +6,9 @@ import os from 'os'
 import { fileURLToPath } from 'url'
 import multer from 'multer'
 import { getAllSessions, getSessionById } from '../parsers/sessions.js'
+import { getConfigForSession } from '../parsers/config.js'
 import { getSessionMessages } from '../parsers/messages.js'
+import { getMemoryForSession } from '../parsers/memory.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
@@ -205,6 +207,12 @@ router.get('/:sessionId/messages', (req, res) => {
   res.json(result)
 })
 
+router.get('/:sessionId/memory', (req, res) => {
+  const result = getMemoryForSession(req.params.sessionId)
+  if (!result) return res.status(404).json({ error: 'Session not found' })
+  res.json(result)
+})
+
 router.get('/:sessionId/intelligence', async (req, res) => {
   const { sessionId } = req.params
 
@@ -238,6 +246,12 @@ router.get('/:sessionId/intelligence', async (req, res) => {
       stderr: err.stderrOutput || null,
     })
   }
+})
+
+router.get('/:sessionId/config', (req, res) => {
+  const session = getSessionById(req.params.sessionId)
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+  res.json(getConfigForSession(session.cwd))
 })
 
 // ──────────────────────────────────────────────────────────────────────────────

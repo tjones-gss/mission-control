@@ -1,5 +1,14 @@
-import { Bot, Wrench } from 'lucide-react';
+import { Bot, Wrench, Shield } from 'lucide-react';
 import { QuickActions } from './QuickActions.jsx';
+
+const PERMISSION_BADGE = {
+  bypassPermissions: { label: 'bypass', cls: 'bg-green-900/50 text-green-400 border-green-800' },
+  dontAsk:           { label: 'dontAsk', cls: 'bg-green-900/50 text-green-400 border-green-800' },
+  acceptEdits:       { label: 'acceptEdits', cls: 'bg-amber-900/50 text-amber-400 border-amber-800' },
+  auto:              { label: 'auto', cls: 'bg-amber-900/50 text-amber-400 border-amber-800' },
+  plan:              { label: 'plan', cls: 'bg-purple-900/50 text-purple-400 border-purple-800' },
+  default:           { label: 'default', cls: 'bg-gray-800 text-gray-500 border-gray-700' },
+};
 
 function getModelAbbr(model) {
   if (!model) return '—';
@@ -53,6 +62,12 @@ function SessionCard({ session, isSelected, onSelect }) {
           )}
           <span className="text-sm font-medium text-gray-100 truncate">{slug}</span>
         </div>
+        {session.permissionMode && PERMISSION_BADGE[session.permissionMode] && (
+          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] border shrink-0 ${PERMISSION_BADGE[session.permissionMode].cls}`}>
+            <Shield size={8} />
+            {PERMISSION_BADGE[session.permissionMode].label}
+          </span>
+        )}
         <span className="text-xs text-gray-500 shrink-0 font-mono">{modelAbbr}</span>
       </div>
 

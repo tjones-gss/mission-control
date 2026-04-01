@@ -4,6 +4,11 @@ import { ConversationView } from './ConversationView.jsx'
 import { TimelineView } from './TimelineView.jsx'
 import { IntelView } from './IntelView.jsx'
 import { SessionControlBar } from './SessionControlBar.jsx'
+import { ConfigViewer } from './ConfigViewer.jsx'
+import { MemoryViewer } from './MemoryViewer.jsx'
+import { PlanViewer } from './PlanViewer.jsx'
+import { HooksPanel } from './HooksPanel.jsx'
+import { McpDashboard } from './McpDashboard.jsx'
 
 function timeRange(start, end) {
   if (!start || !end) return ''
@@ -101,12 +106,12 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 shrink-0">
-        {['conversation', 'timeline', 'summary', 'intel'].map(tab => (
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 shrink-0 overflow-x-auto no-scrollbar">
+        {['conversation', 'timeline', 'summary', 'intel', 'config', 'memory', 'plans', 'hooks', 'mcp'].map(tab => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
-            className={`px-2.5 py-1 rounded text-xs capitalize transition-colors ${
+            className={`px-2.5 py-1 rounded text-xs capitalize transition-colors whitespace-nowrap ${
               subTab === tab
                 ? 'bg-gray-800 text-gray-100'
                 : 'text-gray-600 hover:text-gray-400'
@@ -115,7 +120,7 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
             {tab}
           </button>
         ))}
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <SkillPicker sessionId={session?.sessionId} skills={skills} />
         </div>
       </div>
@@ -158,6 +163,36 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
             intelligenceVersion={intelligenceVersion}
             active={subTab === 'intel'}
           />
+        </div>
+      )}
+
+      {subTab === 'config' && (
+        <div className="flex-1 overflow-hidden">
+          <ConfigViewer sessionId={session?.sessionId} />
+        </div>
+      )}
+
+      {subTab === 'memory' && (
+        <div className="flex-1 overflow-hidden">
+          <MemoryViewer sessionId={session?.sessionId} />
+        </div>
+      )}
+
+      {subTab === 'plans' && (
+        <div className="flex-1 overflow-hidden">
+          <PlanViewer />
+        </div>
+      )}
+
+      {subTab === 'hooks' && (
+        <div className="flex-1 overflow-hidden">
+          <HooksPanel />
+        </div>
+      )}
+
+      {subTab === 'mcp' && (
+        <div className="flex-1 overflow-hidden">
+          <McpDashboard />
         </div>
       )}
 
@@ -242,7 +277,14 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
                       <GitBranch size={9} />
                     </div>
                     <div>
-                      <div className="text-xs font-medium text-purple-300">Agent {i + 1}</div>
+                      <div className="text-xs font-medium text-purple-300 flex items-center gap-1.5">
+                        Agent {i + 1}
+                        {sub.agentType && (
+                          <span className="px-1 py-0.5 rounded bg-purple-900/60 text-purple-400 text-[9px] font-normal">
+                            {sub.agentType}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-gray-400 mt-0.5 line-clamp-2">{sub.description}</div>
                       <div className="text-xs text-gray-600 mt-1 flex gap-3">
                         <span>{sub.messageCount} msgs</span>

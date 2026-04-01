@@ -31,12 +31,20 @@ export function startWatcher() {
       emit('session_update', { filePath: rel, ts: Date.now() })
       const sessionId = path.basename(filePath, '.jsonl')
       onSessionEvent(sessionId)
+    } else if (rel.startsWith('projects') && rel.includes('memory')) {
+      emit('memory_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('tasks')) {
       emit('task_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('teams')) {
       emit('team_update', { filePath: rel, ts: Date.now() })
     } else if (rel === 'history.jsonl') {
       emit('history_update', { ts: Date.now() })
+    } else if (rel.startsWith('plans')) {
+      emit('plan_update', { filePath: rel, ts: Date.now() })
+    } else if (rel === 'settings.json' || rel.endsWith('settings.local.json')) {
+      emit('config_update', { filePath: rel, ts: Date.now() })
+    } else if (rel.startsWith('hooks')) {
+      emit('hooks_update', { filePath: rel, ts: Date.now() })
     }
   })
 

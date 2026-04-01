@@ -13,6 +13,8 @@ import { router as historyRouter } from './routes/history.js'
 import { router as streamRouter } from './routes/stream.js'
 import { router as skillsRouter } from './routes/skills.js'
 import { router as workflowsRouter } from './routes/workflows.js'
+import { router as plansRouter } from './routes/plans.js'
+import { router as configRouter } from './routes/config.js'
 import { router as healthRouter, setHealthReady } from './routes/health.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
@@ -35,6 +37,8 @@ app.use('/api/history', historyRouter)
 app.use('/api/stream', streamRouter)
 app.use('/api/skills', skillsRouter)
 app.use('/api/workflows', workflowsRouter)
+app.use('/api/plans', plansRouter)
+app.use('/api/config', configRouter)
 app.use('/api/health', healthRouter)
 
 // Error handler (must be last)

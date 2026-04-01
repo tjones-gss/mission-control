@@ -62,8 +62,9 @@ function parseSessionFile(filePath, projectDirName, filename) {
     const lastModified = stat.mtimeMs
     const isActive = (Date.now() - lastModified) < ACTIVE_THRESHOLD_MS
 
-    // Build agent tree from isSidechain + parentUuid
-    const agentTree = buildAgentTree(records)
+    // Build agent tree from isSidechain + parentUuid + meta files
+    const subagentsDir = path.join(path.dirname(filePath), sessionId, 'subagents')
+    const agentTree = buildAgentTree(records, subagentsDir)
 
     // Project name from encoded dir name (replace -- with / and - with \)
     const projectName = decodeProjectDir(projectDirName)
@@ -74,6 +75,9 @@ function parseSessionFile(filePath, projectDirName, filename) {
     let lastText = null
     let model = null
     let gitBranch = null
+    let permissionMode = null
+    let hasBeenCompacted = false
+    let compactionSummary = null
     const toolUseCounts = {}
     const tokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 
@@ -95,6 +99,21 @@ function parseSessionFile(filePath, projectDirName, filename) {
       }
       // Collect gitBranch from any record
       if (r.gitBranch) gitBranch = r.gitBranch
+      // Track most recent permissionMode from user records
+      if (r.type === 'user' && r.permissionMode) {
+        permissionMode = r.permissionMode
+      }
+      // Detect compaction via system message preamble
+      if (r.type === 'system' || r.role === 'system') {
+        const text = typeof r.message === 'string' ? r.message
+          : typeof r.message?.content === 'string' ? r.message.content
+          : Array.isArray(r.message?.content) ? r.message.content.find(b => b.type === 'text')?.text || ''
+          : ''
+        if (text.includes('continued from a previous conversation')) {
+          hasBeenCompacted = true
+          compactionSummary = text.slice(0, 500)
+        }
+      }
     }
 
     // Iterate in reverse for "most recent" fields
@@ -164,16 +183,35 @@ function parseSessionFile(filePath, projectDirName, filename) {
       model,
       gitBranch,
       needsInput,
+      permissionMode,
+      hasBeenCompacted,
+      compactionSummary,
     }
   } catch {
     return null
   }
 }
 
-function buildAgentTree(records) {
+function buildAgentTree(records, subagentsDir) {
   // Main thread = isSidechain false, subagents = isSidechain true
   const mainMessages = records.filter(r => !r.isSidechain)
   const sidechain = records.filter(r => r.isSidechain)
+
+  // Load subagent meta files for type enrichment
+  const metaByAgent = {}
+  try {
+    if (subagentsDir && fs.existsSync(subagentsDir)) {
+      const metaFiles = fs.readdirSync(subagentsDir).filter(f => f.endsWith('.meta.json'))
+      for (const mf of metaFiles) {
+        try {
+          const meta = JSON.parse(fs.readFileSync(path.join(subagentsDir, mf), 'utf-8'))
+          // agent-a1234.meta.json -> a1234 as a potential toolUseId match key
+          const agentId = mf.replace('.meta.json', '').replace('agent-', '')
+          metaByAgent[agentId] = meta
+        } catch { /* skip unreadable meta files */ }
+      }
+    }
+  } catch { /* subagents dir doesn't exist or can't be read */ }
 
   // Find unique subagent identifiers via toolUseID grouping
   const subagentGroups = {}
@@ -183,20 +221,50 @@ function buildAgentTree(records) {
     subagentGroups[key].push(r)
   }
 
+  const metaAgentIds = Object.keys(metaByAgent)
   const subagents = Object.entries(subagentGroups).map(([toolUseId, msgs]) => {
     const first = msgs[0]
     const last = msgs[msgs.length - 1]
     const assistantMsg = msgs.find(m => m.type === 'assistant')
     const description = extractSubagentDescription(msgs)
+
+    // Match meta by toolUseId substring (meta agentId is often a prefix of the toolUseId)
+    const matchedMeta = metaByAgent[toolUseId]
+      || metaAgentIds.reduce((found, id) => found || (toolUseId.includes(id) ? metaByAgent[id] : null), null)
+
     return {
       toolUseId,
-      description,
+      description: matchedMeta?.description || description,
+      agentType: matchedMeta?.agentType || null,
       messageCount: msgs.length,
       startTime: first.timestamp,
       endTime: last.timestamp,
       model: assistantMsg?.message?.model || null,
     }
   })
+
+  // Also add meta-only agents that weren't matched via sidechain records
+  const matchedMetaIds = new Set()
+  for (const sub of subagents) {
+    for (const id of metaAgentIds) {
+      if (sub.toolUseId.includes(id) || metaByAgent[id] === sub) {
+        matchedMetaIds.add(id)
+      }
+    }
+  }
+  for (const [agentId, meta] of Object.entries(metaByAgent)) {
+    if (!matchedMetaIds.has(agentId)) {
+      subagents.push({
+        toolUseId: agentId,
+        description: meta.description || 'Subagent',
+        agentType: meta.agentType || null,
+        messageCount: 0,
+        startTime: null,
+        endTime: null,
+        model: null,
+      })
+    }
+  }
 
   return {
     mainMessageCount: mainMessages.length,
