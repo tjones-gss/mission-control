@@ -274,6 +274,55 @@ describe('getSessionMessages()', () => {
     expect(block.content).toBe('Line 1\nLine 2')
   })
 
+  it('includes usage data in assistant messages when present', () => {
+    const record = {
+      uuid: 'a1',
+      type: 'assistant',
+      timestamp: '2024-01-01T00:00:01Z',
+      isSidechain: false,
+      message: {
+        model: 'claude-sonnet-4-6',
+        content: [{ type: 'text', text: 'Hello' }],
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_input_tokens: 20,
+          cache_creation_input_tokens: 10,
+        },
+      },
+    }
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
+    fs.readFileSync.mockReturnValue(JSON.stringify(record))
+
+    const result = getSessionMessages('sess-1')
+    expect(result.messages[0].usage).toEqual({
+      input: 100,
+      output: 50,
+      cacheRead: 20,
+      cacheWrite: 10,
+    })
+  })
+
+  it('sets usage to null when not present in assistant record', () => {
+    const record = {
+      uuid: 'a1',
+      type: 'assistant',
+      timestamp: '2024-01-01T00:00:01Z',
+      isSidechain: false,
+      message: {
+        model: 'claude-3',
+        content: [{ type: 'text', text: 'Hello' }],
+      },
+    }
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
+    fs.readFileSync.mockReturnValue(JSON.stringify(record))
+
+    const result = getSessionMessages('sess-1')
+    expect(result.messages[0].usage).toBeNull()
+  })
+
   it('returns correct sessionId in result', () => {
     const record = {
       uuid: 'u1',

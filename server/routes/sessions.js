@@ -15,6 +15,7 @@ import { runClaude } from '../claude-cli.js'
 import { startQuery, spawnNewSession, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
 import { onEvent } from '../sse.js'
 import { validateSessionId } from '../utils/validate.js'
+import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
@@ -252,6 +253,33 @@ router.get('/:sessionId/config', (req, res) => {
   const session = getSessionById(req.params.sessionId)
   if (!session) return res.status(404).json({ error: 'Session not found' })
   res.json(getConfigForSession(session.cwd))
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Export endpoint
+// ──────────────────────────────────────────────────────────────────────────────
+
+router.get('/:sessionId/export', (req, res) => {
+  const { sessionId } = req.params
+  const format = req.query.format || 'md'
+
+  const session = getSessionById(sessionId)
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+
+  const result = getSessionMessages(sessionId)
+  const messages = result ? result.messages : []
+
+  if (format === 'json') {
+    const body = formatAsJson(session, messages)
+    res.set('Content-Type', 'application/json')
+    res.set('Content-Disposition', `attachment; filename="${sessionId}.json"`)
+    return res.send(body)
+  }
+
+  const body = formatAsMarkdown(session, messages)
+  res.set('Content-Type', 'text/markdown; charset=utf-8')
+  res.set('Content-Disposition', `attachment; filename="${sessionId}.md"`)
+  return res.send(body)
 })
 
 // ──────────────────────────────────────────────────────────────────────────────

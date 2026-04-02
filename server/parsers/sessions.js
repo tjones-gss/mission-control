@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { calculateCost } from '../utils/cost.js'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude', 'projects')
 const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
@@ -180,6 +181,7 @@ function parseSessionFile(filePath, projectDirName, filename) {
       lastText,
       toolUseCounts,
       tokenUsage,
+      estimatedCost: calculateCost(tokenUsage, model),
       model,
       gitBranch,
       needsInput,

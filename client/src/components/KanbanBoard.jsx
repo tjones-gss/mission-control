@@ -1,5 +1,6 @@
 import { Bot, Wrench, Shield } from 'lucide-react';
 import { QuickActions } from './QuickActions.jsx';
+import { formatCost } from '../utils/cost.js';
 
 const PERMISSION_BADGE = {
   bypassPermissions: { label: 'bypass', cls: 'bg-green-900/50 text-green-400 border-green-800' },
@@ -102,6 +103,11 @@ function SessionCard({ session, isSelected, onSelect }) {
               </span>
             ))}
           </div>
+        )}
+
+        {/* Cost estimate */}
+        {session.estimatedCost && (
+          <span className="text-[10px] text-emerald-500 ml-auto shrink-0">{formatCost(session.estimatedCost.totalCost)}</span>
         )}
       </div>
 

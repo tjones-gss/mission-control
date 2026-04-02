@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useApi } from '../hooks/useApi.js'
 import { Bot, GitBranch, MessageSquare, GitCommit, Zap } from 'lucide-react'
 import { ConversationView } from './ConversationView.jsx'
 import { TimelineView } from './TimelineView.jsx'
@@ -9,6 +10,9 @@ import { MemoryViewer } from './MemoryViewer.jsx'
 import { PlanViewer } from './PlanViewer.jsx'
 import { HooksPanel } from './HooksPanel.jsx'
 import { McpDashboard } from './McpDashboard.jsx'
+import { TokenBreakdownFull } from './TokenBreakdown.jsx'
+import { CostSparkline } from './CostSparkline.jsx'
+import { formatCost } from '../utils/cost.js'
 
 function timeRange(start, end) {
   if (!start || !end) return ''
@@ -96,6 +100,26 @@ function SkillPicker({ sessionId, skills }) {
 export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, skills, streaming }) {
   const [subTab, setSubTab] = useState('conversation')
   const [sessionOptions, setSessionOptions] = useState({ permissionMode: '', model: '', effort: '' })
+  const [compacting, setCompacting] = useState(false)
+
+  // Fetch messages for sparkline (only when summary tab is active)
+  const { data: messagesData } = useApi(
+    subTab === 'summary' && session?.sessionId ? `/api/sessions/${session.sessionId}/messages` : null,
+    [sessionUpdateVersion]
+  )
+
+  const handleCompact = useCallback(async () => {
+    if (!session?.sessionId || compacting) return
+    setCompacting(true)
+    try {
+      await fetch(`/api/sessions/${session.sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: '/compact' }),
+      })
+    } catch { /* ignore */ }
+    finally { setCompacting(false) }
+  }, [session?.sessionId, compacting])
 
   if (!session) return (
     <div className="p-6 text-gray-600 text-sm">Select a session to inspect</div>
@@ -263,6 +287,33 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
               </div>
             </div>
           )}
+
+          {/* Token breakdown + cost */}
+          {session.tokenUsage && (
+            <TokenBreakdownFull tokenUsage={session.tokenUsage} model={session.model} />
+          )}
+
+          {/* Cost sparkline */}
+          {messagesData?.messages?.length > 1 && (
+            <div className="space-y-1">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Cost Over Time</div>
+              <CostSparkline messages={messagesData.messages} model={session.model} width={300} height={48} />
+            </div>
+          )}
+
+          {/* Session actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCompact}
+              disabled={compacting}
+              className="px-2.5 py-1 rounded text-xs bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700 disabled:opacity-30 transition-colors border border-gray-700"
+            >
+              {compacting ? 'Compacting...' : 'Compact Session'}
+            </button>
+            {session.hasBeenCompacted && (
+              <span className="text-[10px] text-amber-600">Previously compacted</span>
+            )}
+          </div>
 
           {/* Subagents */}
           <div className="space-y-1.5">

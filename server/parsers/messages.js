@@ -92,11 +92,19 @@ export function getSessionMessages(sessionId) {
       .filter(r => r.uuid) // skip metadata/summary lines without uuid
       .map(r => {
         if (r.type === 'assistant') {
+          const usage = r.message?.usage ? {
+            input: r.message.usage.input_tokens || 0,
+            output: r.message.usage.output_tokens || 0,
+            cacheRead: r.message.usage.cache_read_input_tokens || 0,
+            cacheWrite: r.message.usage.cache_creation_input_tokens || 0,
+          } : null
+
           return {
             uuid: r.uuid,
             type: 'assistant',
             timestamp: r.timestamp,
             model: r.message?.model || null,
+            usage,
             blocks: mapAssistantBlocks(r.message?.content),
           }
         }

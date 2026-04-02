@@ -4,6 +4,7 @@ import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
 import { Markdown } from './Markdown.jsx'
 import { ToolApprovalBanner } from './ToolApprovalBanner.jsx'
+import { FilePath } from './FilePath.jsx'
 
 function ThinkingBlock({ text }) {
   const [open, setOpen] = useState(false)
@@ -18,9 +19,13 @@ function ThinkingBlock({ text }) {
   )
 }
 
+const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'MultiEdit'])
+
 function ToolUseBlock({ name, input }) {
   const [open, setOpen] = useState(false)
   const color = TOOL_COLORS[name] || 'bg-gray-800 text-gray-400'
+  const filePath = FILE_TOOLS.has(name) ? input?.file_path : null
+
   return (
     <div className="rounded overflow-hidden">
       <button
@@ -28,7 +33,15 @@ function ToolUseBlock({ name, input }) {
         onClick={() => setOpen(o => !o)}
       >
         <span>{name}</span>
-        <span className="opacity-50 text-[10px]">{open ? '▲' : '▼'}</span>
+        {filePath && (
+          <span className="opacity-70 truncate max-w-[300px]" onClick={e => e.stopPropagation()}>
+            <FilePath path={filePath} />
+          </span>
+        )}
+        {!filePath && name === 'Bash' && input?.command && (
+          <span className="opacity-50 truncate max-w-[300px] text-[10px]">{input.command.slice(0, 60)}</span>
+        )}
+        <span className="opacity-50 text-[10px] ml-auto">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
         <pre className="bg-gray-900 text-gray-400 text-[11px] font-mono p-2 overflow-x-auto">

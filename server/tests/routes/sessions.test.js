@@ -505,3 +505,55 @@ describe('POST /:sessionId/message — image upload', () => {
     )
   })
 })
+
+// ─── GET /:sessionId/export ────────────────────────────────────────────────
+
+describe('GET /:sessionId/export', () => {
+  it('returns markdown by default', async () => {
+    getSessionById.mockReturnValue({
+      sessionId: 'abc123',
+      slug: 'test-session',
+      model: 'claude-sonnet-4-6',
+      cwd: '/tmp',
+      firstTimestamp: '2025-06-01T00:00:00Z',
+    })
+    getSessionMessages.mockReturnValue({
+      sessionId: 'abc123',
+      messages: [{ type: 'user', blocks: [{ type: 'text', text: 'hello' }] }],
+    })
+    const res = await request(app).get('/abc123/export')
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/text\/markdown/)
+    expect(res.headers['content-disposition']).toContain('abc123.md')
+    expect(res.text).toContain('# Session: test-session')
+    expect(res.text).toContain('hello')
+  })
+
+  it('returns JSON when format=json', async () => {
+    getSessionById.mockReturnValue({
+      sessionId: 'abc123',
+      slug: 'test-session',
+      model: 'claude-sonnet-4-6',
+      cwd: '/tmp',
+      firstTimestamp: '2025-06-01T00:00:00Z',
+    })
+    getSessionMessages.mockReturnValue({
+      sessionId: 'abc123',
+      messages: [{ type: 'user', blocks: [{ type: 'text', text: 'hello' }] }],
+    })
+    const res = await request(app).get('/abc123/export?format=json')
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/application\/json/)
+    expect(res.headers['content-disposition']).toContain('abc123.json')
+    const parsed = JSON.parse(res.text)
+    expect(parsed.sessionId).toBe('abc123')
+    expect(parsed.messages).toHaveLength(1)
+  })
+
+  it('returns 404 for unknown session', async () => {
+    getSessionById.mockReturnValue(null)
+    const res = await request(app).get('/nonexistent-session/export')
+    expect(res.status).toBe(404)
+    expect(res.body.error).toMatch(/session not found/i)
+  })
+})

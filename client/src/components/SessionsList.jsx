@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Clock, Activity, ChevronRight, ChevronDown, X, Shield } from 'lucide-react'
 import { projectLabel } from '../utils/session.js'
+import { formatCost } from '../utils/cost.js'
+import { TokenBreakdownCompact } from './TokenBreakdown.jsx'
 import { QuickActions } from './QuickActions.jsx'
 
 const ONE_HOUR = 3_600_000
@@ -122,9 +124,7 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
               {modelShort(session.model)}
             </span>
           )}
-          {totalTokens(session.tokenUsage) && (
-            <span className="text-gray-500">{totalTokens(session.tokenUsage)} tok</span>
-          )}
+          <TokenBreakdownCompact tokenUsage={session.tokenUsage} model={session.model} />
           {session.permissionMode && PERM_COLORS[session.permissionMode] && (
             <span className={`flex items-center gap-0.5 ${PERM_COLORS[session.permissionMode]}`}>
               <Shield size={9} />
