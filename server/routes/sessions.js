@@ -388,41 +388,26 @@ router.post('/new', async (req, res) => {
     return res.status(400).json({ error: 'cwd is required' })
   }
 
-  // Worktree sessions need --worktree flag which only the CLI subprocess supports
-  if (worktree === true) {
-    try {
-      const baseArgs = ['-p', prompt.trim(), '--output-format', 'json']
-      if (name && typeof name === 'string' && name.trim()) {
-        baseArgs.push('--name', name.trim())
-      }
-      baseArgs.push('--worktree')
-      const args = buildCliArgs(baseArgs, options)
-      const { stdout, stderr } = await runClaude({ args, cwd, timeoutMs: 120_000 })
-      let result
-      try { result = JSON.parse(stdout) } catch { result = { raw: stdout } }
-      return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
-    } catch (err) {
-      return res.status(503).json({
-        error: 'session_create_failed',
-        detail: err.message,
-        stderr: err.stderrOutput || null,
-      })
-    }
-  }
-
-  // Default: spawn via PTY (uses subscription auth, not API credits)
+  // Use CLI subprocess for new session creation (stable on Windows).
+  // PTY is only used for resuming existing sessions (message endpoint).
   try {
-    const result = await spawnNewSession({
-      prompt: prompt.trim(),
-      cwd,
-      name: name || undefined,
-      sdkOptions: buildSdkOptions(options),
-    })
-    return res.status(202).json(result)
+    const baseArgs = ['-p', prompt.trim(), '--output-format', 'json']
+    if (name && typeof name === 'string' && name.trim()) {
+      baseArgs.push('--name', name.trim())
+    }
+    if (worktree === true) {
+      baseArgs.push('--worktree')
+    }
+    const args = buildCliArgs(baseArgs, options)
+    const { stdout, stderr } = await runClaude({ args, cwd, timeoutMs: 300_000 })
+    let result
+    try { result = JSON.parse(stdout) } catch { result = { raw: stdout } }
+    return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
   } catch (err) {
     return res.status(503).json({
       error: 'session_create_failed',
       detail: err.message,
+      stderr: err.stderrOutput || null,
     })
   }
 })

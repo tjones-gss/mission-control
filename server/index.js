@@ -48,6 +48,11 @@ app.use('/api/health', healthRouter)
 // Error handler (must be last)
 app.use(errorHandler)
 
+// Prevent unhandled rejections from crashing the server (e.g., PTY spawn failures)
+process.on('unhandledRejection', (err) => {
+  logger.error({ err: err?.message || err }, 'unhandled rejection (server stayed alive)')
+})
+
 const server = app.listen(config.port, () => {
   logger.info(`Server → http://localhost:${config.port}`)
   const watcher = startWatcher()

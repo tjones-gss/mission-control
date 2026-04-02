@@ -307,27 +307,19 @@ describe('POST /new', () => {
     expect(res.body.error).toMatch(/cwd is required/i)
   })
 
-  it('202 when new session created via PTY', async () => {
-    spawnNewSession.mockResolvedValue({ ok: true, sessionId: 'new-pty-123', streaming: true })
+  it('201 when new session created via CLI subprocess', async () => {
+    runClaude.mockResolvedValue({ stdout: '{"session_id":"new-123"}', stderr: '', exitCode: 0 })
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
-    expect(res.status).toBe(202)
+    expect(res.status).toBe(201)
     expect(res.body.ok).toBe(true)
-    expect(res.body.sessionId).toBe('new-pty-123')
-    expect(spawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'hello',
-      cwd: '/tmp',
-    }))
+    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/tmp' }))
   })
 
-  it('202 when session created via PTY with name', async () => {
-    spawnNewSession.mockResolvedValue({ ok: true, sessionId: 'new-pty-456', streaming: true })
+  it('201 when session created with name', async () => {
+    runClaude.mockResolvedValue({ stdout: '{"session_id":"new-456"}', stderr: '', exitCode: 0 })
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello', name: 'test' })
-    expect(res.status).toBe(202)
+    expect(res.status).toBe(201)
     expect(res.body.ok).toBe(true)
-    expect(spawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'hello',
-      name: 'test',
-    }))
   })
 
   it('201 when worktree session created via CLI', async () => {

@@ -216,6 +216,12 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
     args.push('--model', sdkOptions.model)
   }
 
+  // Skip the interactive trust prompt for new session creation — the user
+  // already chose the CWD in the dashboard UI, which is an implicit trust.
+  if (!args.includes('--dangerously-skip-permissions') && !args.includes('--permission-mode')) {
+    args.push('--dangerously-skip-permissions')
+  }
+
   let term
   try {
     term = pty.spawn(CLAUDE_CMD, args, {
@@ -243,7 +249,14 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
   term.onData(data => handlePtyData(s.sessionId, data))
   term.onExit(({ exitCode }) => handlePtyExit(s.sessionId, exitCode))
 
-  await waitForReady(s)
+  try {
+    await waitForReady(s)
+  } catch (readyErr) {
+    // PTY exited during initialization (e.g., untrusted folder, missing API key)
+    sessions.delete(tempId)
+    try { term.kill() } catch { /* ignore */ }
+    throw new Error(`PTY initialization failed: ${readyErr.message}`)
+  }
   if (s.exited) {
     sessions.delete(tempId)
     throw new Error('PTY exited before message could be sent')
@@ -427,7 +440,11 @@ function waitForReady(s) {
       // for the status bar indicators (model info, effort level) which only
       // appear when the full UI is loaded and the input field is ready.
       const clean = stripAnsi(accumulated)
-      if (accumulated.includes('Claude Code') && clean.includes('/effort')) {
+      // Detect the input prompt — look for indicators that the full UI is loaded:
+      // "Claude Code" in raw output, or "ClaudeCode" after ANSI strip, or the prompt arrow
+      const hasClaudeCode = accumulated.includes('Claude Code') || clean.includes('ClaudeCode')
+      const hasPromptReady = clean.includes('/effort') || clean.includes('❯') || clean.includes('>')
+      if (hasClaudeCode && hasPromptReady) {
         if (silenceTimer) clearTimeout(silenceTimer)
         silenceTimer = setTimeout(() => {
           cleanup()
