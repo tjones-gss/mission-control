@@ -4,12 +4,20 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { emit, onEvent } from './sse.js'
+import { classify as classifyCommand } from './utils/commandClassifier.js'
 
 // On Windows, node-pty needs the .exe extension to find executables in PATH
 const CLAUDE_CMD = process.platform === 'win32' ? 'claude.exe' : 'claude'
 
 // Validation whitelists (shared with routes/sessions.js)
-export const VALID_PERMISSION_MODES = new Set(['plan', 'auto', 'default', 'acceptEdits', 'dontAsk', 'bypassPermissions'])
+export const VALID_PERMISSION_MODES = new Set([
+  'plan',
+  'auto',
+  'default',
+  'acceptEdits',
+  'dontAsk',
+  'bypassPermissions',
+])
 export const VALID_MODEL_SHORTCUTS = new Set(['sonnet', 'opus', 'haiku'])
 
 // Active PTY sessions keyed by sessionId
@@ -54,7 +62,9 @@ function getExistingSessionIds() {
         if (f.endsWith('.jsonl')) ids.add(f.replace('.jsonl', ''))
       }
     }
-  } catch { /* projects dir may not exist */ }
+  } catch {
+    /* projects dir may not exist */
+  }
   return ids
 }
 
@@ -83,8 +93,8 @@ export function getQueryStatus(sessionId) {
   return {
     active: s.busy,
     pendingApprovals: [...s.approvals.values()]
-      .filter(a => !a.resolved)
-      .map(a => ({ approvalId: a.approvalId, toolName: a.toolName, input: a.input })),
+      .filter((a) => !a.resolved)
+      .map((a) => ({ approvalId: a.approvalId, toolName: a.toolName, input: a.input })),
   }
 }
 
@@ -176,13 +186,16 @@ function setupCompletionDetection(sessionId) {
     if (event !== 'session_update') return
     if (!data?.filePath?.includes(sessionId)) return
     const current = sessions.get(sessionId)
-    if (!current || !current.busy) { removeJsonlListener(); return }
+    if (!current || !current.busy) {
+      removeJsonlListener()
+      return
+    }
 
     if (current.completionTimer) clearTimeout(current.completionTimer)
     current.completionTimer = setTimeout(() => {
       const c = sessions.get(sessionId)
       if (!c || !c.busy) return
-      const hasUnresolved = [...c.approvals.values()].some(a => !a.resolved)
+      const hasUnresolved = [...c.approvals.values()].some((a) => !a.resolved)
       if (hasUnresolved) return
       markComplete(sessionId, 'success')
     }, 8000)
@@ -212,7 +225,10 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
   if (sdkOptions.permissionMode && VALID_PERMISSION_MODES.has(sdkOptions.permissionMode)) {
     args.push('--permission-mode', sdkOptions.permissionMode)
   }
-  if (sdkOptions.model && (VALID_MODEL_SHORTCUTS.has(sdkOptions.model) || /^claude-/.test(sdkOptions.model))) {
+  if (
+    sdkOptions.model &&
+    (VALID_MODEL_SHORTCUTS.has(sdkOptions.model) || /^claude-/.test(sdkOptions.model))
+  ) {
     args.push('--model', sdkOptions.model)
   }
 
@@ -246,7 +262,7 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
   }
   sessions.set(tempId, s)
 
-  term.onData(data => handlePtyData(s.sessionId, data))
+  term.onData((data) => handlePtyData(s.sessionId, data))
   term.onExit(({ exitCode }) => handlePtyExit(s.sessionId, exitCode))
 
   try {
@@ -254,7 +270,11 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
   } catch (readyErr) {
     // PTY exited during initialization (e.g., untrusted folder, missing API key)
     sessions.delete(tempId)
-    try { term.kill() } catch { /* ignore */ }
+    try {
+      term.kill()
+    } catch {
+      /* ignore */
+    }
     throw new Error(`PTY initialization failed: ${readyErr.message}`)
   }
   if (s.exited) {
@@ -269,7 +289,10 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
   // then detect the first truly new one.
   const existingIds = getExistingSessionIds()
   const sessionIdPromise = new Promise((resolve) => {
-    const timeout = setTimeout(() => { removeListener(); resolve(null) }, 30_000)
+    const timeout = setTimeout(() => {
+      removeListener()
+      resolve(null)
+    }, 30_000)
     const removeListener = onEvent((event, data) => {
       if (event !== 'new_session' && event !== 'session_update') return
       if (!data?.filePath) return
@@ -287,7 +310,7 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
   // Send the prompt
   const sanitized = sanitizePrompt(prompt)
   s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
-  await new Promise(resolve => setTimeout(resolve, 100))
+  await new Promise((resolve) => setTimeout(resolve, 100))
   s.term.write('\r')
 
   // Wait for the session ID (the watcher fires new_session when the JSONL appears)
@@ -299,12 +322,20 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
     s.sessionId = realId
     sessions.set(realId, s)
 
-    emit('sdk_message', { sessionId: realId, ts: Date.now(), msg: { type: 'system', subtype: 'message_sent' } })
+    emit('sdk_message', {
+      sessionId: realId,
+      ts: Date.now(),
+      msg: { type: 'system', subtype: 'message_sent' },
+    })
 
     setupCompletionDetection(realId)
   } else {
     // Couldn't detect session ID — kill PTY, let client retry
-    try { s.term.kill() } catch { /* node-pty ConPTY can throw on Windows */ }
+    try {
+      s.term.kill()
+    } catch {
+      /* node-pty ConPTY can throw on Windows */
+    }
     sessions.delete(tempId)
     throw new Error('New session created but session ID could not be detected')
   }
@@ -335,7 +366,10 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
     if (sdkOptions.permissionMode && VALID_PERMISSION_MODES.has(sdkOptions.permissionMode)) {
       args.push('--permission-mode', sdkOptions.permissionMode)
     }
-    if (sdkOptions.model && (VALID_MODEL_SHORTCUTS.has(sdkOptions.model) || /^claude-/.test(sdkOptions.model))) {
+    if (
+      sdkOptions.model &&
+      (VALID_MODEL_SHORTCUTS.has(sdkOptions.model) || /^claude-/.test(sdkOptions.model))
+    ) {
       args.push('--model', sdkOptions.model)
     }
 
@@ -361,7 +395,7 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
     }
     sessions.set(sessionId, s)
 
-    term.onData(data => handlePtyData(sessionId, data))
+    term.onData((data) => handlePtyData(sessionId, data))
     term.onExit(({ exitCode }) => handlePtyExit(sessionId, exitCode))
 
     // Wait for the CLI to initialize before sending the message
@@ -388,11 +422,15 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
   // so it bypasses sanitizePrompt, which strips \x03).
   const sanitized = sanitizePrompt(prompt)
   s.term.write('\x03')
-  await new Promise(resolve => setTimeout(resolve, 50))
+  await new Promise((resolve) => setTimeout(resolve, 50))
   s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
-  await new Promise(resolve => setTimeout(resolve, 100))
+  await new Promise((resolve) => setTimeout(resolve, 100))
   s.term.write('\r')
-  emit('sdk_message', { sessionId, ts: Date.now(), msg: { type: 'system', subtype: 'message_sent' } })
+  emit('sdk_message', {
+    sessionId,
+    ts: Date.now(),
+    msg: { type: 'system', subtype: 'message_sent' },
+  })
 
   return { ok: true, streaming: true }
 }
@@ -431,7 +469,7 @@ function waitForReady(s) {
         if (silenceTimer) clearTimeout(silenceTimer)
         silenceTimer = null
         s.term.write('\r')
-        return  // Wait for more data before starting any timer
+        return // Wait for more data before starting any timer
       }
 
       // Phase 2: Detect the message input prompt.
@@ -495,7 +533,7 @@ function handlePtyData(sessionId, data) {
   for (const pattern of APPROVAL_PATTERNS) {
     if (pattern.test(tail)) {
       // Don't re-detect if we already have an unresolved approval
-      const hasUnresolved = [...s.approvals.values()].some(a => !a.resolved)
+      const hasUnresolved = [...s.approvals.values()].some((a) => !a.resolved)
       if (hasUnresolved) return
 
       const toolMatch = clean.match(TOOL_NAME_RE)
@@ -514,11 +552,27 @@ function handlePtyData(sessionId, data) {
       pendingApprovals.set(approvalId, approval)
       if (s._completionState) s._completionState.sawActivity = true
 
+      // Classify bash commands for risk-level indicators in the UI
+      let riskLevel = null
+      let riskDescription = null
+      if (toolName === 'Bash' || toolName === 'bash') {
+        // Try to extract the actual command from the raw approval text
+        const cmdMatch = lines.match(/(?:command|Command):\s*(.+)/m)
+        const cmd = cmdMatch ? cmdMatch[1].trim() : lines.split('\n').pop()?.trim() || ''
+        if (cmd) {
+          const result = classifyCommand(cmd)
+          riskLevel = result.classification
+          riskDescription = result.description
+        }
+      }
+
       emit('tool_approval_request', {
         sessionId,
         approvalId,
         toolName,
         input: { raw: lines },
+        riskLevel,
+        riskDescription,
         ts: Date.now(),
       })
 
@@ -552,7 +606,7 @@ function handlePtyData(sessionId, data) {
     state.promptDetectTimer = setTimeout(() => {
       const c = sessions.get(sessionId)
       if (!c || !c.busy) return
-      const hasUnresolved = [...c.approvals.values()].some(a => !a.resolved)
+      const hasUnresolved = [...c.approvals.values()].some((a) => !a.resolved)
       if (hasUnresolved) return
       markComplete(sessionId, 'success')
     }, 3000)
@@ -582,7 +636,11 @@ function handlePtyExit(sessionId, exitCode) {
   }
 
   // Kill the PTY process to prevent zombies
-  try { s.term.kill() } catch { /* already dead */ }
+  try {
+    s.term.kill()
+  } catch {
+    /* already dead */
+  }
 
   // Clean up pending approvals
   for (const [id, approval] of s.approvals) {

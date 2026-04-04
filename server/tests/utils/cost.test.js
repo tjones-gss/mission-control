@@ -31,19 +31,19 @@ describe('calculateCost()', () => {
     const usage = { input: 1_000_000, output: 100_000, cacheRead: 500_000, cacheWrite: 200_000 }
     const result = calculateCost(usage, 'claude-sonnet-4-6')
     expect(result.family).toBe('sonnet')
-    expect(result.breakdown.input).toBeCloseTo(3.00)      // 1M * $3/M
-    expect(result.breakdown.output).toBeCloseTo(1.50)      // 100k * $15/M
-    expect(result.breakdown.cacheRead).toBeCloseTo(0.15)   // 500k * $0.30/M
-    expect(result.breakdown.cacheWrite).toBeCloseTo(0.75)  // 200k * $3.75/M
-    expect(result.totalCost).toBeCloseTo(5.40)
+    expect(result.breakdown.input).toBeCloseTo(3.0) // 1M * $3/M
+    expect(result.breakdown.output).toBeCloseTo(1.5) // 100k * $15/M
+    expect(result.breakdown.cacheRead).toBeCloseTo(0.15) // 500k * $0.30/M
+    expect(result.breakdown.cacheWrite).toBeCloseTo(0.75) // 200k * $3.75/M
+    expect(result.totalCost).toBeCloseTo(5.4)
   })
 
   it('calculates correct cost for haiku', () => {
     const usage = { input: 500_000, output: 50_000, cacheRead: 0, cacheWrite: 0 }
     const result = calculateCost(usage, 'claude-3-haiku')
-    expect(result.breakdown.input).toBeCloseTo(0.50)
-    expect(result.breakdown.output).toBeCloseTo(0.25)
-    expect(result.totalCost).toBeCloseTo(0.75)
+    expect(result.breakdown.input).toBeCloseTo(0.4) // 500k * $0.80/M
+    expect(result.breakdown.output).toBeCloseTo(0.2) // 50k * $4.00/M
+    expect(result.totalCost).toBeCloseTo(0.6)
   })
 
   it('returns null for unknown model', () => {
@@ -55,7 +55,10 @@ describe('calculateCost()', () => {
   })
 
   it('handles zero tokens', () => {
-    const result = calculateCost({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, 'claude-sonnet-4-6')
+    const result = calculateCost(
+      { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      'claude-sonnet-4-6',
+    )
     expect(result.totalCost).toBe(0)
   })
 })

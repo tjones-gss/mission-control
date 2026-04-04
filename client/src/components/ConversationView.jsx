@@ -1,5 +1,15 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
-import { Send, Info, X, Loader, Terminal, ChevronDown, ChevronUp, ImagePlus } from 'lucide-react'
+import {
+  Send,
+  Info,
+  X,
+  Loader,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  ImagePlus,
+  ShieldAlert,
+} from 'lucide-react'
 import { useApi } from '../hooks/useApi.js'
 import { TOOL_COLORS } from './AgentTree.jsx'
 import { Markdown } from './Markdown.jsx'
@@ -9,12 +19,21 @@ import { FilePath } from './FilePath.jsx'
 function ThinkingBlock({ text }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="rounded border-l-2 border-amber-700 bg-amber-900/20 cursor-pointer" onClick={() => setOpen(o => !o)}>
+    <div
+      className="rounded border-l-2 border-amber-700 bg-amber-900/20 cursor-pointer"
+      onClick={() => setOpen((o) => !o)}
+    >
       <div className="flex items-center gap-1.5 px-2 py-1">
-        <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">THINK</span>
+        <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">
+          THINK
+        </span>
         <span className="text-[10px] text-amber-700">{open ? '▲' : '▼'}</span>
       </div>
-      {open && <div className="px-2 pb-2 text-xs text-amber-200/70 font-mono leading-relaxed whitespace-pre-wrap">{text}</div>}
+      {open && (
+        <div className="px-2 pb-2 text-xs text-amber-200/70 font-mono leading-relaxed whitespace-pre-wrap">
+          {text}
+        </div>
+      )}
     </div>
   )
 }
@@ -30,16 +49,18 @@ function ToolUseBlock({ name, input }) {
     <div className="rounded overflow-hidden">
       <button
         className={`flex items-center gap-2 px-2 py-1 text-xs font-mono w-full text-left ${color}`}
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
       >
         <span>{name}</span>
         {filePath && (
-          <span className="opacity-70 truncate max-w-[300px]" onClick={e => e.stopPropagation()}>
+          <span className="opacity-70 truncate max-w-[300px]" onClick={(e) => e.stopPropagation()}>
             <FilePath path={filePath} />
           </span>
         )}
         {!filePath && name === 'Bash' && input?.command && (
-          <span className="opacity-50 truncate max-w-[300px] text-[10px]">{input.command.slice(0, 60)}</span>
+          <span className="opacity-50 truncate max-w-[300px] text-[10px]">
+            {input.command.slice(0, 60)}
+          </span>
         )}
         <span className="opacity-50 text-[10px] ml-auto">{open ? '▲' : '▼'}</span>
       </button>
@@ -53,7 +74,8 @@ function ToolUseBlock({ name, input }) {
 }
 
 // eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]|\x1b[>=<]|\x1b\[[\d;]*m/g
+const ANSI_RE =
+  /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]|\x1b[>=<]|\x1b\[[\d;]*m/g
 
 function stripAnsi(str) {
   return str.replace(ANSI_RE, '')
@@ -65,16 +87,20 @@ function ToolResultBlock({ content, toolName }) {
   const cleaned = stripAnsi(raw)
   const lines = cleaned.split('\n')
   const summary = lines[0]?.slice(0, 80) || '(empty)'
-  const color = toolName ? (TOOL_COLORS[toolName] || 'bg-gray-800 text-gray-400') : null
+  const color = toolName ? TOOL_COLORS[toolName] || 'bg-gray-800 text-gray-400' : null
   return (
     <div className="rounded bg-gray-900 border border-gray-800">
       <button
         className={`flex items-center gap-2 px-2 py-1 text-xs font-mono w-full text-left ${color || 'bg-gray-800 text-gray-400'}`}
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
       >
         <Terminal size={10} className="shrink-0 opacity-60" />
-        <span className="truncate opacity-70">{toolName ? `${toolName} result` : 'result'}: {summary}</span>
-        <span className="ml-auto opacity-50">{open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}</span>
+        <span className="truncate opacity-70">
+          {toolName ? `${toolName} result` : 'result'}: {summary}
+        </span>
+        <span className="ml-auto opacity-50">
+          {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+        </span>
       </button>
       {open && (
         <pre className="text-[11px] font-mono text-gray-500 p-2 overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto">
@@ -88,11 +114,13 @@ function ToolResultBlock({ content, toolName }) {
 // Detect system/notification content injected into user messages
 function isSystemContent(text) {
   if (!text) return false
-  return text.includes('<task-notification>') ||
+  return (
+    text.includes('<task-notification>') ||
     text.includes('<system-reminder>') ||
     text.includes('<command-name>') ||
     text.includes('<available-deferred-tools>') ||
     text.includes('<local-command-stdout>')
+  )
 }
 
 function SystemMessage({ text }) {
@@ -118,9 +146,10 @@ function SystemMessage({ text }) {
 
 function ImageBlock({ source }) {
   if (!source) return null
-  const src = source.type === 'base64'
-    ? `data:${source.media_type};base64,${source.data}`
-    : source.url || null
+  const src =
+    source.type === 'base64'
+      ? `data:${source.media_type};base64,${source.data}`
+      : source.url || null
   if (!src) return null
   return (
     <img
@@ -131,29 +160,69 @@ function ImageBlock({ source }) {
   )
 }
 
+const REDACTED_RE = /\[REDACTED: [^\]]+\]/g
+
+function countRedactions(blocks) {
+  let count = 0
+  for (const b of blocks) {
+    const text = b.text || b.content || ''
+    const matches = text.match(REDACTED_RE)
+    if (matches) count += matches.length
+  }
+  return count
+}
+
+function RedactedBadge({ count }) {
+  if (!count) return null
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 text-[10px] font-mono">
+      <ShieldAlert size={10} />
+      {count} secret{count > 1 ? 's' : ''} redacted
+    </span>
+  )
+}
+
 const UserMessage = memo(function UserMessage({ blocks, toolNameMap }) {
-  const textBlocks = blocks.filter(b => b.type === 'text')
-  const imageBlocks = blocks.filter(b => b.type === 'image')
-  const resultBlocks = blocks.filter(b => b.type === 'tool_result')
+  const textBlocks = blocks.filter((b) => b.type === 'text')
+  const imageBlocks = blocks.filter((b) => b.type === 'image')
+  const resultBlocks = blocks.filter((b) => b.type === 'tool_result')
+  const redactedCount = countRedactions(blocks)
 
   // Separate real user text from system-injected content
-  const userTexts = textBlocks.filter(b => !isSystemContent(b.text))
-  const systemTexts = textBlocks.filter(b => isSystemContent(b.text))
+  const userTexts = textBlocks.filter((b) => !isSystemContent(b.text))
+  const systemTexts = textBlocks.filter((b) => isSystemContent(b.text))
 
   return (
     <>
       {(userTexts.length > 0 || imageBlocks.length > 0) && (
         <div className="rounded-lg bg-indigo-950/40 border border-indigo-900/30 p-3 space-y-2">
-          <div className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">USER</div>
-          {imageBlocks.map((b, i) => <ImageBlock key={`img-${i}`} source={b.source} />)}
-          {userTexts.map((b, i) => <Markdown key={i} className="text-indigo-100/80">{b.text}</Markdown>)}
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">
+              USER
+            </div>
+            <RedactedBadge count={redactedCount} />
+          </div>
+          {imageBlocks.map((b, i) => (
+            <ImageBlock key={`img-${i}`} source={b.source} />
+          ))}
+          {userTexts.map((b, i) => (
+            <Markdown key={i} className="text-indigo-100/80">
+              {b.text}
+            </Markdown>
+          ))}
         </div>
       )}
-      {systemTexts.map((b, i) => <SystemMessage key={`sys-${i}`} text={b.text} />)}
+      {systemTexts.map((b, i) => (
+        <SystemMessage key={`sys-${i}`} text={b.text} />
+      ))}
       {resultBlocks.length > 0 && (
         <div className="rounded-lg bg-gray-900/60 border border-gray-800 p-3 space-y-2">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">TOOL OUTPUT</div>
-          {resultBlocks.map((b, i) => <ToolResultBlock key={i} content={b.content} toolName={toolNameMap[b.toolUseId]} />)}
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+            TOOL OUTPUT
+          </div>
+          {resultBlocks.map((b, i) => (
+            <ToolResultBlock key={i} content={b.content} toolName={toolNameMap[b.toolUseId]} />
+          ))}
         </div>
       )}
     </>
@@ -161,12 +230,15 @@ const UserMessage = memo(function UserMessage({ blocks, toolNameMap }) {
 })
 
 const AssistantMessage = memo(function AssistantMessage({ blocks }) {
+  const redactedCount = countRedactions(blocks)
   return (
     <div className="space-y-2">
+      <RedactedBadge count={redactedCount} />
       {blocks.map((block, i) => {
         if (block.type === 'thinking') return <ThinkingBlock key={i} text={block.text} />
         if (block.type === 'text') return <Markdown key={i}>{block.text}</Markdown>
-        if (block.type === 'tool_use') return <ToolUseBlock key={i} name={block.name} input={block.input} />
+        if (block.type === 'tool_use')
+          return <ToolUseBlock key={i} name={block.name} input={block.input} />
         return null
       })}
     </div>
@@ -181,8 +253,11 @@ function OptionPills({ options }) {
   if (pills.length === 0) return null
   return (
     <div className="flex items-center gap-1">
-      {pills.map(p => (
-        <span key={p} className="px-1.5 py-0.5 rounded bg-indigo-900/40 text-indigo-300 text-[10px] font-mono">
+      {pills.map((p) => (
+        <span
+          key={p}
+          className="px-1.5 py-0.5 rounded bg-indigo-900/40 text-indigo-300 text-[10px] font-mono"
+        >
           {p}
         </span>
       ))}
@@ -193,7 +268,7 @@ function OptionPills({ options }) {
 function SlashAutocomplete({ filter, skills, selectedIndex, onSelect }) {
   if (!skills || skills.length === 0) return null
 
-  const filtered = skills.filter(s => {
+  const filtered = skills.filter((s) => {
     const name = s.command || `/${s.name}`
     return name.toLowerCase().includes(filter.toLowerCase())
   })
@@ -210,7 +285,10 @@ function SlashAutocomplete({ filter, skills, selectedIndex, onSelect }) {
               ? 'bg-indigo-900/50 text-indigo-200'
               : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
           }`}
-          onMouseDown={e => { e.preventDefault(); onSelect(s) }}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            onSelect(s)
+          }}
         >
           <span className="font-mono text-indigo-400">{s.command || `/${s.name}`}</span>
           {s.description && <span className="text-gray-600 truncate">{s.description}</span>}
@@ -225,8 +303,14 @@ function StreamingIndicator() {
     <div className="flex items-center gap-2 px-3 py-2">
       <div className="flex gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '150ms' }} />
-        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" style={{ animationDelay: '300ms' }} />
+        <span
+          className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"
+          style={{ animationDelay: '150ms' }}
+        />
+        <span
+          className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"
+          style={{ animationDelay: '300ms' }}
+        />
       </div>
       <span className="text-xs text-indigo-400/70">Generating response...</span>
     </div>
@@ -236,7 +320,16 @@ function StreamingIndicator() {
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
 const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 
-function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, active, isStreaming, onCancel }) {
+function MessageInput({
+  sessionId,
+  sending,
+  onSend,
+  sessionOptions,
+  skills,
+  active,
+  isStreaming,
+  onCancel,
+}) {
   const [text, setText] = useState('')
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
@@ -249,10 +342,9 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
   const allSkills = useMemo(() => {
     if (!skills) return []
     const user = skills.userSkills || []
-    const plugins = (skills.plugins || skills.pluginSkills || [])
-    const flat = Array.isArray(plugins) && plugins[0]?.skills
-      ? plugins.flatMap(p => p.skills)
-      : plugins
+    const plugins = skills.plugins || skills.pluginSkills || []
+    const flat =
+      Array.isArray(plugins) && plugins[0]?.skills ? plugins.flatMap((p) => p.skills) : plugins
     return [...user, ...flat]
   }, [skills])
 
@@ -263,7 +355,7 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
 
   const filteredSkills = useMemo(() => {
     if (!slashFilter) return []
-    return allSkills.filter(s => {
+    return allSkills.filter((s) => {
       const name = s.command || `/${s.name}`
       return name.toLowerCase().includes(slashFilter.toLowerCase())
     })
@@ -274,13 +366,16 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
     setAcIndex(0)
   }, [slashFilter, filteredSkills.length])
 
-  const selectSkill = useCallback((skill) => {
-    const cmd = skill.command || `/${skill.name}`
-    const rest = text.includes(' ') ? text.slice(text.indexOf(' ')) : ' '
-    setText(cmd + rest)
-    setShowAutocomplete(false)
-    inputRef.current?.focus()
-  }, [text])
+  const selectSkill = useCallback(
+    (skill) => {
+      const cmd = skill.command || `/${skill.name}`
+      const rest = text.includes(' ') ? text.slice(text.indexOf(' ')) : ' '
+      setText(cmd + rest)
+      setShowAutocomplete(false)
+      inputRef.current?.focus()
+    },
+    [text],
+  )
 
   // Image handling
   const validateAndSetImage = useCallback((file) => {
@@ -300,7 +395,9 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
 
   // Clean up object URL on unmount
   useEffect(() => {
-    return () => { if (imagePreview) URL.revokeObjectURL(imagePreview) }
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview)
+    }
   }, [imagePreview])
 
   const handleDragOver = useCallback((e) => {
@@ -313,35 +410,41 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
     setDragOver(false)
   }, [])
 
-  const handleDrop = useCallback((e) => {
-    e.preventDefault()
-    setDragOver(false)
-    const file = e.dataTransfer?.files?.[0]
-    if (file) validateAndSetImage(file)
-  }, [validateAndSetImage])
+  const handleDrop = useCallback(
+    (e) => {
+      e.preventDefault()
+      setDragOver(false)
+      const file = e.dataTransfer?.files?.[0]
+      if (file) validateAndSetImage(file)
+    },
+    [validateAndSetImage],
+  )
 
-  const handlePaste = useCallback((e) => {
-    const items = e.clipboardData?.items
-    if (!items) return
-    for (const item of items) {
-      if (item.kind === 'file' && IMAGE_MIME_TYPES.includes(item.type)) {
-        e.preventDefault()
-        validateAndSetImage(item.getAsFile())
-        return
+  const handlePaste = useCallback(
+    (e) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of items) {
+        if (item.kind === 'file' && IMAGE_MIME_TYPES.includes(item.type)) {
+          e.preventDefault()
+          validateAndSetImage(item.getAsFile())
+          return
+        }
       }
-    }
-  }, [validateAndSetImage])
+    },
+    [validateAndSetImage],
+  )
 
   const handleKeyDown = (e) => {
     if (showAutocomplete) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setAcIndex(i => Math.min(i + 1, filteredSkills.length - 1))
+        setAcIndex((i) => Math.min(i + 1, filteredSkills.length - 1))
         return
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setAcIndex(i => Math.max(i - 1, 0))
+        setAcIndex((i) => Math.max(i - 1, 0))
         return
       }
       if (e.key === 'Tab' || (e.key === 'Enter' && filteredSkills[acIndex])) {
@@ -389,7 +492,11 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
       {imagePreview && (
         <div className="flex items-center gap-2 mb-1.5">
           <div className="relative inline-block">
-            <img src={imagePreview} alt="Attached" className="h-12 w-12 object-cover rounded border border-gray-700" />
+            <img
+              src={imagePreview}
+              alt="Attached"
+              className="h-12 w-12 object-cover rounded border border-gray-700"
+            />
             <button
               type="button"
               onClick={clearImage}
@@ -407,7 +514,10 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
           type="file"
           accept="image/png,image/jpeg,image/gif,image/webp"
           className="hidden"
-          onChange={e => { validateAndSetImage(e.target.files?.[0]); e.target.value = '' }}
+          onChange={(e) => {
+            validateAndSetImage(e.target.files?.[0])
+            e.target.value = ''
+          }}
         />
         <button
           type="button"
@@ -422,12 +532,18 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
           ref={inputRef}
           type="text"
           value={text}
-          onChange={e => setText(e.target.value)}
+          onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           disabled={sending || isStreaming}
           data-shortcut-focus="message-input"
-          placeholder={isStreaming ? 'Generating...' : sending ? 'Sending...' : 'Send a message (/ for commands)...'}
+          placeholder={
+            isStreaming
+              ? 'Generating...'
+              : sending
+                ? 'Sending...'
+                : 'Send a message (/ for commands)...'
+          }
           className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
         />
         {sessionOptions && <OptionPills options={sessionOptions} />}
@@ -462,7 +578,14 @@ function MessageInput({ sessionId, sending, onSend, sessionOptions, skills, acti
   )
 }
 
-export function ConversationView({ sessionId, sessionUpdateVersion, active, sessionOptions, skills, streaming }) {
+export function ConversationView({
+  sessionId,
+  sessionUpdateVersion,
+  active,
+  sessionOptions,
+  skills,
+  streaming,
+}) {
   const isStreaming = streaming?.isStreaming || false
   const pendingApprovals = streaming?.pendingApprovals || []
   const sdkError = streaming?.sdkError || null
@@ -501,43 +624,46 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
     return Object.keys(o).length > 0 ? o : undefined
   }, [sessionOptions])
 
-  const handleSend = useCallback(async (text, imageFile) => {
-    if (!sessionId || isStreaming) return
-    setSending(true)
-    setSendError(null)
-    try {
-      let fetchOpts
-      if (imageFile) {
-        // Multipart form data for image upload
-        const formData = new FormData()
-        formData.append('message', text)
-        formData.append('image', imageFile)
-        if (cleanOptions) formData.append('options', JSON.stringify(cleanOptions))
-        fetchOpts = { method: 'POST', body: formData }
-      } else {
-        // JSON body for text-only messages
-        const body = { message: text }
-        if (cleanOptions) body.options = cleanOptions
-        fetchOpts = {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+  const handleSend = useCallback(
+    async (text, imageFile) => {
+      if (!sessionId || isStreaming) return
+      setSending(true)
+      setSendError(null)
+      try {
+        let fetchOpts
+        if (imageFile) {
+          // Multipart form data for image upload
+          const formData = new FormData()
+          formData.append('message', text)
+          formData.append('image', imageFile)
+          if (cleanOptions) formData.append('options', JSON.stringify(cleanOptions))
+          fetchOpts = { method: 'POST', body: formData }
+        } else {
+          // JSON body for text-only messages
+          const body = { message: text }
+          if (cleanOptions) body.options = cleanOptions
+          fetchOpts = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }
         }
-      }
 
-      const res = await fetch(`/api/sessions/${sessionId}/message`, fetchOpts)
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.detail || data.error || `HTTP ${res.status}`)
+        const res = await fetch(`/api/sessions/${sessionId}/message`, fetchOpts)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.detail || data.error || `HTTP ${res.status}`)
+        }
+        // 202 Accepted — query started, streaming state managed by SSE events
+        if (streaming?.markStreaming) streaming.markStreaming()
+      } catch (e) {
+        setSendError(e.message)
+      } finally {
+        setSending(false)
       }
-      // 202 Accepted — query started, streaming state managed by SSE events
-      if (streaming?.markStreaming) streaming.markStreaming()
-    } catch (e) {
-      setSendError(e.message)
-    } finally {
-      setSending(false)
-    }
-  }, [sessionId, cleanOptions, isStreaming, streaming])
+    },
+    [sessionId, cleanOptions, isStreaming, streaming],
+  )
 
   useEffect(() => {
     if (!paused && scrollRef.current) {
@@ -563,7 +689,7 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
     <div className="h-full flex flex-col overflow-hidden relative">
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 space-y-3">
         {loading && <div className="text-xs text-gray-600 p-4">Loading...</div>}
-        {messages.map(msg => (
+        {messages.map((msg) => (
           <div key={msg.uuid}>
             {msg.type === 'user' && <UserMessage blocks={msg.blocks} toolNameMap={toolNameMap} />}
             {msg.type === 'assistant' && <AssistantMessage blocks={msg.blocks} />}
@@ -572,7 +698,7 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
         {isStreaming && <StreamingIndicator />}
       </div>
 
-      {pendingApprovals.map(a => (
+      {pendingApprovals.map((a) => (
         <ToolApprovalBanner
           key={a.approvalId}
           approval={a}
@@ -598,7 +724,12 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
                 ? 'Insufficient API credits'
                 : `Query failed: ${sdkError.message}`}
             </span>
-            <button onClick={streaming?.clearError} className="text-red-600 hover:text-red-400 ml-2">dismiss</button>
+            <button
+              onClick={streaming?.clearError}
+              className="text-red-600 hover:text-red-400 ml-2"
+            >
+              dismiss
+            </button>
           </div>
           {sdkError.errorType === 'credit_balance' && (
             <div className="mt-1 text-red-400/70">
@@ -611,7 +742,12 @@ export function ConversationView({ sessionId, sessionUpdateVersion, active, sess
       {sendError && (
         <div className="px-3 py-1.5 bg-red-950/50 border-t border-red-800/50 text-xs text-red-400 flex items-center justify-between">
           <span>Send failed: {sendError}</span>
-          <button onClick={() => setSendError(null)} className="text-red-600 hover:text-red-400 ml-2">dismiss</button>
+          <button
+            onClick={() => setSendError(null)}
+            className="text-red-600 hover:text-red-400 ml-2"
+          >
+            dismiss
+          </button>
         </div>
       )}
 
