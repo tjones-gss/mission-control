@@ -605,9 +605,27 @@ export function ConversationView({
   const isStreaming = streaming?.isStreaming || false
   const pendingApprovals = streaming?.pendingApprovals || []
   const sdkError = streaming?.sdkError || null
-  const url = active && sessionId ? `/api/sessions/${sessionId}/messages` : null
-  const { data, loading } = useApi(url, [sessionUpdateVersion])
+
+  // Pull only the last N messages by default. The server endpoint now
+  // supports `?limit=N` (Run #23 fix) and slices from the end. The active
+  // oversight session has 1,964+ messages = 1.47 MB; fetching the full
+  // history every render was a real perf hit on tab switches and SSE
+  // refreshes. 200 is enough to fill several screens of conversation
+  // before the user has to click "Load older".
+  const PAGE_SIZE = 200
+  const [messageLimit, setMessageLimit] = useState(PAGE_SIZE)
+  // Reset to the default page size when switching sessions
+  useEffect(() => {
+    setMessageLimit(PAGE_SIZE)
+  }, [sessionId])
+
+  const url =
+    active && sessionId ? `/api/sessions/${sessionId}/messages?limit=${messageLimit}` : null
+  const { data, loading } = useApi(url, [sessionUpdateVersion, messageLimit])
   const serverMessages = data?.messages || []
+  const totalMessageCount = data?.totalCount ?? serverMessages.length
+  const hasOlderMessages = data?.hasMore === true
+  const olderRemaining = Math.max(0, totalMessageCount - serverMessages.length)
 
   // Optimistic user messages — shown immediately on send, cleared once they
   // appear in the server response (matched by text content).
@@ -737,6 +755,16 @@ export function ConversationView({
     <div className="h-full flex flex-col overflow-hidden relative">
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 space-y-3">
         {loading && <div className="text-xs text-gray-600 p-4">Loading...</div>}
+        {hasOlderMessages && (
+          <button
+            type="button"
+            onClick={() => setMessageLimit((n) => n + PAGE_SIZE)}
+            className="w-full py-2 mb-2 rounded border border-gray-800 bg-gray-900/40 text-[11px] text-gray-500 hover:text-gray-300 hover:border-gray-700 transition-colors"
+            title={`Showing the last ${serverMessages.length} of ${totalMessageCount} messages — click to load older`}
+          >
+            Load {Math.min(PAGE_SIZE, olderRemaining)} older messages ({olderRemaining} remaining)
+          </button>
+        )}
         {messages.map((msg) => (
           <div key={msg.uuid}>
             {msg.type === 'user' && <UserMessage blocks={msg.blocks} toolNameMap={toolNameMap} />}

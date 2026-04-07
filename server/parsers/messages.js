@@ -191,7 +191,13 @@ export function getSessionMessages(sessionId, { limit, offset = 0 } = {}) {
       messages,
       totalCount,
       offset: windowStart,
-      hasMore: windowEnd < totalCount,
+      // hasMore is true if ANY records were excluded — either older
+      // (windowStart > 0, the common "last N" slice case) OR newer
+      // (windowEnd < totalCount, the offset paging case). The previous
+      // version only checked the offset case, so a default last-N
+      // request always reported hasMore=false even when 1,800+ older
+      // messages had been excluded.
+      hasMore: windowStart > 0 || windowEnd < totalCount,
     }
   } catch {
     return null
