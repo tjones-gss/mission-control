@@ -340,10 +340,14 @@ export function DispatchDrawer({ open, onClose, onSingleDispatchSuccess }) {
     })
     setDispatchState(nextState)
 
-    // Clear text only if all succeeded
+    // Clear text + selection only if all succeeded. Previously the
+    // selectedIds set was never cleared, so reopening the drawer
+    // showed stale "N selected" badges and pre-checked rows, and the
+    // user could accidentally re-broadcast to the previous targets.
     const allOk = results.every((r) => r.status === 'fulfilled')
     if (allOk) {
       setText('')
+      setSelectedIds(new Set())
       // Clear "ok" badges after a moment
       setTimeout(() => setDispatchState({}), 2000)
 
