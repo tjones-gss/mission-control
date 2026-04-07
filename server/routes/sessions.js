@@ -22,7 +22,7 @@ import {
   VALID_PERMISSION_MODES,
   VALID_MODEL_SHORTCUTS,
 } from '../pty-session.js'
-import { onEvent } from '../sse.js'
+import { onEvent, emit } from '../sse.js'
 import { validateSessionId } from '../utils/validate.js'
 import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
 import { atomicWriteJson } from '../lib/atomic-write.js'
@@ -539,6 +539,11 @@ router.post('/:sessionId/name', async (req, res) => {
   names[sessionId] = trimmed
   await saveSessionNames(names)
 
+  // Tell the dashboard to refresh its session list so the new name
+  // shows up immediately. The session_update event is the existing
+  // signal the client uses to bump sessionsVersion + refetch.
+  emit('session_update', { sessionId, ts: Date.now(), reason: 'name_changed' })
+
   res.json({ ok: true, sessionId, displayName: trimmed })
 })
 
@@ -553,6 +558,7 @@ router.delete('/:sessionId/name', async (req, res) => {
   }
   delete names[sessionId]
   await saveSessionNames(names)
+  emit('session_update', { sessionId, ts: Date.now(), reason: 'name_cleared' })
   res.json({ ok: true, sessionId, displayName: null })
 })
 
