@@ -115,7 +115,9 @@ function SessionCard({ session, isSelected, onSelect }) {
         isSelected ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-800',
       ].join(' ')}
     >
-      {/* Header row */}
+      {/* Header row — status dot mirrors the column color:
+           green = active, amber = idle (recent OR waiting),
+           gray = done. */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
           {session.isActive && (
@@ -130,6 +132,11 @@ function SessionCard({ session, isSelected, onSelect }) {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
             </span>
           )}
+          {!session.isActive &&
+            !session.needsInput &&
+            Date.now() - session.lastModified < 3_600_000 && (
+              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+            )}
           <span className="text-sm font-medium text-gray-100 truncate">{slug}</span>
         </div>
         {session.permissionMode && PERMISSION_BADGE[session.permissionMode] && (

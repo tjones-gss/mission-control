@@ -80,7 +80,10 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
       onClick={() => onSelect(session.sessionId)}
       className={`text-left p-3 rounded-lg border transition-all w-full min-w-0 ${selectedClasses}`}
     >
-      {/* Project name row */}
+      {/* Project name row — status dot matches the section color:
+           green = active, amber = idle (recent OR waiting on input),
+           gray = older / done. Pulse only on active or needs-input,
+           steady on plain idle so it doesn't visually shout. */}
       <div className="flex items-center gap-2 min-w-0">
         {session.isActive && (
           <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
@@ -91,6 +94,11 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
           </span>
         )}
+        {!session.isActive &&
+          !session.needsInput &&
+          Date.now() - session.lastModified < ONE_HOUR && (
+            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+          )}
         <span className="text-sm font-medium text-gray-200 truncate min-w-0 flex-1">
           {projectLabel(session)}
         </span>

@@ -376,7 +376,10 @@ export function DispatchDrawer({ open, onClose }) {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-800">
           <Layers size={16} className="text-indigo-400" />
           <span className="text-sm font-semibold text-gray-100">Dispatch Manager</span>
-          <span className="text-xs text-gray-600">
+          <span
+            className="text-xs text-gray-600 cursor-help underline decoration-dotted decoration-gray-700 underline-offset-2"
+            title="A group is a set of 2+ Claude Code sessions that share the same parent directory — usually one project. Use the dispatch composer to broadcast a message to every session you select across groups."
+          >
             {managers.length} {managers.length === 1 ? 'group' : 'groups'} • {totalChildren}{' '}
             {totalChildren === 1 ? 'session' : 'sessions'}
           </span>
