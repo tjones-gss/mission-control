@@ -3,44 +3,48 @@ import { useEffect, useCallback, useState } from 'react'
 const STORAGE_KEY = 'oversight.shortcuts'
 
 const DEFAULT_SHORTCUTS = {
-  nextSession:    'j',
-  prevSession:    'k',
-  openDetail:     'Enter',
-  backToBoard:    'Escape',
-  tabAgents:      '1',
-  tabTasks:       '2',
-  tabWorkflows:   '3',
-  tabSkills:      '4',
-  quickApprove:   'y',
-  quickContinue:  'c',
-  focusInput:     '/',
-  showHelp:       '?',
+  nextSession: 'j',
+  prevSession: 'k',
+  openDetail: 'Enter',
+  backToBoard: 'Escape',
+  tabAgents: '1',
+  tabTasks: '2',
+  tabWorkflows: '3',
+  tabSkills: '4',
+  quickApprove: 'y',
+  quickContinue: 'c',
+  focusInput: '/',
+  showHelp: '?',
   toggleSettings: ',',
-  toggleMute:     'm',
+  toggleMute: 'm',
+  toggleDispatch: 'd',
 }
 
 const ACTION_LABELS = {
-  nextSession:    'Next session',
-  prevSession:    'Previous session',
-  openDetail:     'Open detail view',
-  backToBoard:    'Back to board',
-  tabAgents:      'Agents tab',
-  tabTasks:       'Tasks tab',
-  tabWorkflows:   'Workflows tab',
-  tabSkills:      'Skills tab',
-  quickApprove:   'Approve (send "yes")',
-  quickContinue:  'Continue session',
-  focusInput:     'Focus message input',
-  showHelp:       'Show shortcut help',
+  nextSession: 'Next session',
+  prevSession: 'Previous session',
+  openDetail: 'Open detail view',
+  backToBoard: 'Back to board',
+  tabAgents: 'Agents tab',
+  tabTasks: 'Tasks tab',
+  tabWorkflows: 'Workflows tab',
+  tabSkills: 'Skills tab',
+  quickApprove: 'Approve (send "yes")',
+  quickContinue: 'Continue session',
+  focusInput: 'Focus message input',
+  showHelp: 'Show shortcut help',
   toggleSettings: 'Open settings',
-  toggleMute:     'Mute session',
+  toggleMute: 'Mute session',
+  toggleDispatch: 'Open dispatch manager',
 }
 
 function loadShortcuts() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) return { ...DEFAULT_SHORTCUTS, ...JSON.parse(raw) }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { ...DEFAULT_SHORTCUTS }
 }
 
@@ -70,7 +74,8 @@ export function useKeyboardShortcuts(handlers) {
     const onKeyDown = (e) => {
       // Ignore when typing in inputs (except Escape)
       const tag = e.target.tagName
-      const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable
+      const isEditable =
+        tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable
       if (isEditable && e.key !== 'Escape') return
 
       for (const [action, binding] of Object.entries(shortcuts)) {
@@ -90,7 +95,7 @@ export function useKeyboardShortcuts(handlers) {
   }, [shortcuts, handlers])
 
   const updateShortcut = useCallback((action, newKey) => {
-    setShortcuts(prev => {
+    setShortcuts((prev) => {
       // Detect conflicts: if another action already uses this key, clear it
       const next = { ...prev }
       for (const [existingAction, existingKey] of Object.entries(next)) {

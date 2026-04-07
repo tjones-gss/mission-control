@@ -28,7 +28,12 @@ describe('KanbanBoard — column grouping', () => {
 
   it('places active sessions in the Active column', () => {
     const sessions = [
-      makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000, lastText: 'Active task' }),
+      makeSession({
+        sessionId: 'a1',
+        isActive: true,
+        lastModified: NOW - 1000,
+        lastText: 'Active task',
+      }),
     ]
     render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByText('Active task')).toBeInTheDocument()
@@ -36,7 +41,12 @@ describe('KanbanBoard — column grouping', () => {
 
   it('places recent inactive sessions in the Idle column', () => {
     const sessions = [
-      makeSession({ sessionId: 'i1', isActive: false, lastModified: NOW - 30 * 60_000, lastText: 'Idle task' }),
+      makeSession({
+        sessionId: 'i1',
+        isActive: false,
+        lastModified: NOW - 30 * 60_000,
+        lastText: 'Idle task',
+      }),
     ]
     render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByText('Idle task')).toBeInTheDocument()
@@ -44,9 +54,16 @@ describe('KanbanBoard — column grouping', () => {
 
   it('places old sessions in the Done column', () => {
     const sessions = [
-      makeSession({ sessionId: 'd1', isActive: false, lastModified: NOW - 2 * 3_600_000, lastText: 'Done task' }),
+      makeSession({
+        sessionId: 'd1',
+        isActive: false,
+        lastModified: NOW - 2 * 3_600_000,
+        lastText: 'Done task',
+      }),
     ]
     render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
+    // The Done column is collapsed by default — expand it to verify contents
+    fireEvent.click(screen.getByText('Done'))
     expect(screen.getByText('Done task')).toBeInTheDocument()
   })
 
@@ -54,6 +71,8 @@ describe('KanbanBoard — column grouping', () => {
     render(<KanbanBoard sessions={[]} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByText('No active sessions')).toBeInTheDocument()
     expect(screen.getByText('No idle sessions')).toBeInTheDocument()
+    // Expand the collapsed Done column to see its empty label
+    fireEvent.click(screen.getByText('Done'))
     expect(screen.getByText('No completed sessions')).toBeInTheDocument()
   })
 })
@@ -61,9 +80,7 @@ describe('KanbanBoard — column grouping', () => {
 describe('KanbanBoard — interactions', () => {
   it('calls onSelect when a session card is clicked', () => {
     const onSelect = vi.fn()
-    const sessions = [
-      makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000 }),
-    ]
+    const sessions = [makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000 })]
     render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={onSelect} />)
     fireEvent.click(screen.getByText('myproject'))
     expect(onSelect).toHaveBeenCalledWith('a1')
@@ -73,9 +90,17 @@ describe('KanbanBoard — interactions', () => {
 describe('KanbanBoard — needsInput indicator', () => {
   it('does not show amber indicator for active sessions even with needsInput', () => {
     const sessions = [
-      makeSession({ sessionId: 'a1', isActive: true, needsInput: true, lastModified: NOW - 1000, lastText: 'Active waiting' }),
+      makeSession({
+        sessionId: 'a1',
+        isActive: true,
+        needsInput: true,
+        lastModified: NOW - 1000,
+        lastText: 'Active waiting',
+      }),
     ]
-    const { container } = render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
+    const { container } = render(
+      <KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />,
+    )
     // Should have green indicator (active) but not amber
     const amberPings = container.querySelectorAll('.bg-amber-400')
     expect(amberPings).toHaveLength(0)
@@ -83,18 +108,32 @@ describe('KanbanBoard — needsInput indicator', () => {
 
   it('shows amber indicator for non-active sessions with needsInput', () => {
     const sessions = [
-      makeSession({ sessionId: 'i1', isActive: false, needsInput: true, lastModified: NOW - 30 * 60_000 }),
+      makeSession({
+        sessionId: 'i1',
+        isActive: false,
+        needsInput: true,
+        lastModified: NOW - 30 * 60_000,
+      }),
     ]
-    const { container } = render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
+    const { container } = render(
+      <KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />,
+    )
     const amberPings = container.querySelectorAll('.bg-amber-400')
     expect(amberPings.length).toBeGreaterThan(0)
   })
 
   it('does not show amber indicator when needsInput is false', () => {
     const sessions = [
-      makeSession({ sessionId: 'i1', isActive: false, needsInput: false, lastModified: NOW - 30 * 60_000 }),
+      makeSession({
+        sessionId: 'i1',
+        isActive: false,
+        needsInput: false,
+        lastModified: NOW - 30 * 60_000,
+      }),
     ]
-    const { container } = render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
+    const { container } = render(
+      <KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />,
+    )
     const amberPings = container.querySelectorAll('.bg-amber-400')
     expect(amberPings).toHaveLength(0)
   })
@@ -103,7 +142,12 @@ describe('KanbanBoard — needsInput indicator', () => {
 describe('KanbanBoard — session card details', () => {
   it('shows project slug from cwd', () => {
     const sessions = [
-      makeSession({ sessionId: 'a1', cwd: '/home/user/my-app', isActive: true, lastModified: NOW - 1000 }),
+      makeSession({
+        sessionId: 'a1',
+        cwd: '/home/user/my-app',
+        isActive: true,
+        lastModified: NOW - 1000,
+      }),
     ]
     render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByText('my-app')).toBeInTheDocument()
@@ -111,7 +155,12 @@ describe('KanbanBoard — session card details', () => {
 
   it('shows model abbreviation', () => {
     const sessions = [
-      makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000, model: 'claude-3-5-sonnet' }),
+      makeSession({
+        sessionId: 'a1',
+        isActive: true,
+        lastModified: NOW - 1000,
+        model: 'claude-3-5-sonnet',
+      }),
     ]
     render(<KanbanBoard sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByText('5-sonnet')).toBeInTheDocument()

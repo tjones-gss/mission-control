@@ -17,6 +17,7 @@ import { router as plansRouter } from './routes/plans.js'
 import { router as configRouter } from './routes/config.js'
 import { router as hooksRouter } from './routes/hooks.js'
 import { router as mcpRouter } from './routes/mcp.js'
+import { router as managersRouter } from './routes/managers.js'
 import { router as healthRouter, setHealthReady } from './routes/health.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
@@ -43,6 +44,7 @@ app.use('/api/plans', plansRouter)
 app.use('/api/config', configRouter)
 app.use('/api/hooks', hooksRouter)
 app.use('/api/mcp-servers', mcpRouter)
+app.use('/api/managers', managersRouter)
 app.use('/api/health', healthRouter)
 
 // Error handler (must be last)
