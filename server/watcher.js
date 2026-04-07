@@ -47,7 +47,9 @@ export function startWatcher() {
       emit('hooks_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('workflows')) {
       emit('workflows_update', { filePath: rel, ts: Date.now() })
-    } else if (rel.startsWith('skills')) {
+    } else if (rel.startsWith('skills') || rel.startsWith('commands')) {
+      // Slash commands and skills both feed the SkillsPanel; emit the
+      // same event so the client refetch covers both directories.
       emit('skills_update', { filePath: rel, ts: Date.now() })
     }
   })
@@ -60,7 +62,7 @@ export function startWatcher() {
       onSessionEvent(sessionId)
     } else if (rel.startsWith('workflows')) {
       emit('workflows_update', { filePath: rel, ts: Date.now() })
-    } else if (rel.startsWith('skills')) {
+    } else if (rel.startsWith('skills') || rel.startsWith('commands')) {
       emit('skills_update', { filePath: rel, ts: Date.now() })
     }
   })
@@ -69,7 +71,7 @@ export function startWatcher() {
     const rel = path.relative(CLAUDE_DIR, filePath)
     if (rel.startsWith('workflows')) {
       emit('workflows_update', { filePath: rel, ts: Date.now() })
-    } else if (rel.startsWith('skills')) {
+    } else if (rel.startsWith('skills') || rel.startsWith('commands')) {
       emit('skills_update', { filePath: rel, ts: Date.now() })
     }
   })

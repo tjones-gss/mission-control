@@ -79,11 +79,11 @@ function SkillCard({ skill, refetch }) {
       className={`bg-gray-900 border rounded p-2 flex flex-col gap-1 transition-colors ${expanded || editing ? 'border-gray-700 col-span-2' : 'border-gray-800'}`}
     >
       <div className="flex items-start justify-between gap-1">
-        <span className="font-mono text-xs text-cyan-300 leading-tight break-all">{skill.command}</span>
+        <span className="font-mono text-xs text-cyan-300 leading-tight break-all">
+          {skill.command}
+        </span>
         <div className="flex items-center gap-1 shrink-0 mt-0.5">
-          {!isUser && (
-            <span className="text-[9px] text-gray-600 italic">(read-only)</span>
-          )}
+          {!isUser && <span className="text-[9px] text-gray-600 italic">(read-only)</span>}
           {isUser && !editing && (
             <button
               onClick={handleEditOpen}
@@ -112,9 +112,7 @@ function SkillCard({ skill, refetch }) {
         </div>
       </div>
 
-      {editError && (
-        <p className="text-[10px] text-red-400">{editError}</p>
-      )}
+      {editError && <p className="text-[10px] text-red-400">{editError}</p>}
 
       {confirmDelete && !editing && (
         <div className="flex items-center gap-2 mt-1">
@@ -140,7 +138,7 @@ function SkillCard({ skill, refetch }) {
         <div className="flex flex-col gap-1 mt-1">
           <textarea
             value={editContent}
-            onChange={e => setEditContent(e.target.value)}
+            onChange={(e) => setEditContent(e.target.value)}
             rows={8}
             className="bg-gray-900 border border-gray-700 rounded p-2 text-xs text-gray-300 font-mono w-full resize-y focus:outline-none focus:border-gray-600"
           />
@@ -153,7 +151,10 @@ function SkillCard({ skill, refetch }) {
               {saving ? 'Saving...' : 'Save'}
             </button>
             <button
-              onClick={() => { setEditing(false); setEditError(null) }}
+              onClick={() => {
+                setEditing(false)
+                setEditError(null)
+              }}
               disabled={saving}
               className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 transition-colors disabled:opacity-50"
             >
@@ -173,7 +174,7 @@ function SkillCard({ skill, refetch }) {
           )}
           {skill.body && (
             <button
-              onClick={() => setExpanded(e => !e)}
+              onClick={() => setExpanded((e) => !e)}
               className={`mt-1 flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded transition-colors self-start ${
                 expanded
                   ? 'bg-cyan-900/40 text-cyan-400 hover:bg-cyan-900/60'
@@ -203,7 +204,7 @@ function SkillSection({ title, skills, refetch }) {
         {title} ({skills.length})
       </div>
       <div className="px-4 grid grid-cols-2 gap-2">
-        {skills.map(skill => (
+        {skills.map((skill) => (
           <SkillCard key={skill.command} skill={skill} refetch={refetch} />
         ))}
       </div>
@@ -241,18 +242,20 @@ function NewSkillForm({ onSaved, onCancel }) {
 
   return (
     <div className="mx-4 mb-4 bg-gray-900 border border-gray-700 rounded p-3 flex flex-col gap-2">
-      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">New Skill</span>
+      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+        New Skill
+      </span>
       {error && <p className="text-[10px] text-red-400">{error}</p>}
       <input
         type="text"
         value={name}
-        onChange={e => setName(e.target.value)}
+        onChange={(e) => setName(e.target.value)}
         placeholder="skill-name (letters, digits, _ : -)"
         className="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 font-mono focus:outline-none focus:border-gray-600 placeholder-gray-700"
       />
       <textarea
         value={content}
-        onChange={e => setContent(e.target.value)}
+        onChange={(e) => setContent(e.target.value)}
         placeholder="Skill markdown content..."
         rows={8}
         className="bg-gray-900 border border-gray-700 rounded p-2 text-xs text-gray-300 font-mono w-full resize-y focus:outline-none focus:border-gray-600 placeholder-gray-700"
@@ -290,29 +293,33 @@ export function SkillsPanel({ skills, loading, refetch }) {
     return <div className="p-4 text-gray-600 text-xs">No skills data.</div>
   }
 
-  const { userSkills = [], plugins = [], totalSkillCount = 0 } = skills
+  const { userSkills = [], userCommands = [], plugins = [], totalSkillCount = 0 } = skills
 
   function matchesQuery(skill) {
     if (!query) return true
     const q = query.toLowerCase()
-    return (
-      skill.name?.toLowerCase().includes(q) ||
-      skill.description?.toLowerCase().includes(q)
-    )
+    return skill.name?.toLowerCase().includes(q) || skill.description?.toLowerCase().includes(q)
   }
 
-  const filteredUser = userSkills.filter(s =>
-    (filterKey === 'all' || filterKey === 'user') && matchesQuery(s)
+  const filteredUser = userSkills.filter(
+    (s) => (filterKey === 'all' || filterKey === 'user') && matchesQuery(s),
   )
 
-  const filteredPlugins = plugins.map(plugin => ({
-    ...plugin,
-    skills: plugin.skills.filter(s =>
-      (filterKey === 'all' || filterKey === plugin.key) && matchesQuery(s)
-    ),
-  })).filter(p => p.skills.length > 0)
+  const filteredCommands = userCommands.filter(
+    (s) => (filterKey === 'all' || filterKey === 'commands') && matchesQuery(s),
+  )
 
-  const hasResults = filteredUser.length > 0 || filteredPlugins.length > 0
+  const filteredPlugins = plugins
+    .map((plugin) => ({
+      ...plugin,
+      skills: plugin.skills.filter(
+        (s) => (filterKey === 'all' || filterKey === plugin.key) && matchesQuery(s),
+      ),
+    }))
+    .filter((p) => p.skills.length > 0)
+
+  const hasResults =
+    filteredUser.length > 0 || filteredCommands.length > 0 || filteredPlugins.length > 0
 
   function handleNewSaved() {
     setShowNewForm(false)
@@ -328,7 +335,7 @@ export function SkillsPanel({ skills, loading, refetch }) {
           <span className="text-sm font-semibold text-gray-200">Skills</span>
           <span className="text-xs text-gray-600">· {totalSkillCount} skills</span>
           <button
-            onClick={() => setShowNewForm(v => !v)}
+            onClick={() => setShowNewForm((v) => !v)}
             className="ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors"
             title="Create new skill"
           >
@@ -342,20 +349,23 @@ export function SkillsPanel({ skills, loading, refetch }) {
             <input
               type="text"
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder="Search skills..."
               className="w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 pl-6 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-gray-700"
             />
           </div>
           <select
             value={filterKey}
-            onChange={e => setFilterKey(e.target.value)}
+            onChange={(e) => setFilterKey(e.target.value)}
             className="bg-gray-900 border border-gray-800 rounded px-2 py-1 text-xs text-gray-400 focus:outline-none focus:border-gray-700"
           >
             <option value="all">All</option>
             {userSkills.length > 0 && <option value="user">User Skills</option>}
-            {plugins.map(p => (
-              <option key={p.key} value={p.key}>{p.name}</option>
+            {userCommands.length > 0 && <option value="commands">User Commands</option>}
+            {plugins.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.name}
+              </option>
             ))}
           </select>
         </div>
@@ -364,10 +374,7 @@ export function SkillsPanel({ skills, loading, refetch }) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto py-2">
         {showNewForm && (
-          <NewSkillForm
-            onSaved={handleNewSaved}
-            onCancel={() => setShowNewForm(false)}
-          />
+          <NewSkillForm onSaved={handleNewSaved} onCancel={() => setShowNewForm(false)} />
         )}
         {!hasResults ? (
           <div className="px-4 py-8 text-center text-xs text-gray-600">
@@ -378,7 +385,10 @@ export function SkillsPanel({ skills, loading, refetch }) {
             {filteredUser.length > 0 && (
               <SkillSection title="User Skills" skills={filteredUser} refetch={refetch} />
             )}
-            {filteredPlugins.map(plugin => (
+            {filteredCommands.length > 0 && (
+              <SkillSection title="User Commands" skills={filteredCommands} refetch={refetch} />
+            )}
+            {filteredPlugins.map((plugin) => (
               <div key={plugin.key} className="mb-4">
                 <div className="px-4 py-1.5 flex items-center gap-1.5">
                   <Package size={11} className="text-gray-600" />
@@ -391,7 +401,7 @@ export function SkillsPanel({ skills, loading, refetch }) {
                   <span className="text-[10px] text-gray-700">({plugin.skills.length})</span>
                 </div>
                 <div className="px-4 grid grid-cols-2 gap-2">
-                  {plugin.skills.map(skill => (
+                  {plugin.skills.map((skill) => (
                     <SkillCard key={skill.command} skill={skill} refetch={refetch} />
                   ))}
                 </div>
