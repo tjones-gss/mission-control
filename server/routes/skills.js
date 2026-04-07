@@ -13,20 +13,22 @@ const SKILLS_DIR = path.join(os.homedir(), '.claude', 'skills')
 //   ~/.claude/skills/<name>.md             (flat file — uncommon)
 //   ~/.claude/skills/<name>/SKILL.md       (subdirectory — the standard
 //                                            layout used by every plugin)
-// Resolve the actual path by checking both, preferring the flat form
-// when it exists for backwards compat with skills authored in this UI.
+// Prefer the subdirectory form when both exist, matching Claude Code's
+// own resolution order. The parser in parsers/skills.js makes the same
+// choice and emits a console.warn for the collision so the user can
+// clean up the duplicate.
 async function resolveSkillPath(name) {
-  const flat = path.join(SKILLS_DIR, `${name}.md`)
-  try {
-    await fs.access(flat)
-    return flat
-  } catch {
-    /* try subdir */
-  }
   const subdir = path.join(SKILLS_DIR, name, 'SKILL.md')
   try {
     await fs.access(subdir)
     return subdir
+  } catch {
+    /* try flat */
+  }
+  const flat = path.join(SKILLS_DIR, `${name}.md`)
+  try {
+    await fs.access(flat)
+    return flat
   } catch {
     return null
   }

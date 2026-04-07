@@ -87,35 +87,56 @@ export function getAllSkills() {
   const plugins = []
 
   // User skills — supports BOTH layouts:
-  //   ~/.claude/skills/<name>.md           (flat file)
+  //   ~/.claude/skills/<name>.md           (flat file — what NewSkillForm
+  //                                          writes; rare in practice)
   //   ~/.claude/skills/<name>/SKILL.md     (subdirectory, the standard
   //                                          layout used by every plugin)
-  // The flat layout is rarely used in practice — most people have the
-  // subdirectory layout. The previous parser only matched flat .md files,
-  // so all subdirectory-style user skills were silently invisible.
+  //
+  // When BOTH exist for the same name, Claude Code itself resolves to the
+  // SUBDIR version (verified empirically against the runtime skill index).
+  // We mirror that to keep loading and CRUD consistent: walk subdirs first,
+  // record their canonical names, then walk flat files but skip any whose
+  // name is already taken by a subdir. Emit a console.warn so the
+  // collision is visible in server logs.
   try {
     const userSkillsDir = path.join(CLAUDE_DIR, 'skills')
     if (fs.existsSync(userSkillsDir)) {
-      for (const entry of fs.readdirSync(userSkillsDir, { withFileTypes: true })) {
-        if (entry.isFile() && entry.name.endsWith('.md')) {
-          const skill = parseSkillFile(path.join(userSkillsDir, entry.name), 'user')
-          if (skill) userSkills.push(skill)
-        } else if (entry.isDirectory()) {
-          const skillFile = path.join(userSkillsDir, entry.name, 'SKILL.md')
-          if (fs.existsSync(skillFile)) {
-            const skill = parseSkillFile(skillFile, 'user')
-            if (skill) {
-              // Make sure the displayed name matches the directory if the
-              // frontmatter doesn't specify one — otherwise it'd show as
-              // "SKILL" for every subdirectory entry.
-              if (!skill.name || skill.name === 'SKILL') {
-                skill.name = entry.name
-                skill.command = '/' + entry.name
-              }
-              userSkills.push(skill)
-            }
-          }
+      const entries = fs.readdirSync(userSkillsDir, { withFileTypes: true })
+
+      // Pass 1: subdirectory-style skills
+      const subdirNames = new Set()
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const skillFile = path.join(userSkillsDir, entry.name, 'SKILL.md')
+        if (!fs.existsSync(skillFile)) continue
+        const skill = parseSkillFile(skillFile, 'user')
+        if (!skill) continue
+        // Always pin name + command to the directory name so the URL key
+        // and the displayed name agree, even if the frontmatter says
+        // something else (e.g., "SKILL").
+        skill.name = entry.name
+        skill.command = '/' + entry.name
+        userSkills.push(skill)
+        subdirNames.add(entry.name)
+      }
+
+      // Pass 2: flat-file skills, skipping anything already loaded as subdir
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.md')) continue
+        const flatName = entry.name.replace(/\.md$/, '')
+        if (subdirNames.has(flatName)) {
+          // Collision — Claude Code uses the subdir version, so we drop
+          // the flat one to keep parity. Surface it in the logs so the
+          // user can clean up the dupe.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[skills] collision: ~/.claude/skills/${flatName}.md and ${flatName}/SKILL.md ` +
+              `both exist — using SKILL.md (matches Claude Code behavior).`,
+          )
+          continue
         }
+        const skill = parseSkillFile(path.join(userSkillsDir, entry.name), 'user')
+        if (skill) userSkills.push(skill)
       }
     }
   } catch {
