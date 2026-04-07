@@ -237,7 +237,27 @@ router.get('/:sessionId', async (req, res) => {
 })
 
 router.get('/:sessionId/messages', (req, res) => {
-  const result = getSessionMessages(req.params.sessionId)
+  // ?limit=N defaults to "last N messages" (slice from the end of the
+  // history, which is what users actually look at first). ?offset=K
+  // pages forward from K. Pass nothing to get the full history (legacy
+  // behavior, kept for backwards compat with older client code).
+  const limitRaw = req.query.limit
+  const offsetRaw = req.query.offset
+  let limit
+  if (limitRaw !== undefined) {
+    limit = parseInt(limitRaw, 10)
+    if (Number.isNaN(limit) || limit < 1) {
+      return res.status(400).json({ error: 'limit must be a positive integer' })
+    }
+  }
+  let offset = 0
+  if (offsetRaw !== undefined) {
+    offset = parseInt(offsetRaw, 10)
+    if (Number.isNaN(offset) || offset < 0) {
+      return res.status(400).json({ error: 'offset must be a non-negative integer' })
+    }
+  }
+  const result = getSessionMessages(req.params.sessionId, { limit, offset })
   if (!result) return res.status(404).json({ error: 'Session not found' })
   res.json(result)
 })

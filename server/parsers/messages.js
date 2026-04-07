@@ -112,7 +112,7 @@ function redactBlocks(blocks) {
   })
 }
 
-export function getSessionMessages(sessionId) {
+export function getSessionMessages(sessionId, { limit, offset = 0 } = {}) {
   try {
     const filePath = findSessionFile(sessionId)
     if (!filePath) return null
@@ -130,10 +130,28 @@ export function getSessionMessages(sessionId) {
       .filter(Boolean)
 
     // Main thread only
-    const mainRecords = records.filter((r) => !r.isSidechain)
+    const mainRecords = records.filter((r) => !r.isSidechain).filter((r) => r.uuid)
+
+    // Total count BEFORE slicing — clients need this for pagination UI
+    const totalCount = mainRecords.length
+
+    // Apply paging window. The most useful default for the dashboard is
+    // "last N messages" since that's what the user is looking at, so when
+    // a limit is given without an explicit offset we slice from the END.
+    let windowStart = 0
+    let windowEnd = mainRecords.length
+    if (typeof limit === 'number' && limit > 0) {
+      if (offset > 0) {
+        windowStart = offset
+        windowEnd = offset + limit
+      } else {
+        windowStart = Math.max(0, mainRecords.length - limit)
+        windowEnd = mainRecords.length
+      }
+    }
 
     const messages = mainRecords
-      .filter((r) => r.uuid) // skip metadata/summary lines without uuid
+      .slice(windowStart, windowEnd)
       .map((r) => {
         if (r.type === 'assistant') {
           const usage = r.message?.usage
@@ -168,7 +186,13 @@ export function getSessionMessages(sessionId) {
       })
       .filter(Boolean)
 
-    return { sessionId, messages }
+    return {
+      sessionId,
+      messages,
+      totalCount,
+      offset: windowStart,
+      hasMore: windowEnd < totalCount,
+    }
   } catch {
     return null
   }
