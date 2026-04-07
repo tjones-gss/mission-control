@@ -3,12 +3,49 @@ import { getTasksForSession, getAllTaskSessions } from '../parsers/tasks.js'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
+import { randomUUID } from 'crypto'
 import { validateSessionId } from '../utils/validate.js'
 
 export const router = Router()
 
 const TASKS_DIR = path.join(os.homedir(), '.claude', 'tasks')
 const VALID_ID = /^[a-zA-Z0-9_-]+$/
+
+// Atomic write helper — write to a unique temp file then rename onto the
+// final path. Two concurrent writers using plain fs.writeFile against the
+// same path can interleave their bytes and produce a malformed JSON file
+// that getTasksForSession then silently drops (caught by Run #20 race
+// probe: 10 parallel PUTs all 200'd but the resulting file had `}}` at
+// the end). rename() is atomic on the same filesystem on every modern OS.
+//
+// On Windows, fs.rename can fail with EPERM/EBUSY/EEXIST when another
+// process is currently renaming TO the same destination or holding it
+// open. Retry a few times with small backoff to ride out the race. If
+// the retries are exhausted the error propagates and the route returns
+// 500 — at that point the client can retry from its end.
+async function atomicWriteJson(filePath, data) {
+  const tmp = filePath + '.tmp.' + randomUUID().slice(0, 8)
+  await fs.writeFile(tmp, JSON.stringify(data, null, 2))
+  const delays = [0, 8, 24, 60]
+  let lastErr
+  for (const delay of delays) {
+    if (delay) await new Promise((r) => setTimeout(r, delay))
+    try {
+      await fs.rename(tmp, filePath)
+      return
+    } catch (err) {
+      lastErr = err
+      if (err.code !== 'EPERM' && err.code !== 'EBUSY' && err.code !== 'EEXIST') break
+    }
+  }
+  // Best-effort cleanup of the orphaned temp file
+  try {
+    await fs.unlink(tmp)
+  } catch {
+    /* ignore */
+  }
+  throw lastErr
+}
 
 router.get('/', (req, res) => {
   res.json(getAllTaskSessions())
@@ -60,7 +97,7 @@ router.post('/:sessionId', async (req, res, next) => {
     }
 
     const filePath = path.join(sessionDir, `${newId}.json`)
-    await fs.writeFile(filePath, JSON.stringify(task, null, 2))
+    await atomicWriteJson(filePath, task)
     res.status(201).json(task)
   } catch (err) {
     // Express 4 does NOT auto-catch async rejections — must call next(err)
@@ -97,7 +134,7 @@ router.put('/:sessionId/:taskId', async (req, res, next) => {
       blockedBy: Array.isArray(req.body.blockedBy) ? req.body.blockedBy : [],
     }
 
-    await fs.writeFile(filePath, JSON.stringify(task, null, 2))
+    await atomicWriteJson(filePath, task)
     res.json(task)
   } catch (err) {
     next(err)
