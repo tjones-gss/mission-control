@@ -6,13 +6,23 @@ const helmetMiddleware = helmet({
   contentSecurityPolicy: process.env.OVERSIGHT_CSP !== 'false',
 })
 
-// Rate limit: 100 req/15min per IP (configurable via env)
+// Rate limit: applies per-IP. The default cap is intentionally generous for the
+// localhost dev experience (the dashboard polls many endpoints and SSE
+// reconnects can briefly burst). Set OVERSIGHT_RATE_LIMIT=0 to disable
+// entirely, or pass a number to override. /api/stream and /api/health are
+// always exempt because SSE reconnects must never be blocked — losing the
+// stream is what causes the persistent "disconnected" header.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: parseInt(process.env.OVERSIGHT_RATE_LIMIT || '100', 10),
+  max: parseInt(process.env.OVERSIGHT_RATE_LIMIT || '2000', 10),
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => process.env.OVERSIGHT_RATE_LIMIT === '0',
+  skip: (req) => {
+    if (process.env.OVERSIGHT_RATE_LIMIT === '0') return true
+    if (req.path === '/api/stream') return true
+    if (req.path === '/api/health' || req.path.startsWith('/api/health/')) return true
+    return false
+  },
 })
 
 // Optional API key auth (only active when OVERSIGHT_API_KEY env var is set)
