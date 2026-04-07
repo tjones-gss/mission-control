@@ -731,9 +731,28 @@ export function ConversationView({
     [sessionId, cleanOptions, isStreaming, streaming],
   )
 
+  // When the user clicks "Load older messages", capture the current
+  // scrollHeight + scrollTop BEFORE the refetch lands. After the refetch
+  // the messages array grows (older content appears at the TOP), so we
+  // restore scrollTop to oldScrollTop + (newScrollHeight - oldScrollHeight)
+  // to keep the same content visible. Without this, the auto-scroll
+  // effect below would yank the user to the bottom of the conversation
+  // every time they tried to read older context.
+  const pendingScrollAnchorRef = useRef(null)
+
   useEffect(() => {
-    if (!paused && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const el = scrollRef.current
+    if (!el) return
+
+    if (pendingScrollAnchorRef.current) {
+      const { oldScrollHeight, oldScrollTop } = pendingScrollAnchorRef.current
+      pendingScrollAnchorRef.current = null
+      el.scrollTop = oldScrollTop + (el.scrollHeight - oldScrollHeight)
+      return
+    }
+
+    if (!paused) {
+      el.scrollTop = el.scrollHeight
     }
   }, [messages.length, sessionUpdateVersion, paused])
 
@@ -758,7 +777,19 @@ export function ConversationView({
         {hasOlderMessages && (
           <button
             type="button"
-            onClick={() => setMessageLimit((n) => n + PAGE_SIZE)}
+            onClick={() => {
+              // Capture scroll anchor BEFORE the refetch so the
+              // post-refetch effect can restore it (preserves the
+              // user's reading position when older content loads).
+              const el = scrollRef.current
+              if (el) {
+                pendingScrollAnchorRef.current = {
+                  oldScrollHeight: el.scrollHeight,
+                  oldScrollTop: el.scrollTop,
+                }
+              }
+              setMessageLimit((n) => n + PAGE_SIZE)
+            }}
             className="w-full py-2 mb-2 rounded border border-gray-800 bg-gray-900/40 text-[11px] text-gray-500 hover:text-gray-300 hover:border-gray-700 transition-colors"
             title={`Showing the last ${serverMessages.length} of ${totalMessageCount} messages — click to load older`}
           >
