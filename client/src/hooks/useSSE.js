@@ -21,6 +21,12 @@ export function useSSE(onMessage) {
       'sdk_error',
       'tool_approval_request',
       'tool_approval_resolved',
+      'workflows_update',
+      'skills_update',
+      'memory_update',
+      'plan_update',
+      'config_update',
+      'hooks_update',
     ]
     events.forEach((evt) => {
       es.addEventListener(evt, (e) => {

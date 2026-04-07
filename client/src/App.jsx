@@ -168,6 +168,12 @@ export default function App() {
         if (evt.type === 'memory_update') {
           setMemoryVersion((v) => v + 1)
         }
+        if (evt.type === 'workflows_update') {
+          refetchWorkflows?.()
+        }
+        if (evt.type === 'skills_update') {
+          refetchSkills?.()
+        }
 
         // Play sound for non-session events (needsInput is handled by useNotifications)
         const soundEvent = SSE_SOUND_MAP[evt.type]

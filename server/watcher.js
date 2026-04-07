@@ -45,6 +45,10 @@ export function startWatcher() {
       emit('config_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('hooks')) {
       emit('hooks_update', { filePath: rel, ts: Date.now() })
+    } else if (rel.startsWith('workflows')) {
+      emit('workflows_update', { filePath: rel, ts: Date.now() })
+    } else if (rel.startsWith('skills')) {
+      emit('skills_update', { filePath: rel, ts: Date.now() })
     }
   })
 
@@ -54,6 +58,19 @@ export function startWatcher() {
       emit('new_session', { filePath: rel, ts: Date.now() })
       const sessionId = path.basename(filePath, '.jsonl')
       onSessionEvent(sessionId)
+    } else if (rel.startsWith('workflows')) {
+      emit('workflows_update', { filePath: rel, ts: Date.now() })
+    } else if (rel.startsWith('skills')) {
+      emit('skills_update', { filePath: rel, ts: Date.now() })
+    }
+  })
+
+  watcher.on('unlink', (filePath) => {
+    const rel = path.relative(CLAUDE_DIR, filePath)
+    if (rel.startsWith('workflows')) {
+      emit('workflows_update', { filePath: rel, ts: Date.now() })
+    } else if (rel.startsWith('skills')) {
+      emit('skills_update', { filePath: rel, ts: Date.now() })
     }
   })
 
