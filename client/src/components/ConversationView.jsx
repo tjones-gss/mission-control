@@ -591,7 +591,30 @@ export function ConversationView({
   const sdkError = streaming?.sdkError || null
   const url = active && sessionId ? `/api/sessions/${sessionId}/messages` : null
   const { data, loading } = useApi(url, [sessionUpdateVersion])
-  const messages = data?.messages || []
+  const serverMessages = data?.messages || []
+
+  // Optimistic user messages — shown immediately on send, cleared once they
+  // appear in the server response (matched by text content).
+  const [pendingUserMsgs, setPendingUserMsgs] = useState([])
+  useEffect(() => {
+    setPendingUserMsgs([])
+  }, [sessionId])
+  const messages = useMemo(() => {
+    // Drop pending messages that now exist in the server data
+    const pending = pendingUserMsgs.filter(
+      (p) =>
+        !serverMessages.some(
+          (m) =>
+            m.type === 'user' &&
+            m.blocks?.some?.((b) => b.type === 'text' && b.text === p.blocks[0].text),
+        ),
+    )
+    if (pending.length !== pendingUserMsgs.length) {
+      // Use queueMicrotask to avoid setState during render
+      queueMicrotask(() => setPendingUserMsgs(pending))
+    }
+    return [...serverMessages, ...pending]
+  }, [serverMessages, pendingUserMsgs])
 
   // Build tool_use_id → tool_name lookup — append-only via ref to avoid re-renders
   const toolNameMapRef = useRef({})
@@ -629,6 +652,15 @@ export function ConversationView({
       if (!sessionId || isStreaming) return
       setSending(true)
       setSendError(null)
+      // Optimistically show the user message immediately
+      setPendingUserMsgs((prev) => [
+        ...prev,
+        {
+          uuid: `pending-${Date.now()}`,
+          type: 'user',
+          blocks: [{ type: 'text', text }],
+        },
+      ])
       try {
         let fetchOpts
         if (imageFile) {

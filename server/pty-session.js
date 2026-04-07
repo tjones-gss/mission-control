@@ -6,8 +6,9 @@ import os from 'os'
 import { emit, onEvent } from './sse.js'
 import { classify as classifyCommand } from './utils/commandClassifier.js'
 
-// On Windows, node-pty needs the .exe extension to find executables in PATH
-const CLAUDE_CMD = process.platform === 'win32' ? 'claude.exe' : 'claude'
+// On Windows, node-pty needs the full filename to find executables in PATH.
+// npm installs CLI shims as .cmd files on Windows (not .exe).
+const CLAUDE_CMD = process.platform === 'win32' ? 'claude.cmd' : 'claude'
 
 // Validation whitelists (shared with routes/sessions.js)
 export const VALID_PERMISSION_MODES = new Set([
@@ -110,7 +111,11 @@ export function resolveApproval(sessionId, approvalId, decision) {
   pendingApprovals.delete(approvalId)
 
   // Write the response to the PTY
-  s.term.write(decision === 'allow' ? 'y\r' : 'n\r')
+  try {
+    s.term.write(decision === 'allow' ? 'y\r' : 'n\r')
+  } catch {
+    return false
+  }
   // Reset output buffer so we don't re-detect the same prompt
   s.recentOutput = ''
 
@@ -421,11 +426,16 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
   // Ctrl+C resets TUI focus to the input field (must be a separate write call
   // so it bypasses sanitizePrompt, which strips \x03).
   const sanitized = sanitizePrompt(prompt)
-  s.term.write('\x03')
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
-  await new Promise((resolve) => setTimeout(resolve, 100))
-  s.term.write('\r')
+  try {
+    s.term.write('\x03')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    s.term.write(`\x1b[200~${sanitized}\x1b[201~`)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    s.term.write('\r')
+  } catch (writeErr) {
+    s.busy = false
+    throw new Error(`PTY write failed (session may have exited): ${writeErr.message}`)
+  }
   emit('sdk_message', {
     sessionId,
     ts: Date.now(),

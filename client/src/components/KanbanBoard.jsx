@@ -1,42 +1,79 @@
-import { Bot, Wrench, Shield } from 'lucide-react';
-import { QuickActions } from './QuickActions.jsx';
-import { formatCost } from '../utils/cost.js';
+import { useState, useEffect, useCallback } from 'react'
+import { Bot, Wrench, Shield, ChevronRight, ChevronDown, Copy, Check } from 'lucide-react'
+import { QuickActions } from './QuickActions.jsx'
+import { formatCost } from '../utils/cost.js'
 
 const PERMISSION_BADGE = {
   bypassPermissions: { label: 'bypass', cls: 'bg-green-900/50 text-green-400 border-green-800' },
-  dontAsk:           { label: 'dontAsk', cls: 'bg-green-900/50 text-green-400 border-green-800' },
-  acceptEdits:       { label: 'acceptEdits', cls: 'bg-amber-900/50 text-amber-400 border-amber-800' },
-  auto:              { label: 'auto', cls: 'bg-amber-900/50 text-amber-400 border-amber-800' },
-  plan:              { label: 'plan', cls: 'bg-purple-900/50 text-purple-400 border-purple-800' },
-  default:           { label: 'default', cls: 'bg-gray-800 text-gray-500 border-gray-700' },
-};
+  dontAsk: { label: 'dontAsk', cls: 'bg-green-900/50 text-green-400 border-green-800' },
+  acceptEdits: { label: 'acceptEdits', cls: 'bg-amber-900/50 text-amber-400 border-amber-800' },
+  auto: { label: 'auto', cls: 'bg-amber-900/50 text-amber-400 border-amber-800' },
+  plan: { label: 'plan', cls: 'bg-purple-900/50 text-purple-400 border-purple-800' },
+  default: { label: 'default', cls: 'bg-gray-800 text-gray-500 border-gray-700' },
+}
 
 function getModelAbbr(model) {
-  if (!model) return '—';
-  const parts = model.split('-');
-  if (parts.length < 2) return model;
-  return parts.slice(-2).join('-');
+  if (!model) return '—'
+  const parts = model.split('-')
+  if (parts.length < 2) return model
+  return parts.slice(-2).join('-')
 }
 
 function getProjectSlug(cwd) {
-  if (!cwd) return '—';
-  const normalized = cwd.replace(/\\/g, '/');
-  const parts = normalized.split('/').filter(Boolean);
-  return parts[parts.length - 1] || '—';
+  if (!cwd) return '—'
+  const normalized = cwd.replace(/\\/g, '/')
+  const parts = normalized.split('/').filter(Boolean)
+  return parts[parts.length - 1] || '—'
 }
 
 function getTopTools(toolUseCounts, n = 3) {
-  if (!toolUseCounts || typeof toolUseCounts !== 'object') return [];
+  if (!toolUseCounts || typeof toolUseCounts !== 'object') return []
   return Object.entries(toolUseCounts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, n);
+    .slice(0, n)
+}
+
+function ResumeId({ sessionId }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = useCallback(
+    (e) => {
+      e.stopPropagation()
+      const cmd = `claude --resume ${sessionId}`
+      navigator.clipboard.writeText(cmd).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      })
+    },
+    [sessionId],
+  )
+
+  return (
+    <div
+      className="flex items-center gap-1 mt-1.5 px-1.5 py-1 rounded bg-gray-800/50 border border-gray-800 cursor-pointer hover:border-gray-700 transition-colors group"
+      onClick={handleCopy}
+      title="Click to copy resume command"
+    >
+      <span className="text-[10px] text-gray-600 shrink-0">resume:</span>
+      <code className="text-[10px] text-gray-500 font-mono truncate group-hover:text-gray-400 transition-colors">
+        {sessionId}
+      </code>
+      {copied ? (
+        <Check size={10} className="shrink-0 text-green-500 ml-auto" />
+      ) : (
+        <Copy
+          size={10}
+          className="shrink-0 text-gray-700 group-hover:text-gray-500 ml-auto transition-colors"
+        />
+      )}
+    </div>
+  )
 }
 
 function SessionCard({ session, isSelected, onSelect }) {
-  const slug = getProjectSlug(session.cwd);
-  const modelAbbr = getModelAbbr(session.model);
-  const topTools = getTopTools(session.toolUseCounts);
-  const agentCount = session.agents?.length ?? 0;
+  const slug = getProjectSlug(session.cwd)
+  const modelAbbr = getModelAbbr(session.model)
+  const topTools = getTopTools(session.toolUseCounts)
+  const agentCount = session.agents?.length ?? 0
 
   return (
     <div
@@ -64,7 +101,9 @@ function SessionCard({ session, isSelected, onSelect }) {
           <span className="text-sm font-medium text-gray-100 truncate">{slug}</span>
         </div>
         {session.permissionMode && PERMISSION_BADGE[session.permissionMode] && (
-          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] border shrink-0 ${PERMISSION_BADGE[session.permissionMode].cls}`}>
+          <span
+            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] border shrink-0 ${PERMISSION_BADGE[session.permissionMode].cls}`}
+          >
             <Shield size={8} />
             {PERMISSION_BADGE[session.permissionMode].label}
           </span>
@@ -74,9 +113,7 @@ function SessionCard({ session, isSelected, onSelect }) {
 
       {/* Last text */}
       {session.lastText && (
-        <p className="text-xs text-gray-400 truncate mb-2 leading-snug">
-          {session.lastText}
-        </p>
+        <p className="text-xs text-gray-400 truncate mb-2 leading-snug">{session.lastText}</p>
       )}
 
       {/* Footer row */}
@@ -107,52 +144,90 @@ function SessionCard({ session, isSelected, onSelect }) {
 
         {/* Cost estimate */}
         {session.estimatedCost && (
-          <span className="text-[10px] text-emerald-500 ml-auto shrink-0">{formatCost(session.estimatedCost.totalCost)}</span>
+          <span className="text-[10px] text-emerald-500 ml-auto shrink-0">
+            {formatCost(session.estimatedCost.totalCost)}
+          </span>
         )}
       </div>
 
-      {/* Quick actions for waiting sessions */}
-      {session.needsInput && !session.isActive && (
+      {/* Quick actions only for active sessions waiting for input */}
+      {session.isActive && session.needsInput && (
         <QuickActions sessionId={session.sessionId} onReply={() => onSelect(session.sessionId)} />
       )}
+
+      {/* Resume ID for inactive sessions */}
+      {!session.isActive && <ResumeId sessionId={session.sessionId} />}
     </div>
-  );
+  )
 }
 
-function Column({ title, titleClass, sessions, selectedId, onSelect, emptyLabel }) {
+function Column({
+  title,
+  titleClass,
+  sessions,
+  selectedId,
+  onSelect,
+  emptyLabel,
+  collapsible,
+  collapsed,
+  onToggle,
+}) {
   return (
     <div className="flex flex-col min-w-0 flex-1">
       <div className="flex items-center justify-between mb-3 px-1">
-        <h3 className={`text-xs font-semibold uppercase tracking-wider ${titleClass}`}>
-          {title}
-        </h3>
+        {collapsible ? (
+          <button onClick={onToggle} className="flex items-center gap-1 group">
+            {collapsed ? (
+              <ChevronRight size={14} className={titleClass} />
+            ) : (
+              <ChevronDown size={14} className={titleClass} />
+            )}
+            <h3 className={`text-xs font-semibold uppercase tracking-wider ${titleClass}`}>
+              {title}
+            </h3>
+          </button>
+        ) : (
+          <h3 className={`text-xs font-semibold uppercase tracking-wider ${titleClass}`}>
+            {title}
+          </h3>
+        )}
         <span className="text-xs text-gray-500 font-mono">{sessions.length}</span>
       </div>
-      <div className="flex flex-col gap-2 overflow-y-auto">
-        {sessions.length === 0 ? (
-          <p className="text-xs text-gray-500 italic px-1">{emptyLabel}</p>
-        ) : (
-          sessions.map((session) => (
-            <SessionCard
-              key={session.sessionId}
-              session={session}
-              isSelected={selectedId === session.sessionId}
-              onSelect={onSelect}
-            />
-          ))
-        )}
-      </div>
+      {!collapsed && (
+        <div className="flex flex-col gap-2 overflow-y-auto">
+          {sessions.length === 0 ? (
+            <p className="text-xs text-gray-500 italic px-1">{emptyLabel}</p>
+          ) : (
+            sessions.map((session) => (
+              <SessionCard
+                key={session.sessionId}
+                session={session}
+                isSelected={selectedId === session.sessionId}
+                onSelect={onSelect}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
-  );
+  )
 }
 
 export function KanbanBoard({ sessions = [], selectedId, onSelect }) {
-  const now = Date.now();
-  const ONE_HOUR = 3_600_000;
+  const [doneCollapsed, setDoneCollapsed] = useState(true)
+  const now = Date.now()
+  const ONE_HOUR = 3_600_000
 
-  const active = sessions.filter((s) => s.isActive === true);
-  const idle = sessions.filter((s) => !s.isActive && s.lastModified > now - ONE_HOUR);
-  const done = sessions.filter((s) => !s.isActive && s.lastModified <= now - ONE_HOUR);
+  const active = sessions.filter((s) => s.isActive === true)
+  const idle = sessions.filter((s) => !s.isActive && s.lastModified > now - ONE_HOUR)
+  const done = sessions.filter((s) => !s.isActive && s.lastModified <= now - ONE_HOUR)
+
+  // Auto-expand Done column if selected session is in it
+  useEffect(() => {
+    if (selectedId && doneCollapsed && done.some((s) => s.sessionId === selectedId)) {
+      setDoneCollapsed(false)
+    }
+  }, [selectedId, sessions])
 
   return (
     <div className="flex gap-4 h-full p-4 bg-gray-950 overflow-hidden">
@@ -179,7 +254,10 @@ export function KanbanBoard({ sessions = [], selectedId, onSelect }) {
         selectedId={selectedId}
         onSelect={onSelect}
         emptyLabel="No completed sessions"
+        collapsible
+        collapsed={doneCollapsed}
+        onToggle={() => setDoneCollapsed((p) => !p)}
       />
     </div>
-  );
+  )
 }
