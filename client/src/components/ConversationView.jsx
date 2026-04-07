@@ -620,6 +620,15 @@ export function ConversationView({
   // restore them. Declared up here (above the sessionId reset effect)
   // so the reset can clear it on session switch.
   const pendingScrollAnchorRef = useRef(null)
+  // Track the previous data.offset across renders. The anchor can ONLY
+  // be applied when the offset has DECREASED (which is the unambiguous
+  // signature of a Load older refetch landing — the parser slices a
+  // bigger window from the end of the records list, so offset shrinks).
+  // SSE updates can only INCREASE offset (when totalCount grows by one
+  // for a new live message), so this lets the anchor effect ignore
+  // SSE-driven re-renders that arrive between the click and the
+  // load-older fetch completing.
+  const prevOffsetRef = useRef(0)
   // Reset session-scoped scroll/paging state when switching sessions:
   //  - messageLimit back to PAGE_SIZE so each session opens with the
   //    default page size and a fresh "Load older" button
@@ -629,10 +638,13 @@ export function ConversationView({
   //  - paused back to false so the auto-scroll-to-bottom path runs
   //    on the first render of session B (otherwise scrolling up in
   //    session A leaves session B stuck at the top forever)
+  //  - prevOffsetRef back to 0 so the next session's first render
+  //    is treated as a clean baseline
   useEffect(() => {
     setMessageLimit(PAGE_SIZE)
     pendingScrollAnchorRef.current = null
     setPaused(false)
+    prevOffsetRef.current = 0
   }, [sessionId])
 
   const url =
@@ -758,7 +770,16 @@ export function ConversationView({
     const el = scrollRef.current
     if (!el) return
 
-    if (pendingScrollAnchorRef.current) {
+    const newOffset = data?.offset ?? 0
+    const offsetDecreased = newOffset < prevOffsetRef.current
+    prevOffsetRef.current = newOffset
+
+    // Only consume the anchor when the offset has actually decreased
+    // (== a Load older refetch landed). Without this gate, an SSE
+    // update arriving between the user's click and the load-older
+    // fetch would consume the anchor on the wrong render and produce
+    // a small but visible scroll bounce.
+    if (pendingScrollAnchorRef.current && offsetDecreased) {
       const { oldScrollHeight, oldScrollTop } = pendingScrollAnchorRef.current
       pendingScrollAnchorRef.current = null
       el.scrollTop = oldScrollTop + (el.scrollHeight - oldScrollHeight)
@@ -768,7 +789,7 @@ export function ConversationView({
     if (!paused) {
       el.scrollTop = el.scrollHeight
     }
-  }, [messages.length, sessionUpdateVersion, paused])
+  }, [messages.length, sessionUpdateVersion, paused, data?.offset])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
