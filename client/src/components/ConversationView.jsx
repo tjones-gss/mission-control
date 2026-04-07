@@ -614,9 +614,25 @@ export function ConversationView({
   // before the user has to click "Load older".
   const PAGE_SIZE = 200
   const [messageLimit, setMessageLimit] = useState(PAGE_SIZE)
-  // Reset to the default page size when switching sessions
+  const [paused, setPaused] = useState(false)
+  // When the user clicks "Load older messages", capture the current
+  // scrollHeight + scrollTop here so the post-refetch effect can
+  // restore them. Declared up here (above the sessionId reset effect)
+  // so the reset can clear it on session switch.
+  const pendingScrollAnchorRef = useRef(null)
+  // Reset session-scoped scroll/paging state when switching sessions:
+  //  - messageLimit back to PAGE_SIZE so each session opens with the
+  //    default page size and a fresh "Load older" button
+  //  - pendingScrollAnchorRef cleared so a leftover anchor from
+  //    session A doesn't get applied to session B's render (would
+  //    land the user at scrollTop 0 of the new conversation)
+  //  - paused back to false so the auto-scroll-to-bottom path runs
+  //    on the first render of session B (otherwise scrolling up in
+  //    session A leaves session B stuck at the top forever)
   useEffect(() => {
     setMessageLimit(PAGE_SIZE)
+    pendingScrollAnchorRef.current = null
+    setPaused(false)
   }, [sessionId])
 
   const url =
@@ -667,7 +683,6 @@ export function ConversationView({
   }, [messages])
 
   const scrollRef = useRef(null)
-  const [paused, setPaused] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(null)
 
@@ -731,14 +746,13 @@ export function ConversationView({
     [sessionId, cleanOptions, isStreaming, streaming],
   )
 
-  // When the user clicks "Load older messages", capture the current
-  // scrollHeight + scrollTop BEFORE the refetch lands. After the refetch
-  // the messages array grows (older content appears at the TOP), so we
-  // restore scrollTop to oldScrollTop + (newScrollHeight - oldScrollHeight)
-  // to keep the same content visible. Without this, the auto-scroll
+  // The pendingScrollAnchorRef is declared above next to messageLimit
+  // so the sessionId reset effect can clear it. After a Load older click
+  // captures { oldScrollHeight, oldScrollTop }, this effect restores
+  // scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight) so
+  // the same content stays visible. Without this, the auto-scroll
   // effect below would yank the user to the bottom of the conversation
   // every time they tried to read older context.
-  const pendingScrollAnchorRef = useRef(null)
 
   useEffect(() => {
     const el = scrollRef.current
