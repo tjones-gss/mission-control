@@ -72,16 +72,45 @@ function SkillCard({ skill, refetch }) {
     }
   }
 
+  // The Edit/Delete buttons hit /api/skills/<name> which only resolves
+  // paths under ~/.claude/skills/. User commands live in ~/.claude/commands/
+  // and don't have a CRUD endpoint yet, so they're read-only for now even
+  // though they're "user-authored". Plugin skills are always read-only
+  // because they live in plugin caches.
   const isUser = skill.source === 'user'
+
+  // Per-source scope badge: tells the user at a glance whether this
+  // entry came from their skills dir, their commands dir, or a plugin.
+  // Previously the only signal was a tiny "(read-only)" italic label,
+  // and there was no way to distinguish a user skill from a user command.
+  const scopeBadge =
+    skill.source === 'user'
+      ? { label: 'skill', cls: 'bg-cyan-900/40 text-cyan-300 border-cyan-800' }
+      : skill.source === 'user-command'
+        ? { label: 'cmd', cls: 'bg-purple-900/40 text-purple-300 border-purple-800' }
+        : skill.pluginKey
+          ? {
+              label: skill.pluginKey.split('@')[0].split('/').pop(),
+              cls: 'bg-gray-800 text-gray-500 border-gray-700',
+            }
+          : { label: 'plugin', cls: 'bg-gray-800 text-gray-500 border-gray-700' }
 
   return (
     <div
       className={`bg-gray-900 border rounded p-2 flex flex-col gap-1 transition-colors ${expanded || editing ? 'border-gray-700 col-span-2' : 'border-gray-800'}`}
     >
       <div className="flex items-start justify-between gap-1">
-        <span className="font-mono text-xs text-cyan-300 leading-tight break-all">
-          {skill.command}
-        </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="font-mono text-xs text-cyan-300 leading-tight break-all">
+            {skill.command}
+          </span>
+          <span
+            className={`shrink-0 text-[9px] uppercase tracking-wide font-medium px-1 py-px rounded border ${scopeBadge.cls}`}
+            title={`Source: ${skill.source}${skill.pluginKey ? ` (${skill.pluginKey})` : ''}`}
+          >
+            {scopeBadge.label}
+          </span>
+        </div>
         <div className="flex items-center gap-1 shrink-0 mt-0.5">
           {!isUser && <span className="text-[9px] text-gray-600 italic">(read-only)</span>}
           {isUser && !editing && (

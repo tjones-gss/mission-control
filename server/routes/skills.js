@@ -40,7 +40,15 @@ router.get('/:name/raw', async (req, res, next) => {
   try {
     const filePath = await resolveSkillPath(name)
     if (!filePath) return res.status(404).json({ error: 'Skill not found.' })
-    const content = await fs.readFile(filePath, 'utf8')
+    // Defense-in-depth: confirm the resolved path is inside SKILLS_DIR
+    // before reading. PUT and DELETE already do this; GET should too.
+    const resolved = path.resolve(filePath)
+    if (!resolved.startsWith(path.resolve(SKILLS_DIR) + path.sep)) {
+      return res
+        .status(403)
+        .json({ error: 'Cannot read skills outside the user skills directory.' })
+    }
+    const content = await fs.readFile(resolved, 'utf8')
     res.type('text/plain').send(content)
   } catch (err) {
     next(err)
