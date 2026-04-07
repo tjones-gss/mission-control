@@ -7,13 +7,16 @@ import { QuickActions } from './QuickActions.jsx'
 
 const ONE_HOUR = 3_600_000
 
+// bypassPermissions and dontAsk run with NO permission gating, so they're
+// rendered in red to make the user stop and notice — these sessions can
+// edit anything, run anything. Yellow = lighter footgun. Purple = plan-only.
 const PERM_COLORS = {
-  bypassPermissions: 'text-green-400',
-  dontAsk:           'text-green-400',
-  acceptEdits:       'text-amber-400',
-  auto:              'text-amber-400',
-  plan:              'text-purple-400',
-  default:           'text-gray-500',
+  bypassPermissions: 'text-red-400',
+  dontAsk: 'text-red-400',
+  acceptEdits: 'text-amber-400',
+  auto: 'text-amber-400',
+  plan: 'text-purple-400',
+  default: 'text-gray-500',
 }
 
 function timeAgo(ms) {
@@ -47,7 +50,9 @@ function SectionHeader({ title, count, collapsed, onToggle, titleClass }) {
       className="flex items-center gap-1.5 w-full px-1 py-1.5 text-left hover:bg-gray-900/50 rounded transition-colors"
     >
       <Chevron size={12} className="text-gray-600 shrink-0" />
-      <span className={`text-xs font-semibold uppercase tracking-wider ${titleClass}`}>{title}</span>
+      <span className={`text-xs font-semibold uppercase tracking-wider ${titleClass}`}>
+        {title}
+      </span>
       <span className="text-xs text-gray-500 ml-auto">{count}</span>
     </button>
   )
@@ -61,13 +66,22 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
     ? 'bg-indigo-900/40 border-indigo-500'
     : `bg-gray-900 hover:border-gray-600 ${activeClasses}`
 
+  // Shorten the longer permission-mode labels so they don't push the
+  // footer row past the (narrow) sidebar width. The full label is in
+  // the title attribute below for hover discoverability.
+  const PERM_SHORT = {
+    bypassPermissions: 'bypass',
+    acceptEdits: 'accept',
+    dontAsk: 'dontAsk',
+  }
+
   return (
     <button
       onClick={() => onSelect(session.sessionId)}
-      className={`text-left p-3 rounded-lg border transition-all ${selectedClasses}`}
+      className={`text-left p-3 rounded-lg border transition-all w-full min-w-0 ${selectedClasses}`}
     >
       {/* Project name row */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0">
         {session.isActive && (
           <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
         )}
@@ -77,18 +91,24 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
             <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
           </span>
         )}
-        <span className="text-sm font-medium text-gray-200 truncate">
+        <span className="text-sm font-medium text-gray-200 truncate min-w-0 flex-1">
           {projectLabel(session)}
         </span>
-        {session.needsInput && (
-          <span className="text-[10px] text-amber-400 shrink-0">Waiting</span>
-        )}
+        {session.needsInput && <span className="text-[10px] text-amber-400 shrink-0">Waiting</span>}
         {session.needsInput && onMute && (
           <span
             role="button"
             tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); onMute(session.sessionId) }}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onMute(session.sessionId) } }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onMute(session.sessionId)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.stopPropagation()
+                onMute(session.sessionId)
+              }
+            }}
             className="ml-auto text-gray-600 hover:text-gray-400 transition-colors shrink-0 cursor-pointer"
             title="Dismiss notification"
           >
@@ -99,18 +119,18 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
 
       {/* Summary row */}
       {(session.lastText || session.slug) && (
-        <div className="mt-0.5 text-xs text-gray-500 line-clamp-2 leading-snug">
+        <div className="mt-0.5 text-xs text-gray-500 line-clamp-2 leading-snug break-words">
           {session.lastText || session.slug}
         </div>
       )}
 
       {/* Meta row */}
-      <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-500">
-        <span className="flex items-center gap-1">
+      <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-500 min-w-0">
+        <span className="flex items-center gap-1 shrink-0">
           <Clock size={10} />
           {timeAgo(session.lastModified)}
         </span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 shrink-0">
           <Activity size={10} />
           {session.agentTree?.subagents?.length || 0} agents
         </span>
@@ -118,17 +138,22 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
 
       {/* Footer: model + tokens + permission mode */}
       {(session.model || session.tokenUsage || session.permissionMode) && (
-        <div className="mt-1.5 flex items-center gap-2 text-xs text-gray-500">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 min-w-0">
           {modelShort(session.model) && (
-            <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-mono text-[10px]">
+            <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-mono text-[10px] shrink-0">
               {modelShort(session.model)}
             </span>
           )}
           <TokenBreakdownCompact tokenUsage={session.tokenUsage} model={session.model} />
           {session.permissionMode && PERM_COLORS[session.permissionMode] && (
-            <span className={`flex items-center gap-0.5 ${PERM_COLORS[session.permissionMode]}`}>
+            <span
+              className={`flex items-center gap-0.5 shrink-0 ${PERM_COLORS[session.permissionMode]}`}
+              title={session.permissionMode}
+            >
               <Shield size={9} />
-              <span className="text-[10px]">{session.permissionMode}</span>
+              <span className="text-[10px]">
+                {PERM_SHORT[session.permissionMode] || session.permissionMode}
+              </span>
             </span>
           )}
         </div>
@@ -147,18 +172,18 @@ export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, on
 
   const now = Date.now()
   const safeSessions = sessions || []
-  const active = safeSessions.filter(s => s.isActive === true)
-  const recent = safeSessions.filter(s => !s.isActive && s.lastModified > now - ONE_HOUR)
-  const older = safeSessions.filter(s => !s.isActive && s.lastModified <= now - ONE_HOUR)
+  const active = safeSessions.filter((s) => s.isActive === true)
+  const recent = safeSessions.filter((s) => !s.isActive && s.lastModified > now - ONE_HOUR)
+  const older = safeSessions.filter((s) => !s.isActive && s.lastModified <= now - ONE_HOUR)
 
   // Auto-expand collapsed group if selected session is inside it
   useEffect(() => {
     if (!selectedId) return
-    setCollapsed(prev => {
+    setCollapsed((prev) => {
       const next = { ...prev }
-      if (prev.older && older.some(s => s.sessionId === selectedId)) next.older = false
-      if (prev.recent && recent.some(s => s.sessionId === selectedId)) next.recent = false
-      if (prev.active && active.some(s => s.sessionId === selectedId)) next.active = false
+      if (prev.older && older.some((s) => s.sessionId === selectedId)) next.older = false
+      if (prev.recent && recent.some((s) => s.sessionId === selectedId)) next.recent = false
+      if (prev.active && active.some((s) => s.sessionId === selectedId)) next.active = false
       return next
     })
   }, [selectedId, sessions])
@@ -173,7 +198,7 @@ export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, on
     )
   }
 
-  const toggle = key => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
+  const toggle = (key) => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
 
   const groups = [
     { key: 'active', title: 'Active', titleClass: 'text-green-400', items: active },
@@ -183,7 +208,7 @@ export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, on
 
   return (
     <div className="flex flex-col gap-1 p-2 overflow-y-auto h-full">
-      {groups.map(group => {
+      {groups.map((group) => {
         if (group.items.length === 0) return null
         return (
           <div key={group.key}>
@@ -196,7 +221,7 @@ export function SessionsList({ sessions, selectedId, onSelect, onMuteSession, on
             />
             {!collapsed[group.key] && (
               <div className="flex flex-col gap-2 mt-1">
-                {group.items.map(s => (
+                {group.items.map((s) => (
                   <SessionCard
                     key={s.sessionId}
                     session={s}

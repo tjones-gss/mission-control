@@ -408,7 +408,7 @@ export default function App() {
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Sessions list */}
-        <aside className="hidden md:flex w-56 shrink-0 border-r border-gray-800 overflow-hidden flex-col">
+        <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col">
           <div className="px-3 py-2 border-b border-gray-800 flex items-center">
             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Sessions

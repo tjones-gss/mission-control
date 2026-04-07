@@ -36,38 +36,52 @@ function ChildRow({ child, selected, onToggle, dispatchState }) {
   const pending = dispatchState?.status === 'pending'
   const ok = dispatchState?.status === 'ok'
   const failed = dispatchState?.status === 'failed'
+  // Strip leading/trailing whitespace and collapse newlines so the
+  // preview stays single-line. lastText is the last assistant text
+  // block from the session's JSONL — exactly what the dispatcher needs
+  // to know "what was this session last doing?" before sending input.
+  const preview = (child.lastText || '').replace(/\s+/g, ' ').trim()
 
   return (
     <button
       type="button"
       onClick={onToggle}
+      title={child.lastText || child.slug}
       className={[
-        'w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors',
+        'w-full flex flex-col gap-1 px-2 py-1.5 rounded text-left transition-colors min-w-0',
         selected
           ? 'bg-indigo-900/30 border border-indigo-700'
           : 'border border-transparent hover:bg-gray-800/60',
       ].join(' ')}
     >
-      {selected ? (
-        <CheckSquare size={14} className="shrink-0 text-indigo-400" />
-      ) : (
-        <Square size={14} className="shrink-0 text-gray-600" />
-      )}
-      <span className={`relative flex h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`}>
-        {status === 'active' && (
-          <span className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-75" />
+      <div className="flex items-center gap-2 min-w-0">
+        {selected ? (
+          <CheckSquare size={14} className="shrink-0 text-indigo-400" />
+        ) : (
+          <Square size={14} className="shrink-0 text-gray-600" />
         )}
-      </span>
-      <span className="text-sm text-gray-200 truncate flex-1">{child.slug}</span>
-      <span className={`text-[10px] uppercase ${meta.cls} shrink-0`}>{status}</span>
-      {child.estimatedCost && (
-        <span className="text-[10px] text-emerald-500 font-mono shrink-0">
-          {formatCost(child.estimatedCost.totalCost)}
+        <span className={`relative flex h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`}>
+          {status === 'active' && (
+            <span className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-75" />
+          )}
         </span>
+        <span className="text-sm text-gray-200 truncate flex-1 min-w-0">{child.slug}</span>
+        <span className={`text-[10px] uppercase ${meta.cls} shrink-0`}>{status}</span>
+        {child.estimatedCost && (
+          <span className="text-[10px] text-emerald-500 font-mono shrink-0">
+            {formatCost(child.estimatedCost.totalCost)}
+          </span>
+        )}
+        {pending && <Loader2 size={12} className="shrink-0 text-indigo-400 animate-spin" />}
+        {ok && <Check size={12} className="shrink-0 text-green-400" />}
+        {failed && <AlertCircle size={12} className="shrink-0 text-red-400" />}
+      </div>
+      {preview && (
+        // Indent under the checkbox + status dot so the preview lines up
+        // with the slug above. truncate keeps it to a single line — full
+        // text is in the title attribute on hover.
+        <div className="pl-[26px] text-[11px] text-gray-500 truncate min-w-0">{preview}</div>
       )}
-      {pending && <Loader2 size={12} className="shrink-0 text-indigo-400 animate-spin" />}
-      {ok && <Check size={12} className="shrink-0 text-green-400" />}
-      {failed && <AlertCircle size={12} className="shrink-0 text-red-400" />}
     </button>
   )
 }
