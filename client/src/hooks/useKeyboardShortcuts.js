@@ -94,19 +94,25 @@ export function useKeyboardShortcuts(handlers) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [shortcuts, handlers])
 
+  // Returns the list of action names whose bindings were cleared because
+  // they conflicted with the new key. Callers can use this to surface a
+  // "X was unbound" notice — the previous behavior silently dropped the
+  // conflicting binding with zero user feedback.
   const updateShortcut = useCallback((action, newKey) => {
+    let cleared = []
     setShortcuts((prev) => {
-      // Detect conflicts: if another action already uses this key, clear it
       const next = { ...prev }
       for (const [existingAction, existingKey] of Object.entries(next)) {
-        if (existingAction !== action && existingKey === newKey) {
+        if (existingAction !== action && existingKey === newKey && existingKey !== '') {
           next[existingAction] = ''
+          cleared.push(existingAction)
         }
       }
       next[action] = newKey
       saveShortcuts(next)
       return next
     })
+    return cleared
   }, [])
 
   const resetDefaults = useCallback(() => {
