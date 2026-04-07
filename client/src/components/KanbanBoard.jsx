@@ -33,16 +33,48 @@ function getTopTools(toolUseCounts, n = 3) {
     .slice(0, n)
 }
 
+// Hidden-textarea fallback for environments where navigator.clipboard
+// is unavailable (insecure contexts, denied permissions, older browsers).
+function fallbackCopy(text) {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.setAttribute('readonly', '')
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
 function ResumeId({ sessionId }) {
   const [copied, setCopied] = useState(false)
   const handleCopy = useCallback(
     (e) => {
       e.stopPropagation()
       const cmd = `claude --resume ${sessionId}`
-      navigator.clipboard.writeText(cmd).then(() => {
+      const onCopied = () => {
         setCopied(true)
         setTimeout(() => setCopied(false), 1500)
-      })
+      }
+      // navigator.clipboard requires a secure context (https or localhost)
+      // and rejects on missing permissions. Fall back to a hidden textarea
+      // + execCommand so this works even when clipboard isn't available.
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard
+          .writeText(cmd)
+          .then(onCopied)
+          .catch(() => {
+            fallbackCopy(cmd) && onCopied()
+          })
+      } else {
+        if (fallbackCopy(cmd)) onCopied()
+      }
     },
     [sessionId],
   )
