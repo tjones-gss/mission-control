@@ -35,6 +35,7 @@ import { LegendModal } from './components/LegendModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
 import { ShortcutHelpOverlay } from './components/ShortcutHelpOverlay.jsx'
 import { DispatchDrawer, DispatchDrawerHandle } from './components/DispatchDrawer.jsx'
+import { DispatchSignal } from './components/DispatchSignal.jsx'
 import { projectLabel } from './utils/session.js'
 
 const TABS = [
@@ -84,6 +85,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [showDispatch, setShowDispatch] = useState(false)
+  // Dispatch signal animation: { from: {x,y}, to: {x,y}, sessionId } or null
+  const [dispatchSignal, setDispatchSignal] = useState(null)
   const [events, setEvents] = useState([])
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
@@ -618,7 +621,44 @@ export default function App() {
         onToggle={() => setShowShortcutHelp((prev) => !prev)}
       />
       <DispatchDrawerHandle open={showDispatch} onToggle={() => setShowDispatch((prev) => !prev)} />
-      <DispatchDrawer open={showDispatch} onClose={() => setShowDispatch(false)} />
+      <DispatchDrawer
+        open={showDispatch}
+        onClose={() => setShowDispatch(false)}
+        onSingleDispatchSuccess={(sessionId, fromRect) => {
+          // Compute target = where the session card lives in the sidebar
+          // (or center of the main panel if no card found). Fire the
+          // electrical-signal animation, close the drawer, and after the
+          // animation arrives at the target, jump to that session's
+          // detail view.
+          const card = document.querySelector(`[data-session-card-id="${sessionId}"]`)
+          const cardRect = card?.getBoundingClientRect()
+          const main = document.querySelector('main')?.getBoundingClientRect()
+          const to = cardRect
+            ? { x: cardRect.left + cardRect.width / 2, y: cardRect.top + cardRect.height / 2 }
+            : main
+              ? { x: main.left + main.width / 2, y: main.top + main.height / 2 }
+              : { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+          const from = fromRect
+            ? { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 }
+            : { x: window.innerWidth / 2, y: window.innerHeight - 100 }
+          setShowDispatch(false)
+          setDispatchSignal({ from, to, sessionId })
+        }}
+      />
+      {dispatchSignal && (
+        <DispatchSignal
+          from={dispatchSignal.from}
+          to={dispatchSignal.to}
+          onComplete={() => {
+            // Switch to the target session's detail view, then clear the
+            // overlay so it doesn't linger as an empty SVG layer.
+            setActiveTab('agents')
+            setSelectedSessionId(dispatchSignal.sessionId)
+            setAgentView('detail')
+            setDispatchSignal(null)
+          }}
+        />
+      )}
     </div>
   )
 }

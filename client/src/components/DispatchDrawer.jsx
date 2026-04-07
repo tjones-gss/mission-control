@@ -231,7 +231,7 @@ export function DispatchDrawerHandle({ open, onToggle }) {
   )
 }
 
-export function DispatchDrawer({ open, onClose }) {
+export function DispatchDrawer({ open, onClose, onSingleDispatchSuccess }) {
   const { data, loading, error, refetch } = useApi(open ? '/api/managers' : null, [open])
   const managers = data?.managers || []
 
@@ -241,6 +241,7 @@ export function DispatchDrawer({ open, onClose }) {
   const [sending, setSending] = useState(false)
   const [expanded, setExpanded] = useState(() => new Set())
   const inputRef = useRef(null)
+  const dispatchBtnRef = useRef(null)
 
   // When the drawer opens, default-expand the first manager and focus the input
   useEffect(() => {
@@ -345,9 +346,18 @@ export function DispatchDrawer({ open, onClose }) {
       setText('')
       // Clear "ok" badges after a moment
       setTimeout(() => setDispatchState({}), 2000)
+
+      // For a single-target dispatch, fire the electrical-signal
+      // animation: parent will close the drawer, animate a beam from
+      // the dispatch button to the target session card, and open the
+      // detail view of that session on arrival.
+      if (targets.length === 1 && onSingleDispatchSuccess) {
+        const fromRect = dispatchBtnRef.current?.getBoundingClientRect()
+        onSingleDispatchSuccess(targets[0], fromRect)
+      }
     }
     setSending(false)
-  }, [text, selectedIds, selectedCount, sending])
+  }, [text, selectedIds, selectedCount, sending, onSingleDispatchSuccess])
 
   const handleKeyDown = useCallback(
     (e) => {
@@ -463,6 +473,7 @@ export function DispatchDrawer({ open, onClose }) {
                 className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50 resize-none"
               />
               <button
+                ref={dispatchBtnRef}
                 type="button"
                 onClick={dispatchToAll}
                 disabled={!text.trim() || selectedCount === 0 || sending}

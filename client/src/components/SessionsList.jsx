@@ -77,6 +77,7 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
 
   return (
     <button
+      data-session-card-id={session.sessionId}
       onClick={() => onSelect(session.sessionId)}
       className={`text-left p-3 rounded-lg border transition-all w-full min-w-0 ${selectedClasses}`}
     >
