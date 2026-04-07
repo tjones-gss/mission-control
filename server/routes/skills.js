@@ -4,6 +4,7 @@ import path from 'path'
 import os from 'os'
 import { getAllSkills } from '../parsers/skills.js'
 import { validateSkillName as validateName } from '../utils/validate.js'
+import { atomicWrite } from '../lib/atomic-write.js'
 
 export const router = Router()
 
@@ -71,7 +72,7 @@ router.post('/', async (req, res, next) => {
   }
   try {
     await fs.mkdir(SKILLS_DIR, { recursive: true })
-    await fs.writeFile(filePath, content, 'utf8')
+    await atomicWrite(filePath, content)
   } catch (err) {
     return next(err)
   }
@@ -93,7 +94,7 @@ router.put('/:name', async (req, res, next) => {
         .status(403)
         .json({ error: 'Cannot edit skills outside the user skills directory.' })
     }
-    await fs.writeFile(resolved, content, 'utf8')
+    await atomicWrite(resolved, content)
     res.json({ ok: true, name })
   } catch (err) {
     next(err)

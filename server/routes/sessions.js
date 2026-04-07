@@ -25,6 +25,7 @@ import {
 import { onEvent } from '../sse.js'
 import { validateSessionId } from '../utils/validate.js'
 import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
+import { atomicWriteJson } from '../lib/atomic-write.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
@@ -207,7 +208,7 @@ export async function loadSessionNames() {
 async function saveSessionNames(names) {
   sessionNamesCache = names
   await fsp.mkdir(path.dirname(NAMES_FILE), { recursive: true })
-  await fsp.writeFile(NAMES_FILE, JSON.stringify(names, null, 2))
+  await atomicWriteJson(NAMES_FILE, names)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

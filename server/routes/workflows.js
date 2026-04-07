@@ -4,6 +4,7 @@ import path from 'path'
 import os from 'os'
 import { getAllWorkflows } from '../parsers/workflows.js'
 import { validateWorkflowName as validateName } from '../utils/validate.js'
+import { atomicWrite, atomicWriteJson } from '../lib/atomic-write.js'
 
 export const router = Router()
 
@@ -83,7 +84,7 @@ router.post('/', async (req, res, next) => {
 
   try {
     await fs.mkdir(WORKFLOWS_DIR, { recursive: true })
-    await fs.writeFile(filePath, JSON.stringify(workflow, null, 2), 'utf8')
+    await atomicWriteJson(filePath, workflow)
   } catch (err) {
     return next(err)
   }
@@ -117,7 +118,7 @@ router.put('/:name', async (req, res, next) => {
   }
 
   try {
-    await fs.writeFile(filePath, JSON.stringify(updated, null, 2), 'utf8')
+    await atomicWriteJson(filePath, updated)
   } catch (err) {
     return next(err)
   }
@@ -171,7 +172,7 @@ router.post('/:name/export', async (req, res, next) => {
   const content = generateSkillMd(workflow)
   try {
     await fs.mkdir(SKILLS_DIR, { recursive: true })
-    await fs.writeFile(skillPath, content, 'utf8')
+    await atomicWrite(skillPath, content)
   } catch (err) {
     return next(err)
   }
