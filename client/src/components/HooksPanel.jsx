@@ -52,7 +52,9 @@ export function HooksPanel({ hooksVersion = 0 }) {
       <div>
         <div className="flex items-center gap-2 mb-2">
           <Shield size={13} className="text-indigo-400" />
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Hook Bindings</span>
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Hook Bindings
+          </span>
           <span className="text-xs text-gray-500">{matrix?.length || 0}</span>
         </div>
         {matrix?.length > 0 ? (
@@ -69,12 +71,16 @@ export function HooksPanel({ hooksVersion = 0 }) {
                 {matrix.map((row, i) => (
                   <tr key={i} className="border-b border-gray-800/50 last:border-0">
                     <td className="px-3 py-1.5">
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] border ${EVENT_COLORS[row.event] || 'bg-gray-800 text-gray-400 border-gray-700'}`}>
+                      <span
+                        className={`inline-flex px-1.5 py-0.5 rounded text-[10px] border ${EVENT_COLORS[row.event] || 'bg-gray-800 text-gray-400 border-gray-700'}`}
+                      >
                         {row.event}
                       </span>
                     </td>
                     <td className="px-3 py-1.5 text-gray-300 font-mono">{row.matcher}</td>
-                    <td className="px-3 py-1.5 text-gray-400 font-mono truncate max-w-[300px]">{row.command}</td>
+                    <td className="px-3 py-1.5 text-gray-400 font-mono truncate max-w-[300px]">
+                      {row.command}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -90,11 +96,13 @@ export function HooksPanel({ hooksVersion = 0 }) {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Terminal size={13} className="text-amber-400" />
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Hook Scripts</span>
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              Hook Scripts
+            </span>
             <span className="text-xs text-gray-500">{scripts.length}</span>
           </div>
           <div className="flex flex-col gap-2">
-            {scripts.map(s => (
+            {scripts.map((s) => (
               <ScriptCard key={s.filename} script={s} />
             ))}
           </div>

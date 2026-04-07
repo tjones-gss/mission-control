@@ -1,15 +1,24 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: {
-      existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
-      statSync: vi.fn(), promises,
+      existsSync: vi.fn(),
+      readdirSync: vi.fn(),
+      readFileSync: vi.fn(),
+      statSync: vi.fn(),
+      promises,
     },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
-    statSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    statSync: vi.fn(),
+    promises,
   }
 })
 
@@ -55,8 +64,8 @@ describe('getAllSessions()', () => {
   it('returns [] when project dir has no .jsonl files', () => {
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync
-      .mockReturnValueOnce([makeProjectDirEntry('C--project')])  // projects dir
-      .mockReturnValueOnce([])  // project subdir — no .jsonl files
+      .mockReturnValueOnce([makeProjectDirEntry('C--project')]) // projects dir
+      .mockReturnValueOnce([]) // project subdir — no .jsonl files
     expect(getAllSessions()).toEqual([])
   })
 
@@ -134,7 +143,7 @@ describe('getAllSessions()', () => {
         },
       },
     })
-    const jsonl = [userRecord, assistantRecord].map(r => JSON.stringify(r)).join('\n')
+    const jsonl = [userRecord, assistantRecord].map((r) => JSON.stringify(r)).join('\n')
 
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync
@@ -185,9 +194,7 @@ describe('getAllSessions()', () => {
       type: 'assistant',
       message: {
         model: 'claude-3',
-        content: [
-          { type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'echo hello' } },
-        ],
+        content: [{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'echo hello' } }],
       },
     })
     fs.existsSync.mockReturnValue(true)
@@ -243,11 +250,8 @@ describe('getAllSessions()', () => {
     fs.readdirSync
       .mockReturnValueOnce([makeProjectDirEntry('C--project')])
       .mockReturnValueOnce(['old.jsonl', 'new.jsonl'])
-    fs.statSync
-      .mockReturnValueOnce({ mtimeMs: older })
-      .mockReturnValueOnce({ mtimeMs: newer })
-    fs.readFileSync
-      .mockReturnValue(JSON.stringify(record))
+    fs.statSync.mockReturnValueOnce({ mtimeMs: older }).mockReturnValueOnce({ mtimeMs: newer })
+    fs.readFileSync.mockReturnValue(JSON.stringify(record))
 
     const result = getAllSessions()
     expect(result).toHaveLength(2)
@@ -258,7 +262,7 @@ describe('getAllSessions()', () => {
   it('builds agentTree with main and sidechain message counts', () => {
     const main = makeRecord({ uuid: 'u1', isSidechain: false })
     const side = makeRecord({ uuid: 'u2', isSidechain: true, parentToolUseID: 'tuid-1' })
-    const jsonl = [main, side].map(r => JSON.stringify(r)).join('\n')
+    const jsonl = [main, side].map((r) => JSON.stringify(r)).join('\n')
 
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync
@@ -279,7 +283,9 @@ describe('getAllSessions()', () => {
     fs.readdirSync
       .mockReturnValueOnce([makeProjectDirEntry('C--project')])
       .mockReturnValueOnce(['bad.jsonl'])
-    fs.statSync.mockImplementation(() => { throw new Error('stat failed') })
+    fs.statSync.mockImplementation(() => {
+      throw new Error('stat failed')
+    })
 
     expect(getAllSessions()).toEqual([])
   })
@@ -287,7 +293,7 @@ describe('getAllSessions()', () => {
 
 describe('needsInput detection', () => {
   function setupSession(records, mtimeMs = Date.now() - 10_000) {
-    const jsonl = records.map(r => JSON.stringify(r)).join('\n')
+    const jsonl = records.map((r) => JSON.stringify(r)).join('\n')
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync
       .mockReturnValueOnce([makeProjectDirEntry('C--project')])
@@ -417,7 +423,7 @@ describe('needsInput detection', () => {
 
 describe('permissionMode extraction', () => {
   function setupSession(records, mtimeMs = Date.now() - 10_000) {
-    const jsonl = records.map(r => JSON.stringify(r)).join('\n')
+    const jsonl = records.map((r) => JSON.stringify(r)).join('\n')
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync
       .mockReturnValueOnce([makeProjectDirEntry('C--project')])
@@ -449,7 +455,7 @@ describe('permissionMode extraction', () => {
 
 describe('subagent type enrichment', () => {
   function setupSession(records, metaFiles = {}, mtimeMs = Date.now() - 10_000) {
-    const jsonl = records.map(r => JSON.stringify(r)).join('\n')
+    const jsonl = records.map((r) => JSON.stringify(r)).join('\n')
     fs.existsSync.mockImplementation((p) => {
       if (typeof p === 'string' && p.includes('subagents')) return Object.keys(metaFiles).length > 0
       return true
@@ -457,7 +463,7 @@ describe('subagent type enrichment', () => {
     let readdirCall = 0
     fs.readdirSync.mockImplementation((p) => {
       if (typeof p === 'string' && p.includes('subagents')) {
-        return Object.keys(metaFiles).map(k => `agent-${k}.meta.json`)
+        return Object.keys(metaFiles).map((k) => `agent-${k}.meta.json`)
       }
       // First call: project dirs listing (returns objects with isDirectory)
       // Second call: jsonl files listing (returns strings)
@@ -468,7 +474,7 @@ describe('subagent type enrichment', () => {
     fs.statSync.mockReturnValue({ mtimeMs })
     fs.readFileSync.mockImplementation((p) => {
       if (typeof p === 'string' && p.includes('.meta.json')) {
-        const agentId = Object.keys(metaFiles).find(k => p.includes(k))
+        const agentId = Object.keys(metaFiles).find((k) => p.includes(k))
         return agentId ? JSON.stringify(metaFiles[agentId]) : '{}'
       }
       return jsonl
@@ -481,7 +487,7 @@ describe('subagent type enrichment', () => {
     const side = makeRecord({ uuid: 'u2', isSidechain: true, parentToolUseID: 'abc123' })
     const meta = { abc123: { agentType: 'Explore', description: 'Explore the codebase' } }
     const sess = setupSession([main, side], meta)
-    const sub = sess.agentTree.subagents.find(s => s.toolUseId === 'abc123')
+    const sub = sess.agentTree.subagents.find((s) => s.toolUseId === 'abc123')
     expect(sub.agentType).toBe('Explore')
     expect(sub.description).toBe('Explore the codebase')
   })
@@ -490,14 +496,14 @@ describe('subagent type enrichment', () => {
     const main = makeRecord({ uuid: 'u1', isSidechain: false })
     const side = makeRecord({ uuid: 'u2', isSidechain: true, parentToolUseID: 'nomatch' })
     const sess = setupSession([main, side])
-    const sub = sess.agentTree.subagents.find(s => s.toolUseId === 'nomatch')
+    const sub = sess.agentTree.subagents.find((s) => s.toolUseId === 'nomatch')
     expect(sub.agentType).toBeNull()
   })
 })
 
 describe('compaction detection', () => {
   function setupSession(records, mtimeMs = Date.now() - 10_000) {
-    const jsonl = records.map(r => JSON.stringify(r)).join('\n')
+    const jsonl = records.map((r) => JSON.stringify(r)).join('\n')
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync
       .mockReturnValueOnce([makeProjectDirEntry('C--project')])
@@ -511,7 +517,10 @@ describe('compaction detection', () => {
     const systemMsg = makeRecord({
       uuid: 's1',
       type: 'system',
-      message: { content: 'This session is being continued from a previous conversation that ran out of context.' },
+      message: {
+        content:
+          'This session is being continued from a previous conversation that ran out of context.',
+      },
     })
     const user = makeRecord({ uuid: 'u1', type: 'user' })
     const sess = setupSession([systemMsg, user])
@@ -523,7 +532,8 @@ describe('compaction detection', () => {
     const systemMsg = makeRecord({
       uuid: 's1',
       type: 'system',
-      message: 'This session is being continued from a previous conversation that ran out of context.',
+      message:
+        'This session is being continued from a previous conversation that ran out of context.',
     })
     const sess = setupSession([systemMsg])
     expect(sess.hasBeenCompacted).toBe(true)

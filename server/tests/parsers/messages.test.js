@@ -1,11 +1,17 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    promises,
   }
 })
 
@@ -184,7 +190,12 @@ describe('getSessionMessages()', () => {
     expect(msg.blocks).toHaveLength(3)
     expect(msg.blocks[0]).toEqual({ type: 'thinking', text: 'Let me think...' })
     expect(msg.blocks[1]).toEqual({ type: 'text', text: 'Here is my answer.' })
-    expect(msg.blocks[2]).toEqual({ type: 'tool_use', id: 'tu-1', name: 'Bash', input: { command: 'ls' } })
+    expect(msg.blocks[2]).toEqual({
+      type: 'tool_use',
+      id: 'tu-1',
+      name: 'Bash',
+      input: { command: 'ls' },
+    })
   })
 
   it('excludes sidechain records from messages', () => {
@@ -202,7 +213,7 @@ describe('getSessionMessages()', () => {
       isSidechain: true,
       message: { content: 'Sidechain message' },
     }
-    const jsonl = [main, side].map(r => JSON.stringify(r)).join('\n')
+    const jsonl = [main, side].map((r) => JSON.stringify(r)).join('\n')
 
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
@@ -227,7 +238,7 @@ describe('getSessionMessages()', () => {
       isSidechain: false,
       message: { content: 'Has UUID' },
     }
-    const jsonl = [withoutUuid, withUuid].map(r => JSON.stringify(r)).join('\n')
+    const jsonl = [withoutUuid, withUuid].map((r) => JSON.stringify(r)).join('\n')
 
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
@@ -241,7 +252,9 @@ describe('getSessionMessages()', () => {
   it('returns null when readFileSync throws', () => {
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
-    fs.readFileSync.mockImplementation(() => { throw new Error('disk error') })
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error('disk error')
+    })
 
     expect(getSessionMessages('sess-1')).toBeNull()
   })

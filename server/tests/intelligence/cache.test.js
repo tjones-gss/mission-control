@@ -1,4 +1,10 @@
-import { getCached, setCached, getInFlight, setInFlight, clearInFlight } from '../../intelligence/cache.js'
+import {
+  getCached,
+  setCached,
+  getInFlight,
+  setInFlight,
+  clearInFlight,
+} from '../../intelligence/cache.js'
 
 // The cache module uses module-level Maps, so we need to manage state carefully.
 // We'll use unique session IDs per test to avoid cross-test interference.
@@ -49,7 +55,7 @@ describe('getCached / setCached', () => {
 
     // At least one of the earlier entries must have been evicted
     const earlyEntries = ids.slice(0, 5)
-    const someEvicted = earlyEntries.some(id => getCached(id) === null)
+    const someEvicted = earlyEntries.some((id) => getCached(id) === null)
     expect(someEvicted).toBe(true)
 
     vi.useRealTimers()

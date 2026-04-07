@@ -1,11 +1,17 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    promises,
   }
 })
 vi.mock('../../parsers/workflows.js', () => ({ getAllWorkflows: vi.fn().mockReturnValue([]) }))
@@ -75,11 +81,13 @@ describe('POST /', () => {
     fsp.writeFile.mockResolvedValue(undefined)
     getAllWorkflows.mockReturnValue([])
 
-    const res = await request(app).post('/').send({
-      name: 'myworkflow',
-      description: 'A test workflow',
-      steps: [{ title: 'Step A', type: 'instruction', text: 'Do something' }],
-    })
+    const res = await request(app)
+      .post('/')
+      .send({
+        name: 'myworkflow',
+        description: 'A test workflow',
+        steps: [{ title: 'Step A', type: 'instruction', text: 'Do something' }],
+      })
     expect(res.status).toBe(201)
     expect(res.body).toMatchObject({
       name: 'myworkflow',
@@ -110,7 +118,13 @@ describe('PUT /:name', () => {
   })
 
   it('200 with merged body; name comes from URL not body', async () => {
-    const existing = { name: 'myworkflow', description: 'old', steps: [], createdAt: 1000, updatedAt: 1000 }
+    const existing = {
+      name: 'myworkflow',
+      description: 'old',
+      steps: [],
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
     fsp.readFile.mockResolvedValue(JSON.stringify(existing))
     fsp.writeFile.mockResolvedValue(undefined)
 
@@ -122,7 +136,13 @@ describe('PUT /:name', () => {
 
   it('updatedAt is updated', async () => {
     const before = Date.now() - 1000
-    const existing = { name: 'wf', description: 'old', steps: [], createdAt: before, updatedAt: before }
+    const existing = {
+      name: 'wf',
+      description: 'old',
+      steps: [],
+      createdAt: before,
+      updatedAt: before,
+    }
     fsp.readFile.mockResolvedValue(JSON.stringify(existing))
     fsp.writeFile.mockResolvedValue(undefined)
 
@@ -214,9 +234,9 @@ describe('POST /:name/export', () => {
 
   it('skill step without note → content includes Invoke the `/foo` skill.', async () => {
     const workflow = {
-      name: 'wf', description: '', steps: [
-        { type: 'skill', skillName: 'foo', title: 'Use foo' },
-      ],
+      name: 'wf',
+      description: '',
+      steps: [{ type: 'skill', skillName: 'foo', title: 'Use foo' }],
     }
     fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
     fsp.access.mockRejectedValue({ code: 'ENOENT' })
@@ -231,9 +251,9 @@ describe('POST /:name/export', () => {
 
   it('skill step with note → note appended after skill invocation line', async () => {
     const workflow = {
-      name: 'wf', description: '', steps: [
-        { type: 'skill', skillName: 'foo', note: 'Pay attention!', title: 'Use foo' },
-      ],
+      name: 'wf',
+      description: '',
+      steps: [{ type: 'skill', skillName: 'foo', note: 'Pay attention!', title: 'Use foo' }],
     }
     fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
     fsp.access.mockRejectedValue({ code: 'ENOENT' })
@@ -249,8 +269,15 @@ describe('POST /:name/export', () => {
 
   it('agent step → content includes Spawn a `general-purpose` agent', async () => {
     const workflow = {
-      name: 'wf', description: '', steps: [
-        { type: 'agent', agentType: 'general-purpose', prompt: 'Do the thing', title: 'Agent step' },
+      name: 'wf',
+      description: '',
+      steps: [
+        {
+          type: 'agent',
+          agentType: 'general-purpose',
+          prompt: 'Do the thing',
+          title: 'Agent step',
+        },
       ],
     }
     fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
@@ -266,8 +293,14 @@ describe('POST /:name/export', () => {
 
   it('instruction step → raw step.text in content', async () => {
     const workflow = {
-      name: 'wf', description: '', steps: [
-        { type: 'instruction', text: 'Review all open PRs before proceeding.', title: 'Instruction' },
+      name: 'wf',
+      description: '',
+      steps: [
+        {
+          type: 'instruction',
+          text: 'Review all open PRs before proceeding.',
+          title: 'Instruction',
+        },
       ],
     }
     fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
@@ -283,9 +316,9 @@ describe('POST /:name/export', () => {
 
   it('command step → content includes Run: `npm run build`', async () => {
     const workflow = {
-      name: 'wf', description: '', steps: [
-        { type: 'command', command: 'npm run build', title: 'Build' },
-      ],
+      name: 'wf',
+      description: '',
+      steps: [{ type: 'command', command: 'npm run build', title: 'Build' }],
     }
     fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
     fsp.access.mockRejectedValue({ code: 'ENOENT' })

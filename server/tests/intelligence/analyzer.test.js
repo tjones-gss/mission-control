@@ -62,7 +62,13 @@ describe('analyzeSession', () => {
   })
 
   it('parses stdout JSON with .result field', async () => {
-    const intel = { goal: 'Build API', progress: 'Starting', flags: ['slow'], subagents: 'none', recommendation: 'Speed up' }
+    const intel = {
+      goal: 'Build API',
+      progress: 'Starting',
+      flags: ['slow'],
+      subagents: 'none',
+      recommendation: 'Speed up',
+    }
     runClaude.mockResolvedValue({
       stdout: JSON.stringify({ result: JSON.stringify(intel) }),
     })
@@ -75,7 +81,13 @@ describe('analyzeSession', () => {
   })
 
   it('parses stdout JSON with .content field', async () => {
-    const intel = { goal: 'Fix bug', progress: 'Done', flags: [], subagents: 'none', recommendation: null }
+    const intel = {
+      goal: 'Fix bug',
+      progress: 'Done',
+      flags: [],
+      subagents: 'none',
+      recommendation: null,
+    }
     runClaude.mockResolvedValue({
       stdout: JSON.stringify({ content: JSON.stringify(intel) }),
     })
@@ -86,7 +98,13 @@ describe('analyzeSession', () => {
   })
 
   it('falls back to raw stdout when no .result or .content', async () => {
-    const intel = { goal: 'Deploy app', progress: 'Pending', flags: [], subagents: 'none', recommendation: null }
+    const intel = {
+      goal: 'Deploy app',
+      progress: 'Pending',
+      flags: [],
+      subagents: 'none',
+      recommendation: null,
+    }
     runClaude.mockResolvedValue({
       stdout: JSON.stringify(intel),
     })
@@ -121,12 +139,14 @@ describe('buildPrompt (via runClaude args)', () => {
 
   it('includes cwd, model, gitBranch, isActive', async () => {
     runClaude.mockResolvedValue(makeClaudeResult(defaultIntelligence))
-    await analyzeSession(makeSession({
-      cwd: '/tmp/work',
-      model: 'opus-5',
-      gitBranch: 'feature/login',
-      isActive: false,
-    }))
+    await analyzeSession(
+      makeSession({
+        cwd: '/tmp/work',
+        model: 'opus-5',
+        gitBranch: 'feature/login',
+        isActive: false,
+      }),
+    )
 
     const prompt = runClaude.mock.calls[0][0].args[1]
     expect(prompt).toContain('CWD: /tmp/work')
@@ -137,15 +157,17 @@ describe('buildPrompt (via runClaude args)', () => {
 
   it('includes agent tree summary and subagent details', async () => {
     runClaude.mockResolvedValue(makeClaudeResult(defaultIntelligence))
-    await analyzeSession(makeSession({
-      agentTree: {
-        mainMessageCount: 15,
-        subagents: [
-          { description: 'Linting subagent', messageCount: 5 },
-          { description: 'Testing subagent', messageCount: 8 },
-        ],
-      },
-    }))
+    await analyzeSession(
+      makeSession({
+        agentTree: {
+          mainMessageCount: 15,
+          subagents: [
+            { description: 'Linting subagent', messageCount: 5 },
+            { description: 'Testing subagent', messageCount: 8 },
+          ],
+        },
+      }),
+    )
 
     const prompt = runClaude.mock.calls[0][0].args[1]
     expect(prompt).toContain('main=15 messages, 2 subagents')
@@ -155,16 +177,18 @@ describe('buildPrompt (via runClaude args)', () => {
 
   it('includes top 5 tools sorted by count', async () => {
     runClaude.mockResolvedValue(makeClaudeResult(defaultIntelligence))
-    await analyzeSession(makeSession({
-      toolUseCounts: {
-        Read: 50,
-        Write: 30,
-        Bash: 20,
-        Grep: 15,
-        Glob: 10,
-        Edit: 5,
-      },
-    }))
+    await analyzeSession(
+      makeSession({
+        toolUseCounts: {
+          Read: 50,
+          Write: 30,
+          Bash: 20,
+          Grep: 15,
+          Glob: 10,
+          Edit: 5,
+        },
+      }),
+    )
 
     const prompt = runClaude.mock.calls[0][0].args[1]
     expect(prompt).toContain('Top tools:')
@@ -176,9 +200,11 @@ describe('buildPrompt (via runClaude args)', () => {
 
   it('includes token usage line', async () => {
     runClaude.mockResolvedValue(makeClaudeResult(defaultIntelligence))
-    await analyzeSession(makeSession({
-      tokenUsage: { input: 5000, output: 2000, cacheRead: 800 },
-    }))
+    await analyzeSession(
+      makeSession({
+        tokenUsage: { input: 5000, output: 2000, cacheRead: 800 },
+      }),
+    )
 
     const prompt = runClaude.mock.calls[0][0].args[1]
     expect(prompt).toContain('Tokens: input=5000 output=2000 cacheRead=800')
@@ -196,9 +222,11 @@ describe('buildPrompt (via runClaude args)', () => {
 
   it('includes lastAction name and summary', async () => {
     runClaude.mockResolvedValue(makeClaudeResult(defaultIntelligence))
-    await analyzeSession(makeSession({
-      lastAction: { name: 'Bash', summary: 'Ran npm test' },
-    }))
+    await analyzeSession(
+      makeSession({
+        lastAction: { name: 'Bash', summary: 'Ran npm test' },
+      }),
+    )
 
     const prompt = runClaude.mock.calls[0][0].args[1]
     expect(prompt).toContain('Last action: Bash \u2014 Ran npm test')
@@ -207,19 +235,23 @@ describe('buildPrompt (via runClaude args)', () => {
   it('handles missing/null fields gracefully', async () => {
     runClaude.mockResolvedValue(makeClaudeResult(defaultIntelligence))
 
-    await expect(analyzeSession(makeSession({
-      slug: null,
-      cwd: null,
-      model: null,
-      gitBranch: null,
-      agentTree: null,
-      toolUseCounts: null,
-      tokenUsage: null,
-      lastThought: null,
-      lastAction: null,
-      lastText: null,
-      messageCount: null,
-    }))).resolves.toBeDefined()
+    await expect(
+      analyzeSession(
+        makeSession({
+          slug: null,
+          cwd: null,
+          model: null,
+          gitBranch: null,
+          agentTree: null,
+          toolUseCounts: null,
+          tokenUsage: null,
+          lastThought: null,
+          lastAction: null,
+          lastText: null,
+          messageCount: null,
+        }),
+      ),
+    ).resolves.toBeDefined()
 
     const prompt = runClaude.mock.calls[0][0].args[1]
     expect(prompt).toContain('CWD: unknown')

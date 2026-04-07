@@ -1,11 +1,17 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    promises,
   }
 })
 
@@ -42,7 +48,9 @@ describe('getAllWorkflows()', () => {
   it('skips malformed JSON (readFileSync throws)', () => {
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync.mockReturnValue(['bad.json'])
-    fs.readFileSync.mockImplementation(() => { throw new Error('parse error') })
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error('parse error')
+    })
 
     expect(getAllWorkflows()).toEqual([])
   })
@@ -80,9 +88,9 @@ describe('getAllWorkflows()', () => {
     const workflow = { id: 'ok', name: 'OK' }
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync.mockReturnValue(['good.json', 'bad.json'])
-    fs.readFileSync
-      .mockReturnValueOnce(JSON.stringify(workflow))
-      .mockImplementationOnce(() => { throw new Error('bad') })
+    fs.readFileSync.mockReturnValueOnce(JSON.stringify(workflow)).mockImplementationOnce(() => {
+      throw new Error('bad')
+    })
 
     const result = getAllWorkflows()
     expect(result).toHaveLength(1)

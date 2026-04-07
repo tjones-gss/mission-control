@@ -1,11 +1,17 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    promises,
   }
 })
 
@@ -107,7 +113,9 @@ describe('getAllSkills()', () => {
       return false
     })
     fs.readdirSync.mockReturnValue(['broken.md'])
-    fs.readFileSync.mockImplementation(() => { throw new Error('cannot read') })
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error('cannot read')
+    })
 
     const result = getAllSkills()
     expect(result.userSkills).toHaveLength(0)
@@ -120,7 +128,12 @@ describe('getAllSkills()', () => {
         'myplugin@1.0.0': [{ installPath: '/fake/myplugin' }],
       },
     })
-    const pluginJson = JSON.stringify({ name: 'My Plugin', description: 'A plugin', version: '1.0.0', author: 'Author' })
+    const pluginJson = JSON.stringify({
+      name: 'My Plugin',
+      description: 'A plugin',
+      version: '1.0.0',
+      author: 'Author',
+    })
     const skillContent = `---\nname: plugin-skill\ndescription: Plugin skill\n---\nDo it.`
 
     // Dirent mock for skills subdir

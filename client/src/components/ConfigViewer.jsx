@@ -34,7 +34,10 @@ function JsonValue({ value, depth = 0 }) {
     const Chevron = expanded ? ChevronDown : ChevronRight
     return (
       <span>
-        <button onClick={() => setExpanded(!expanded)} className="inline-flex items-center text-gray-500 hover:text-gray-300">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="inline-flex items-center text-gray-500 hover:text-gray-300"
+        >
           <Chevron size={10} />
           <span className="text-xs ml-0.5">[{value.length}]</span>
         </button>
@@ -56,13 +59,18 @@ function JsonValue({ value, depth = 0 }) {
     const Chevron = expanded ? ChevronDown : ChevronRight
     return (
       <span>
-        <button onClick={() => setExpanded(!expanded)} className="inline-flex items-center text-gray-500 hover:text-gray-300">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="inline-flex items-center text-gray-500 hover:text-gray-300"
+        >
           <Chevron size={10} />
-          <span className="text-xs ml-0.5">{'{'}...{'}'}</span>
+          <span className="text-xs ml-0.5">
+            {'{'}...{'}'}
+          </span>
         </button>
         {expanded && (
           <div className="ml-4 border-l border-gray-800 pl-2">
-            {keys.map(key => (
+            {keys.map((key) => (
               <div key={key} className="py-0.5">
                 <span className="text-gray-300 text-xs">{key}:</span>{' '}
                 <JsonValue value={value[key]} depth={depth + 1} />
@@ -77,10 +85,9 @@ function JsonValue({ value, depth = 0 }) {
 }
 
 export function ConfigViewer({ sessionId, configVersion = 0 }) {
-  const { data, loading } = useApi(
-    sessionId ? `/api/sessions/${sessionId}/config` : null,
-    [configVersion]
-  )
+  const { data, loading } = useApi(sessionId ? `/api/sessions/${sessionId}/config` : null, [
+    configVersion,
+  ])
 
   if (!sessionId) {
     return <div className="p-4 text-xs text-gray-500">Select a session to view config</div>
@@ -100,10 +107,14 @@ export function ConfigViewer({ sessionId, configVersion = 0 }) {
     <div className="flex flex-col gap-3 p-3 overflow-y-auto h-full">
       {/* Config file sources */}
       <div className="flex flex-col gap-1">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Config Sources</span>
-        {files?.map(f => (
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+          Config Sources
+        </span>
+        {files?.map((f) => (
           <div key={f.level} className="flex items-center gap-2 text-xs">
-            <span className={`px-1.5 py-0.5 rounded border text-[10px] ${SOURCE_BADGE[f.level] || 'bg-gray-800 text-gray-500 border-gray-700'}`}>
+            <span
+              className={`px-1.5 py-0.5 rounded border text-[10px] ${SOURCE_BADGE[f.level] || 'bg-gray-800 text-gray-500 border-gray-700'}`}
+            >
               {f.level}
             </span>
             <span className="text-gray-400 truncate font-mono text-[11px]">{f.path}</span>
@@ -123,11 +134,9 @@ export function ConfigViewer({ sessionId, configVersion = 0 }) {
           Merged Config
         </span>
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-3 font-mono text-xs">
-          {Object.keys(merged || {}).map(key => (
+          {Object.keys(merged || {}).map((key) => (
             <div key={key} className="py-1">
-              <span className={`${SOURCE_COLORS[sources?.[key]] || 'text-gray-300'}`}>
-                {key}
-              </span>
+              <span className={`${SOURCE_COLORS[sources?.[key]] || 'text-gray-300'}`}>{key}</span>
               {sources?.[key] && (
                 <span className="text-[9px] text-gray-600 ml-1">({sources[key]})</span>
               )}

@@ -24,8 +24,8 @@ function makeOsc(ctx, masterGain, { type = 'sine', freq, start, duration, volume
 export const PRESETS = {
   chime(ctx, masterGain) {
     const t = ctx.currentTime
-    makeOsc(ctx, masterGain, { freq: 523, start: t, duration: 0.1, fadeOut: true })        // C5
-    makeOsc(ctx, masterGain, { freq: 659, start: t + 0.1, duration: 0.15, fadeOut: true })  // E5
+    makeOsc(ctx, masterGain, { freq: 523, start: t, duration: 0.1, fadeOut: true }) // C5
+    makeOsc(ctx, masterGain, { freq: 659, start: t + 0.1, duration: 0.15, fadeOut: true }) // E5
   },
 
   ping(ctx, masterGain) {
@@ -37,7 +37,13 @@ export const PRESETS = {
     const t = ctx.currentTime
     for (let i = 0; i < 3; i++) {
       const offset = i * 0.12 // 80ms on + 40ms off
-      makeOsc(ctx, masterGain, { type: 'square', freq: 1000, start: t + offset, duration: 0.08, volume: 0.2 })
+      makeOsc(ctx, masterGain, {
+        type: 'square',
+        freq: 1000,
+        start: t + offset,
+        duration: 0.08,
+        volume: 0.2,
+      })
     }
   },
 
@@ -50,23 +56,39 @@ export const PRESETS = {
     const t = ctx.currentTime
     for (let i = 0; i < 3; i++) {
       const offset = i * 0.2
-      makeOsc(ctx, masterGain, { type: 'sawtooth', freq: 800, start: t + offset, duration: 0.1, volume: 0.2, fadeOut: true })
-      makeOsc(ctx, masterGain, { type: 'sawtooth', freq: 1000, start: t + offset + 0.1, duration: 0.1, volume: 0.2, fadeOut: true })
+      makeOsc(ctx, masterGain, {
+        type: 'sawtooth',
+        freq: 800,
+        start: t + offset,
+        duration: 0.1,
+        volume: 0.2,
+        fadeOut: true,
+      })
+      makeOsc(ctx, masterGain, {
+        type: 'sawtooth',
+        freq: 1000,
+        start: t + offset + 0.1,
+        duration: 0.1,
+        volume: 0.2,
+        fadeOut: true,
+      })
     }
   },
 
   success(ctx, masterGain) {
     const t = ctx.currentTime
-    makeOsc(ctx, masterGain, { freq: 523, start: t, duration: 0.1, fadeOut: true })        // C5
-    makeOsc(ctx, masterGain, { freq: 659, start: t + 0.1, duration: 0.1, fadeOut: true })  // E5
+    makeOsc(ctx, masterGain, { freq: 523, start: t, duration: 0.1, fadeOut: true }) // C5
+    makeOsc(ctx, masterGain, { freq: 659, start: t + 0.1, duration: 0.1, fadeOut: true }) // E5
     makeOsc(ctx, masterGain, { freq: 784, start: t + 0.2, duration: 0.15, fadeOut: true }) // G5
   },
 
   fail(ctx, masterGain) {
     const t = ctx.currentTime
-    makeOsc(ctx, masterGain, { freq: 330, start: t, duration: 0.2, fadeOut: true })        // E4
-    makeOsc(ctx, masterGain, { freq: 311, start: t + 0.2, duration: 0.3, fadeOut: true })  // Eb4
+    makeOsc(ctx, masterGain, { freq: 330, start: t, duration: 0.2, fadeOut: true }) // E4
+    makeOsc(ctx, masterGain, { freq: 311, start: t + 0.2, duration: 0.3, fadeOut: true }) // Eb4
   },
 
-  none() { /* no-op */ },
+  none() {
+    /* no-op */
+  },
 }

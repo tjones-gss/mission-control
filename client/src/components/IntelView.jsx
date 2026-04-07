@@ -38,13 +38,17 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
     return (
       <div className="h-full overflow-y-auto p-4 space-y-4">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">INTEL</span>
+          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+            INTEL
+          </span>
         </div>
         <div className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-4 space-y-3">
-          <div className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Costs tokens</div>
+          <div className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">
+            Costs tokens
+          </div>
           <p className="text-xs text-gray-400 leading-relaxed">
-            Intel uses the Claude API (~$0.04 per analysis) to summarize the session.
-            It is off by default to avoid unexpected usage.
+            Intel uses the Claude API (~$0.04 per analysis) to summarize the session. It is off by
+            default to avoid unexpected usage.
           </p>
           <button
             onClick={enable}
@@ -61,7 +65,9 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
     return (
       <div className="h-full overflow-y-auto p-4 space-y-4">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">INTEL</span>
+          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+            INTEL
+          </span>
           <span className="text-[10px] text-gray-700">Analyzing...</span>
         </div>
         <div className="animate-pulse space-y-3">
@@ -78,8 +84,15 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
     return (
       <div className="h-full overflow-y-auto p-4">
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">INTEL</span>
-          <button onClick={disable} className="ml-auto text-[10px] text-gray-700 hover:text-gray-500 transition-colors">disable</button>
+          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+            INTEL
+          </span>
+          <button
+            onClick={disable}
+            className="ml-auto text-[10px] text-gray-700 hover:text-gray-500 transition-colors"
+          >
+            disable
+          </button>
         </div>
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
           <p className="text-xs text-gray-500 leading-relaxed">
@@ -97,7 +110,9 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
     <div className="h-full overflow-y-auto p-4 space-y-4">
       {/* Header row */}
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">INTEL</span>
+        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+          INTEL
+        </span>
         {ageLabel && (
           <>
             <span className="text-gray-700 text-[10px]">·</span>
@@ -111,7 +126,12 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
         >
           ↻
         </button>
-        <button onClick={disable} className="text-[10px] text-gray-700 hover:text-gray-500 transition-colors">disable</button>
+        <button
+          onClick={disable}
+          className="text-[10px] text-gray-700 hover:text-gray-500 transition-colors"
+        >
+          disable
+        </button>
       </div>
 
       {data && (
@@ -119,7 +139,9 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
           {/* Goal */}
           {data.goal && (
             <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">GOAL</div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                GOAL
+              </div>
               <div className="text-xs text-gray-300 leading-relaxed">{data.goal}</div>
             </div>
           )}
@@ -127,7 +149,9 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
           {/* Progress */}
           {data.progress && (
             <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">PROGRESS</div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                PROGRESS
+              </div>
               <div className="text-xs text-gray-300 leading-relaxed">{data.progress}</div>
             </div>
           )}
@@ -135,7 +159,9 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
           {/* Flags — hidden if empty */}
           {data.flags && data.flags.length > 0 && (
             <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">FLAGS</div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                FLAGS
+              </div>
               <div className="space-y-0.5">
                 {data.flags.map((flag, i) => (
                   <div key={i} className="text-xs text-amber-400 leading-relaxed">
@@ -149,7 +175,9 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
           {/* Subagents */}
           {data.subagents && (
             <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">SUBAGENTS</div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                SUBAGENTS
+              </div>
               <div className="text-xs text-gray-300 leading-relaxed">{data.subagents}</div>
             </div>
           )}
@@ -157,7 +185,9 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
           {/* Recommendation — hidden if null */}
           {data.recommendation && (
             <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">RECOMMENDATION</div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                RECOMMENDATION
+              </div>
               <div className="text-xs text-cyan-400 leading-relaxed">{data.recommendation}</div>
             </div>
           )}

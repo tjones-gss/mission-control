@@ -66,7 +66,12 @@ describe('SessionsList — grouping', () => {
 describe('SessionsList — collapse behavior', () => {
   it('collapses Older group by default', () => {
     const sessions = [
-      makeSession({ sessionId: 'old-1', cwd: '/home/user/oldproj', isActive: false, lastModified: NOW - 2 * 3_600_000 }),
+      makeSession({
+        sessionId: 'old-1',
+        cwd: '/home/user/oldproj',
+        isActive: false,
+        lastModified: NOW - 2 * 3_600_000,
+      }),
     ]
     render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     // The Older header should exist but the session card should not be rendered
@@ -76,7 +81,12 @@ describe('SessionsList — collapse behavior', () => {
 
   it('expands Older group when header is clicked', () => {
     const sessions = [
-      makeSession({ sessionId: 'old-1', cwd: '/home/user/oldproj', isActive: false, lastModified: NOW - 2 * 3_600_000 }),
+      makeSession({
+        sessionId: 'old-1',
+        cwd: '/home/user/oldproj',
+        isActive: false,
+        lastModified: NOW - 2 * 3_600_000,
+      }),
     ]
     render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     fireEvent.click(screen.getByText('Older'))
@@ -85,8 +95,18 @@ describe('SessionsList — collapse behavior', () => {
 
   it('Active and Recent groups are expanded by default', () => {
     const sessions = [
-      makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000, lastText: 'Active text' }),
-      makeSession({ sessionId: 'r1', isActive: false, lastModified: NOW - 30 * 60_000, lastText: 'Recent text' }),
+      makeSession({
+        sessionId: 'a1',
+        isActive: true,
+        lastModified: NOW - 1000,
+        lastText: 'Active text',
+      }),
+      makeSession({
+        sessionId: 'r1',
+        isActive: false,
+        lastModified: NOW - 30 * 60_000,
+        lastText: 'Recent text',
+      }),
     ]
     render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByText('Active text')).toBeInTheDocument()
@@ -95,7 +115,12 @@ describe('SessionsList — collapse behavior', () => {
 
   it('collapses a group when its header is clicked twice', () => {
     const sessions = [
-      makeSession({ sessionId: 'r1', isActive: false, lastModified: NOW - 30 * 60_000, lastText: 'Recent text' }),
+      makeSession({
+        sessionId: 'r1',
+        isActive: false,
+        lastModified: NOW - 30 * 60_000,
+        lastText: 'Recent text',
+      }),
     ]
     render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByText('Recent text')).toBeInTheDocument()
@@ -107,9 +132,7 @@ describe('SessionsList — collapse behavior', () => {
 describe('SessionsList — selection', () => {
   it('calls onSelect when a session card is clicked', () => {
     const onSelect = vi.fn()
-    const sessions = [
-      makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000 }),
-    ]
+    const sessions = [makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000 })]
     render(<SessionsList sessions={sessions} selectedId={null} onSelect={onSelect} />)
     fireEvent.click(screen.getByText('myproject'))
     expect(onSelect).toHaveBeenCalledWith('a1')
@@ -119,16 +142,19 @@ describe('SessionsList — selection', () => {
 describe('SessionsList — needsInput indicator', () => {
   it('shows "Waiting" label on sessions with needsInput=true', () => {
     const sessions = [
-      makeSession({ sessionId: 'w1', isActive: false, needsInput: true, lastModified: NOW - 30 * 60_000 }),
+      makeSession({
+        sessionId: 'w1',
+        isActive: false,
+        needsInput: true,
+        lastModified: NOW - 30 * 60_000,
+      }),
     ]
     render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByText('Waiting')).toBeInTheDocument()
   })
 
   it('does not show "Waiting" label when needsInput=false', () => {
-    const sessions = [
-      makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000 }),
-    ]
+    const sessions = [makeSession({ sessionId: 'a1', isActive: true, lastModified: NOW - 1000 })]
     render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.queryByText('Waiting')).not.toBeInTheDocument()
   })
@@ -137,25 +163,54 @@ describe('SessionsList — needsInput indicator', () => {
 describe('SessionsList — mute button', () => {
   it('shows dismiss button on needsInput sessions when onMuteSession is provided', () => {
     const sessions = [
-      makeSession({ sessionId: 'w1', isActive: false, needsInput: true, lastModified: NOW - 30 * 60_000 }),
+      makeSession({
+        sessionId: 'w1',
+        isActive: false,
+        needsInput: true,
+        lastModified: NOW - 30 * 60_000,
+      }),
     ]
-    render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} onMuteSession={vi.fn()} />)
+    render(
+      <SessionsList
+        sessions={sessions}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onMuteSession={vi.fn()}
+      />,
+    )
     expect(screen.getByTitle('Dismiss notification')).toBeInTheDocument()
   })
 
   it('calls onMuteSession with session ID when dismiss is clicked', () => {
     const onMute = vi.fn()
     const sessions = [
-      makeSession({ sessionId: 'w1', isActive: false, needsInput: true, lastModified: NOW - 30 * 60_000 }),
+      makeSession({
+        sessionId: 'w1',
+        isActive: false,
+        needsInput: true,
+        lastModified: NOW - 30 * 60_000,
+      }),
     ]
-    render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} onMuteSession={onMute} />)
+    render(
+      <SessionsList
+        sessions={sessions}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onMuteSession={onMute}
+      />,
+    )
     fireEvent.click(screen.getByTitle('Dismiss notification'))
     expect(onMute).toHaveBeenCalledWith('w1')
   })
 
   it('does not show dismiss when onMuteSession is not provided', () => {
     const sessions = [
-      makeSession({ sessionId: 'w1', isActive: false, needsInput: true, lastModified: NOW - 30 * 60_000 }),
+      makeSession({
+        sessionId: 'w1',
+        isActive: false,
+        needsInput: true,
+        lastModified: NOW - 30 * 60_000,
+      }),
     ]
     render(<SessionsList sessions={sessions} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.queryByTitle('Dismiss notification')).not.toBeInTheDocument()

@@ -1,15 +1,24 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: {
-      existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
-      statSync: vi.fn(), promises,
+      existsSync: vi.fn(),
+      readdirSync: vi.fn(),
+      readFileSync: vi.fn(),
+      statSync: vi.fn(),
+      promises,
     },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
-    statSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    statSync: vi.fn(),
+    promises,
   }
 })
 
@@ -53,12 +62,8 @@ describe('getAllPlans()', () => {
   it('sorts by lastModified desc', () => {
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync.mockReturnValue(['old.md', 'new.md'])
-    fs.statSync
-      .mockReturnValueOnce({ mtimeMs: 1000 })
-      .mockReturnValueOnce({ mtimeMs: 5000 })
-    fs.readFileSync
-      .mockReturnValueOnce('# Old Plan')
-      .mockReturnValueOnce('# New Plan')
+    fs.statSync.mockReturnValueOnce({ mtimeMs: 1000 }).mockReturnValueOnce({ mtimeMs: 5000 })
+    fs.readFileSync.mockReturnValueOnce('# Old Plan').mockReturnValueOnce('# New Plan')
 
     const result = getAllPlans()
     expect(result).toHaveLength(2)
@@ -81,7 +86,9 @@ describe('getAllPlans()', () => {
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync.mockReturnValue(['bad.md', 'good.md'])
     fs.statSync
-      .mockImplementationOnce(() => { throw new Error('stat failed') })
+      .mockImplementationOnce(() => {
+        throw new Error('stat failed')
+      })
       .mockReturnValueOnce({ mtimeMs: 1000 })
     fs.readFileSync.mockReturnValue('# Good Plan')
 
@@ -93,7 +100,9 @@ describe('getAllPlans()', () => {
 
 describe('getPlanByFilename()', () => {
   it('returns null for non-existent file', () => {
-    fs.statSync.mockImplementation(() => { throw new Error('ENOENT') })
+    fs.statSync.mockImplementation(() => {
+      throw new Error('ENOENT')
+    })
     expect(getPlanByFilename('missing.md')).toBeNull()
   })
 

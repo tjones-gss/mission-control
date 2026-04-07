@@ -2,7 +2,6 @@ import { Keyboard, X } from 'lucide-react'
 import { ACTION_LABELS } from '../hooks/useKeyboardShortcuts.js'
 
 export function ShortcutHelpOverlay({ shortcuts, open, onToggle }) {
-
   if (!open) {
     return (
       <button
@@ -19,10 +18,7 @@ export function ShortcutHelpOverlay({ shortcuts, open, onToggle }) {
     <div className="fixed bottom-4 right-4 z-40 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
         <span className="text-xs font-semibold text-gray-300">Keyboard Shortcuts</span>
-        <button
-          onClick={onToggle}
-          className="text-gray-500 hover:text-gray-300 transition-colors"
-        >
+        <button onClick={onToggle} className="text-gray-500 hover:text-gray-300 transition-colors">
           <X size={14} />
         </button>
       </div>

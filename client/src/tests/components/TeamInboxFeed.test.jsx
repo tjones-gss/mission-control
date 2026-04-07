@@ -6,9 +6,30 @@ import { http, HttpResponse } from 'msw'
 import { TeamInboxFeed } from '../../components/TeamsPanel/TeamInboxFeed.jsx'
 
 const MESSAGES = [
-  { id: 'msg1', sender: 'alice', content: 'Hello team', timestamp: '2025-01-01T10:00:00Z', read: false, archived: false },
-  { id: 'msg2', sender: 'bob', content: 'Hi there', timestamp: '2025-01-01T10:05:00Z', read: true, archived: false },
-  { id: 'msg3', sender: 'charlie', content: 'Old message', timestamp: '2025-01-01T09:00:00Z', read: true, archived: true },
+  {
+    id: 'msg1',
+    sender: 'alice',
+    content: 'Hello team',
+    timestamp: '2025-01-01T10:00:00Z',
+    read: false,
+    archived: false,
+  },
+  {
+    id: 'msg2',
+    sender: 'bob',
+    content: 'Hi there',
+    timestamp: '2025-01-01T10:05:00Z',
+    read: true,
+    archived: false,
+  },
+  {
+    id: 'msg3',
+    sender: 'charlie',
+    content: 'Old message',
+    timestamp: '2025-01-01T09:00:00Z',
+    read: true,
+    archived: true,
+  },
 ]
 
 const defaultProps = () => ({
@@ -38,7 +59,7 @@ describe('TeamInboxFeed — active messages', () => {
     expect(screen.getByText('Hi there')).toBeInTheDocument()
 
     // The active messages should appear in chronological order
-    const messageTexts = screen.getAllByText(/Hello team|Hi there/).map(el => el.textContent)
+    const messageTexts = screen.getAllByText(/Hello team|Hi there/).map((el) => el.textContent)
     expect(messageTexts).toEqual(['Hello team', 'Hi there'])
   })
 

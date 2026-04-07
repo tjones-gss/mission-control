@@ -30,7 +30,7 @@ function renderView(overrides = {}) {
       skills={null}
       streaming={{ isStreaming: false, pendingApprovals: [], sdkError: null }}
       {...overrides}
-    />
+    />,
   )
 }
 
@@ -42,16 +42,20 @@ describe('ImageBlock rendering', () => {
       http.get('/api/sessions/:sessionId/messages', () =>
         HttpResponse.json({
           sessionId: 'test-session',
-          messages: [{
-            uuid: 'm1',
-            type: 'user',
-            blocks: [{
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
-            }],
-          }],
-        })
-      )
+          messages: [
+            {
+              uuid: 'm1',
+              type: 'user',
+              blocks: [
+                {
+                  type: 'image',
+                  source: { type: 'base64', media_type: 'image/png', data: 'abc123' },
+                },
+              ],
+            },
+          ],
+        }),
+      ),
     )
     renderView()
     const img = await screen.findByAltText('User attached image')
@@ -63,16 +67,20 @@ describe('ImageBlock rendering', () => {
       http.get('/api/sessions/:sessionId/messages', () =>
         HttpResponse.json({
           sessionId: 'test-session',
-          messages: [{
-            uuid: 'm2',
-            type: 'user',
-            blocks: [{
-              type: 'image',
-              source: { type: 'url', url: 'https://example.com/img.png' },
-            }],
-          }],
-        })
-      )
+          messages: [
+            {
+              uuid: 'm2',
+              type: 'user',
+              blocks: [
+                {
+                  type: 'image',
+                  source: { type: 'url', url: 'https://example.com/img.png' },
+                },
+              ],
+            },
+          ],
+        }),
+      ),
     )
     renderView()
     const img = await screen.findByAltText('User attached image')
@@ -84,16 +92,18 @@ describe('ImageBlock rendering', () => {
       http.get('/api/sessions/:sessionId/messages', () =>
         HttpResponse.json({
           sessionId: 'test-session',
-          messages: [{
-            uuid: 'm3',
-            type: 'user',
-            blocks: [
-              { type: 'image', source: null },
-              { type: 'text', text: 'hello' },
-            ],
-          }],
-        })
-      )
+          messages: [
+            {
+              uuid: 'm3',
+              type: 'user',
+              blocks: [
+                { type: 'image', source: null },
+                { type: 'text', text: 'hello' },
+              ],
+            },
+          ],
+        }),
+      ),
     )
     renderView()
     await screen.findByText('hello')
@@ -105,16 +115,18 @@ describe('ImageBlock rendering', () => {
       http.get('/api/sessions/:sessionId/messages', () =>
         HttpResponse.json({
           sessionId: 'test-session',
-          messages: [{
-            uuid: 'm4',
-            type: 'user',
-            blocks: [
-              { type: 'image', source: { type: 'url' } },
-              { type: 'text', text: 'test' },
-            ],
-          }],
-        })
-      )
+          messages: [
+            {
+              uuid: 'm4',
+              type: 'user',
+              blocks: [
+                { type: 'image', source: { type: 'url' } },
+                { type: 'text', text: 'test' },
+              ],
+            },
+          ],
+        }),
+      ),
     )
     renderView()
     await screen.findByText('test')
@@ -202,7 +214,7 @@ describe('Send flow', () => {
       http.post('/api/sessions/:sessionId/message', async ({ request }) => {
         capturedRequest = request
         return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
-      })
+      }),
     )
     renderView()
     const fileInput = document.querySelector('input[type="file"]')
@@ -227,7 +239,7 @@ describe('Send flow', () => {
       http.post('/api/sessions/:sessionId/message', async ({ request }) => {
         capturedRequest = request
         return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
-      })
+      }),
     )
     renderView()
     const textInput = screen.getByPlaceholderText(/send a message/i)
@@ -243,8 +255,8 @@ describe('Send flow', () => {
   it('image cleared after successful send', async () => {
     server.use(
       http.post('/api/sessions/:sessionId/message', () =>
-        HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
-      )
+        HttpResponse.json({ ok: true, streaming: true }, { status: 202 }),
+      ),
     )
     renderView()
     const fileInput = document.querySelector('input[type="file"]')

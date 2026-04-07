@@ -1,10 +1,14 @@
 vi.mock('fs', () => {
   return {
     default: {
-      existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
+      existsSync: vi.fn(),
+      readdirSync: vi.fn(),
+      readFileSync: vi.fn(),
       statSync: vi.fn(),
     },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
     statSync: vi.fn(),
   }
 })
@@ -28,10 +32,8 @@ describe('getHooksConfig()', () => {
   it('reads hooks config from settings.json', () => {
     const settings = {
       hooks: {
-        PreToolUse: [
-          { matcher: 'Bash', hooks: [{ type: 'command', command: 'bash guard.sh' }] }
-        ]
-      }
+        PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'bash guard.sh' }] }],
+      },
     }
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(JSON.stringify(settings))
@@ -51,17 +53,18 @@ describe('getHooksConfig()', () => {
     const settings = {
       hooks: {
         PreToolUse: [
-          { matcher: 'Bash', hooks: [
-            { type: 'command', command: 'bash pre-bash.sh' },
-            { type: 'command', command: 'bash pre-commit.sh' },
-          ] }
+          {
+            matcher: 'Bash',
+            hooks: [
+              { type: 'command', command: 'bash pre-bash.sh' },
+              { type: 'command', command: 'bash pre-commit.sh' },
+            ],
+          },
         ],
         PostToolUse: [
-          { matcher: 'Edit|Write', hooks: [
-            { type: 'command', command: 'bash post-edit.sh' },
-          ] }
-        ]
-      }
+          { matcher: 'Edit|Write', hooks: [{ type: 'command', command: 'bash post-edit.sh' }] },
+        ],
+      },
     }
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(JSON.stringify(settings))

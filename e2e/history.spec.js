@@ -28,9 +28,19 @@ test.describe('history tab', () => {
 
   test('history tab shows stats bar or empty state', async ({ page }) => {
     await goToHistory(page)
-    const hasStats = await page.locator('[data-testid="sparkline"]').isVisible().catch(() => false)
-    const hasEmpty = await page.getByText(/no command history/i).isVisible().catch(() => false)
-    const hasEntries = await page.locator('.font-mono').first().isVisible().catch(() => false)
+    const hasStats = await page
+      .locator('[data-testid="sparkline"]')
+      .isVisible()
+      .catch(() => false)
+    const hasEmpty = await page
+      .getByText(/no command history/i)
+      .isVisible()
+      .catch(() => false)
+    const hasEntries = await page
+      .locator('.font-mono')
+      .first()
+      .isVisible()
+      .catch(() => false)
     expect(hasStats || hasEmpty || hasEntries).toBe(true)
   })
 

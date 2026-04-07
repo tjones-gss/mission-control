@@ -13,7 +13,12 @@ const USER_SKILLS = [
 ]
 
 const PLUGIN_SKILLS = [
-  { name: 'plugin-skill', command: '/plugin-skill', description: 'From a plugin', source: 'plugin' },
+  {
+    name: 'plugin-skill',
+    command: '/plugin-skill',
+    description: 'From a plugin',
+    source: 'plugin',
+  },
 ]
 
 const FULL_SKILLS = {
@@ -45,7 +50,13 @@ describe('SkillsPanel — loading/empty states', () => {
   })
 
   it('shows "No skills found." when skills lists are empty', () => {
-    render(<SkillsPanel skills={{ userSkills: [], plugins: [], pluginSkills: [], totalSkillCount: 0 }} loading={false} refetch={vi.fn()} />)
+    render(
+      <SkillsPanel
+        skills={{ userSkills: [], plugins: [], pluginSkills: [], totalSkillCount: 0 }}
+        loading={false}
+        refetch={vi.fn()}
+      />,
+    )
     expect(screen.getByText('No skills found.')).toBeInTheDocument()
   })
 })
@@ -82,7 +93,7 @@ describe('SkillsPanel — skill list', () => {
     const matches = screen.getAllByText(/My Plugin/i)
     expect(matches.length).toBeGreaterThanOrEqual(1)
     // At least one should be the section header (a span element)
-    const sectionHeader = matches.find(el => el.tagName === 'SPAN')
+    const sectionHeader = matches.find((el) => el.tagName === 'SPAN')
     expect(sectionHeader).toBeInTheDocument()
   })
 })
@@ -162,8 +173,8 @@ describe('SkillsPanel — new skill form', () => {
   it('shows error message from server on failed save', async () => {
     server.use(
       http.post('/api/skills', () =>
-        HttpResponse.json({ error: 'Skill already exists' }, { status: 409 })
-      )
+        HttpResponse.json({ error: 'Skill already exists' }, { status: 409 }),
+      ),
     )
     render(<SkillsPanel skills={FULL_SKILLS} loading={false} refetch={vi.fn()} />)
     fireEvent.click(screen.getByTitle('Create new skill'))
@@ -227,7 +238,7 @@ describe('SkillsPanel — delete user skill', () => {
       http.delete('/api/skills/:name', () => {
         deleteCallCount++
         return HttpResponse.json({ ok: true })
-      })
+      }),
     )
     const refetch = vi.fn().mockResolvedValue(undefined)
     render(<SkillsPanel skills={FULL_SKILLS} loading={false} refetch={refetch} />)

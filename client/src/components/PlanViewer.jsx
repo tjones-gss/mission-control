@@ -17,7 +17,7 @@ function PlanCard({ plan, planVersion }) {
   const [expanded, setExpanded] = useState(false)
   const { data: detail } = useApi(
     expanded ? `/api/plans/${encodeURIComponent(plan.filename)}` : null,
-    [planVersion]
+    [planVersion],
   )
   const Chevron = expanded ? ChevronDown : ChevronRight
 
@@ -69,7 +69,7 @@ export function PlanViewer({ planVersion = 0 }) {
         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Plans</span>
         <span className="text-xs text-gray-500">{plans.length}</span>
       </div>
-      {plans.map(plan => (
+      {plans.map((plan) => (
         <PlanCard key={plan.filename} plan={plan} planVersion={planVersion} />
       ))}
     </div>

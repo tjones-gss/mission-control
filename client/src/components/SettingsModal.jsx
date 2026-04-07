@@ -22,7 +22,7 @@ export function SettingsModal({ onClose, soundEngine, shortcuts, updateShortcut,
       if (!dialog) return
 
       const focusable = dialog.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       )
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
@@ -58,7 +58,9 @@ export function SettingsModal({ onClose, soundEngine, shortcuts, updateShortcut,
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700 shrink-0">
-          <h2 id="settings-title" className="text-sm font-semibold text-gray-200">Settings</h2>
+          <h2 id="settings-title" className="text-sm font-semibold text-gray-200">
+            Settings
+          </h2>
           <button
             ref={closeButtonRef}
             onClick={onClose}

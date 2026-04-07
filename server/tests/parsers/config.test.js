@@ -1,15 +1,26 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: {
-      existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
-      statSync: vi.fn(), accessSync: vi.fn(), promises,
+      existsSync: vi.fn(),
+      readdirSync: vi.fn(),
+      readFileSync: vi.fn(),
+      statSync: vi.fn(),
+      accessSync: vi.fn(),
+      promises,
     },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
-    statSync: vi.fn(), accessSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    statSync: vi.fn(),
+    accessSync: vi.fn(),
+    promises,
   }
 })
 
@@ -91,7 +102,9 @@ describe('getUserConfig()', () => {
   })
 
   it('returns {} when user config file is missing', () => {
-    fs.readFileSync.mockImplementation(() => { throw new Error('ENOENT') })
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error('ENOENT')
+    })
     expect(getUserConfig()).toEqual({})
   })
 

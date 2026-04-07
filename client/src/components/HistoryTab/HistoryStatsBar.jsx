@@ -2,10 +2,10 @@ import { Clock, Hash, FolderOpen, Calendar } from 'lucide-react'
 
 function Sparkline({ data }) {
   if (!data?.length) return <div data-testid="sparkline" className="flex gap-0.5 items-end h-6" />
-  const max = Math.max(...data.map(d => d.count), 1)
+  const max = Math.max(...data.map((d) => d.count), 1)
   return (
     <div data-testid="sparkline" className="flex gap-0.5 items-end h-6" title="7-day activity">
-      {data.map(d => (
+      {data.map((d) => (
         <div
           key={d.date}
           title={`${d.date}: ${d.count}`}
@@ -23,7 +23,10 @@ function StatCard({ icon: Icon, label, value }) {
       <Icon size={11} className="text-gray-600 shrink-0" />
       <div>
         <div className="text-xs text-gray-600 leading-none mb-0.5">{label}</div>
-        <div className="text-sm font-semibold text-gray-200 truncate max-w-32" title={String(value)}>
+        <div
+          className="text-sm font-semibold text-gray-200 truncate max-w-32"
+          title={String(value)}
+        >
           {value ?? '—'}
         </div>
       </div>

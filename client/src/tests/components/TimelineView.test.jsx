@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../hooks/useApi.js', () => ({
-  useApi: vi.fn()
+  useApi: vi.fn(),
 }))
 
 import { useApi } from '../../hooks/useApi.js'
@@ -11,14 +11,26 @@ import { TimelineView } from '../../components/TimelineView.jsx'
 
 const MESSAGES = {
   messages: [
-    { type: 'user', timestamp: '2025-01-01T10:00:00Z', blocks: [{ type: 'text', text: 'Please help me' }] },
-    { type: 'assistant', timestamp: '2025-01-01T10:00:05Z', blocks: [
-      { type: 'thinking', text: 'Let me think about this...' },
-      { type: 'text', text: 'Here is my response' },
-      { type: 'tool_use', name: 'Bash', input: { command: 'ls -la' } },
-    ]},
-    { type: 'user', timestamp: '2025-01-01T10:00:10Z', blocks: [{ type: 'tool_result', content: 'file1.js\nfile2.js' }] },
-  ]
+    {
+      type: 'user',
+      timestamp: '2025-01-01T10:00:00Z',
+      blocks: [{ type: 'text', text: 'Please help me' }],
+    },
+    {
+      type: 'assistant',
+      timestamp: '2025-01-01T10:00:05Z',
+      blocks: [
+        { type: 'thinking', text: 'Let me think about this...' },
+        { type: 'text', text: 'Here is my response' },
+        { type: 'tool_use', name: 'Bash', input: { command: 'ls -la' } },
+      ],
+    },
+    {
+      type: 'user',
+      timestamp: '2025-01-01T10:00:10Z',
+      blocks: [{ type: 'tool_result', content: 'file1.js\nfile2.js' }],
+    },
+  ],
 }
 
 const defaultProps = { sessionId: 'test-123', sessionUpdateVersion: 1, active: true }

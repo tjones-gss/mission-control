@@ -46,7 +46,9 @@ export function NotificationsTab({ soundEngine }) {
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Desktop Notifications</h3>
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          Desktop Notifications
+        </h3>
         <div className="space-y-3">
           <Toggle
             label="Desktop notifications"

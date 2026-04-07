@@ -88,7 +88,7 @@ describe('PRESETS — oscillator scheduling', () => {
     const { ctx, oscillators } = createMockContext()
     PRESETS.alert(ctx, createMasterGain())
     expect(oscillators).toHaveLength(3)
-    oscillators.forEach(osc => {
+    oscillators.forEach((osc) => {
       expect(osc.type).toBe('square')
       expect(osc.frequency.value).toBe(1000)
     })
@@ -105,7 +105,7 @@ describe('PRESETS — oscillator scheduling', () => {
     const { ctx, oscillators } = createMockContext()
     PRESETS.urgent(ctx, createMasterGain())
     expect(oscillators).toHaveLength(6)
-    oscillators.forEach(osc => expect(osc.type).toBe('sawtooth'))
+    oscillators.forEach((osc) => expect(osc.type).toBe('sawtooth'))
     // Alternating 800/1000
     expect(oscillators[0].frequency.value).toBe(800)
     expect(oscillators[1].frequency.value).toBe(1000)
@@ -133,7 +133,7 @@ describe('PRESETS — oscillator scheduling', () => {
       if (name === 'none') continue
       const { ctx, oscillators } = createMockContext()
       fn(ctx, createMasterGain())
-      oscillators.forEach(osc => {
+      oscillators.forEach((osc) => {
         expect(osc.start).toHaveBeenCalledTimes(1)
         expect(osc.stop).toHaveBeenCalledTimes(1)
       })

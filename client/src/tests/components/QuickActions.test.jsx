@@ -26,7 +26,7 @@ describe('QuickActions', () => {
       http.post('/api/sessions/:sessionId/message', async ({ request }) => {
         capturedBody = await request.json()
         return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
-      })
+      }),
     )
     render(<QuickActions sessionId="s1" />)
     await userEvent.click(screen.getByText('yes'))
@@ -39,9 +39,9 @@ describe('QuickActions', () => {
   it('shows "..." while sending', async () => {
     server.use(
       http.post('/api/sessions/:sessionId/message', async () => {
-        await new Promise(resolve => setTimeout(resolve, 200))
+        await new Promise((resolve) => setTimeout(resolve, 200))
         return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
-      })
+      }),
     )
     render(<QuickActions sessionId="s1" />)
     await userEvent.click(screen.getByText('yes'))
@@ -52,7 +52,7 @@ describe('QuickActions', () => {
     server.use(
       http.post('/api/sessions/:sessionId/message', () => {
         return HttpResponse.json({ error: 'bad' }, { status: 500 })
-      })
+      }),
     )
     render(<QuickActions sessionId="s1" />)
     await userEvent.click(screen.getByText('yes'))
@@ -82,7 +82,7 @@ describe('QuickActions', () => {
     server.use(
       http.post('/api/sessions/:sessionId/message', () => {
         return HttpResponse.json({ error: 'bad' }, { status: 500 })
-      })
+      }),
     )
     render(<QuickActions sessionId="s1" />)
     await userEvent.click(screen.getByText('yes'))

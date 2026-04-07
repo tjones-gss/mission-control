@@ -15,7 +15,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowingChild shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     )
     expect(screen.getByText('child content')).toBeInTheDocument()
   })
@@ -25,7 +25,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowingChild shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     )
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
     spy.mockRestore()
@@ -36,7 +36,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowingChild shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     )
     expect(screen.getByText('test error')).toBeInTheDocument()
     spy.mockRestore()
@@ -47,7 +47,7 @@ describe('ErrorBoundary', () => {
     const { rerender } = render(
       <ErrorBoundary>
         <ThrowingChild shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     )
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
 
@@ -55,7 +55,7 @@ describe('ErrorBoundary', () => {
     rerender(
       <ErrorBoundary>
         <ThrowingChild shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     )
     await userEvent.click(screen.getByText('Try again'))
     expect(screen.getByText('child content')).toBeInTheDocument()
@@ -67,10 +67,10 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowingChild shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     )
     expect(spy).toHaveBeenCalled()
-    const callArgs = spy.mock.calls.find(call => call[0] === 'ErrorBoundary caught:')
+    const callArgs = spy.mock.calls.find((call) => call[0] === 'ErrorBoundary caught:')
     expect(callArgs).toBeTruthy()
     expect(callArgs[1]).toBeInstanceOf(Error)
     expect(callArgs[1].message).toBe('test error')

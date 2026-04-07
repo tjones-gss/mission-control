@@ -1,11 +1,17 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    promises,
   }
 })
 
@@ -57,7 +63,7 @@ describe('getHistory()', () => {
 
   it('respects the limit parameter', () => {
     const lines = Array.from({ length: 10 }, (_, i) =>
-      JSON.stringify({ command: `cmd-${i}`, timestamp: `2024-01-0${i + 1}` })
+      JSON.stringify({ command: `cmd-${i}`, timestamp: `2024-01-0${i + 1}` }),
     )
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(lines.join('\n'))
@@ -85,10 +91,7 @@ describe('getHistory()', () => {
   })
 
   it('returns all entries when limit is larger than file contents', () => {
-    const lines = [
-      JSON.stringify({ command: 'a' }),
-      JSON.stringify({ command: 'b' }),
-    ]
+    const lines = [JSON.stringify({ command: 'a' }), JSON.stringify({ command: 'b' })]
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(lines.join('\n'))
 
@@ -110,7 +113,7 @@ describe('getHistory()', () => {
 describe('getHistory() with offset', () => {
   it('returns entries starting at offset', () => {
     const lines = Array.from({ length: 5 }, (_, i) =>
-      JSON.stringify({ display: `cmd-${i}`, timestamp: i * 1000, project: '/p' })
+      JSON.stringify({ display: `cmd-${i}`, timestamp: i * 1000, project: '/p' }),
     )
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(lines.join('\n'))
@@ -133,7 +136,7 @@ describe('getHistory() with offset', () => {
 
     const result = getHistory(100, 0, { project: '/projectA' })
     expect(result).toHaveLength(2)
-    expect(result.every(e => e.project === '/projectA')).toBe(true)
+    expect(result.every((e) => e.project === '/projectA')).toBe(true)
   })
 
   it('filters by from timestamp', () => {
@@ -176,7 +179,7 @@ describe('getHistoryStats()', () => {
     expect(stats.topProject).toBeNull()
     expect(stats.today).toBe(0)
     expect(stats.dailyActivity).toHaveLength(7)
-    expect(stats.dailyActivity.every(d => d.count === 0)).toBe(true)
+    expect(stats.dailyActivity.every((d) => d.count === 0)).toBe(true)
   })
 
   it('counts total entries', () => {
@@ -214,7 +217,7 @@ describe('getHistoryStats()', () => {
   it('returns 7 daily activity buckets', () => {
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(
-      JSON.stringify({ display: 'a', timestamp: Date.now(), project: '/p' })
+      JSON.stringify({ display: 'a', timestamp: Date.now(), project: '/p' }),
     )
     const { dailyActivity } = getHistoryStats()
     expect(dailyActivity).toHaveLength(7)
@@ -223,7 +226,9 @@ describe('getHistoryStats()', () => {
 
   it('skips malformed lines', () => {
     fs.existsSync.mockReturnValue(true)
-    fs.readFileSync.mockReturnValue('NOT JSON\n' + JSON.stringify({ display: 'a', timestamp: 1000, project: '/p' }))
+    fs.readFileSync.mockReturnValue(
+      'NOT JSON\n' + JSON.stringify({ display: 'a', timestamp: 1000, project: '/p' }),
+    )
     expect(getHistoryStats().total).toBe(1)
   })
 })

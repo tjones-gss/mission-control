@@ -1,7 +1,11 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), readdir: vi.fn(), rename: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    readdir: vi.fn(),
+    rename: vi.fn(),
   }
   return {
     default: { promises },
@@ -86,7 +90,16 @@ describe('POST /:name/inbox', () => {
   })
 
   it('appends to existing messages', async () => {
-    const existing = [{ id: 'old-id', content: 'old', sender: 'agent', timestamp: 't', read: true, archived: false }]
+    const existing = [
+      {
+        id: 'old-id',
+        content: 'old',
+        sender: 'agent',
+        timestamp: 't',
+        read: true,
+        archived: false,
+      },
+    ]
     fsp.readFile.mockResolvedValueOnce(JSON.stringify(existing))
 
     const res = await request(app).post('/my-team/inbox').send({ content: 'new message' })
@@ -141,7 +154,9 @@ describe('PATCH /:name/inbox/:messageId', () => {
 
   it('404 when message id is not found', async () => {
     fsp.readdir.mockResolvedValue(['agent.json'])
-    fsp.readFile.mockResolvedValue(JSON.stringify([{ id: 'other-id', content: 'x', read: false, archived: false }]))
+    fsp.readFile.mockResolvedValue(
+      JSON.stringify([{ id: 'other-id', content: 'x', read: false, archived: false }]),
+    )
 
     const res = await request(app).patch('/my-team/inbox/missing-id').send({ read: true })
     expect(res.status).toBe(404)
@@ -149,7 +164,14 @@ describe('PATCH /:name/inbox/:messageId', () => {
   })
 
   it('marks message as read and returns updated message', async () => {
-    const msg = { id: 'msg-123', content: 'hello', sender: 'agent', timestamp: 't', read: false, archived: false }
+    const msg = {
+      id: 'msg-123',
+      content: 'hello',
+      sender: 'agent',
+      timestamp: 't',
+      read: false,
+      archived: false,
+    }
     fsp.readdir.mockResolvedValue(['agent.json'])
     fsp.readFile.mockResolvedValue(JSON.stringify([msg]))
 
@@ -161,7 +183,14 @@ describe('PATCH /:name/inbox/:messageId', () => {
   })
 
   it('archives a message', async () => {
-    const msg = { id: 'msg-456', content: 'hi', sender: 'user', timestamp: 't', read: false, archived: false }
+    const msg = {
+      id: 'msg-456',
+      content: 'hi',
+      sender: 'user',
+      timestamp: 't',
+      read: false,
+      archived: false,
+    }
     fsp.readdir.mockResolvedValue(['dashboard.json'])
     fsp.readFile.mockResolvedValue(JSON.stringify([msg]))
 

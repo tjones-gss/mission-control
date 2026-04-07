@@ -8,7 +8,14 @@ import { WorkflowsPanel } from '../../components/WorkflowsPanel.jsx'
 const user = () => userEvent.setup({ writeToClipboard: false })
 
 const SAMPLE_WORKFLOWS = [
-  { name: 'my-workflow', description: 'First workflow', steps: [{ id: '1', type: 'instruction', text: 'Do thing' }, { id: '2', type: 'command', command: 'npm run build' }] },
+  {
+    name: 'my-workflow',
+    description: 'First workflow',
+    steps: [
+      { id: '1', type: 'instruction', text: 'Do thing' },
+      { id: '2', type: 'command', command: 'npm run build' },
+    ],
+  },
   { name: 'empty-flow', description: '', steps: [] },
 ]
 
@@ -45,26 +52,54 @@ describe('WorkflowsPanel — empty state', () => {
 // ──────────────────────────────────────────────────────────────────────────────
 describe('WorkflowsPanel — workflow list', () => {
   it('renders workflow names', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     expect(screen.getByText('my-workflow')).toBeInTheDocument()
     expect(screen.getByText('empty-flow')).toBeInTheDocument()
   })
 
   it('renders step counts', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     expect(screen.getByText('2 steps')).toBeInTheDocument()
     expect(screen.getByText('0 steps')).toBeInTheDocument()
   })
 
   it('clicking a workflow opens the editor with name input', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     const nameInput = screen.getByDisplayValue('my-workflow')
     expect(nameInput).toBeInTheDocument()
   })
 
   it('name input is disabled for existing workflows', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     const nameInput = screen.getByDisplayValue('my-workflow')
     expect(nameInput).toBeDisabled()
@@ -120,8 +155,8 @@ describe('WorkflowsPanel — save new workflow (POST)', () => {
   it('shows conflict error when server returns 409', async () => {
     server.use(
       http.post('/api/workflows', () =>
-        HttpResponse.json({ error: 'Already exists' }, { status: 409 })
-      )
+        HttpResponse.json({ error: 'Already exists' }, { status: 409 }),
+      ),
     )
     const refetch = vi.fn()
     render(<WorkflowsPanel workflows={[]} loading={false} refetch={refetch} skills={null} />)
@@ -157,7 +192,14 @@ describe('WorkflowsPanel — save new workflow (POST)', () => {
 describe('WorkflowsPanel — save existing workflow (PUT)', () => {
   it('calls refetch() on successful PUT', async () => {
     const refetch = vi.fn().mockResolvedValue(undefined)
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={refetch} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={refetch}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     fireEvent.click(screen.getByRole('button', { name: /^Save$/i }))
     await waitFor(() => expect(refetch).toHaveBeenCalled())
@@ -166,11 +208,18 @@ describe('WorkflowsPanel — save existing workflow (PUT)', () => {
   it('shows error message on PUT failure', async () => {
     server.use(
       http.put('/api/workflows/:name', () =>
-        HttpResponse.json({ error: 'Server error' }, { status: 500 })
-      )
+        HttpResponse.json({ error: 'Server error' }, { status: 500 }),
+      ),
     )
     const refetch = vi.fn()
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={refetch} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={refetch}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     fireEvent.click(screen.getByRole('button', { name: /^Save$/i }))
     await screen.findByText('Failed to save workflow.')
@@ -185,10 +234,17 @@ describe('WorkflowsPanel — export', () => {
   it('shows conflict UI (Overwrite / Cancel) on 409 export', async () => {
     server.use(
       http.post('/api/workflows/:name/export', () =>
-        HttpResponse.json({ error: 'Conflict' }, { status: 409 })
-      )
+        HttpResponse.json({ error: 'Conflict' }, { status: 409 }),
+      ),
     )
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     fireEvent.click(screen.getByRole('button', { name: /Export as Skill/i }))
     expect(await screen.findByRole('button', { name: /Overwrite/i })).toBeInTheDocument()
@@ -202,9 +258,16 @@ describe('WorkflowsPanel — export', () => {
         capturedBody = await request.json()
         if (capturedBody?.overwrite) return HttpResponse.json({ ok: true })
         return HttpResponse.json({ error: 'Conflict' }, { status: 409 })
-      })
+      }),
     )
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     fireEvent.click(screen.getByRole('button', { name: /Export as Skill/i }))
     const overwriteBtn = await screen.findByRole('button', { name: /Overwrite/i })
@@ -213,7 +276,14 @@ describe('WorkflowsPanel — export', () => {
   })
 
   it('shows exported success badge on successful export', async () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     fireEvent.click(screen.getByRole('button', { name: /Export as Skill/i }))
     await screen.findByText(/Exported as/)
@@ -222,15 +292,24 @@ describe('WorkflowsPanel — export', () => {
   it('Cancel button in conflict UI dismisses the conflict state', async () => {
     server.use(
       http.post('/api/workflows/:name/export', () =>
-        HttpResponse.json({ error: 'Conflict' }, { status: 409 })
-      )
+        HttpResponse.json({ error: 'Conflict' }, { status: 409 }),
+      ),
     )
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     fireEvent.click(screen.getByRole('button', { name: /Export as Skill/i }))
     const cancelBtn = await screen.findByRole('button', { name: /^Cancel$/i })
     fireEvent.click(cancelBtn)
-    await waitFor(() => expect(screen.queryByRole('button', { name: /Overwrite/i })).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /Overwrite/i })).not.toBeInTheDocument(),
+    )
   })
 })
 
@@ -239,7 +318,14 @@ describe('WorkflowsPanel — export', () => {
 // ──────────────────────────────────────────────────────────────────────────────
 describe('WorkflowsPanel — add step', () => {
   it('clicking "Add Step" opens the dropdown menu', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     fireEvent.click(screen.getByText('Add Step'))
     expect(screen.getByRole('button', { name: /^skill$/i })).toBeInTheDocument()
@@ -249,7 +335,14 @@ describe('WorkflowsPanel — add step', () => {
   })
 
   it('clicking a step type adds it to the list and opens StepEditor', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
     fireEvent.click(screen.getByText('Add Step'))
     fireEvent.click(screen.getByRole('button', { name: /^instruction$/i }))
@@ -261,7 +354,14 @@ describe('WorkflowsPanel — add step', () => {
   })
 
   it('clicking command type adds a command step', () => {
-    render(<WorkflowsPanel workflows={[{ name: 'wf', description: '', steps: [] }]} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={[{ name: 'wf', description: '', steps: [] }]}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('wf'))
     fireEvent.click(screen.getByText('Add Step'))
     fireEvent.click(screen.getByRole('button', { name: /^command$/i }))
@@ -281,7 +381,7 @@ describe('WorkflowsPanel — StepEditor', () => {
         loading={false}
         refetch={vi.fn()}
         skills={SAMPLE_SKILLS}
-      />
+      />,
     )
     fireEvent.click(screen.getByText('wf'))
     fireEvent.click(screen.getByText('Add Step'))
@@ -301,7 +401,7 @@ describe('WorkflowsPanel — StepEditor', () => {
         loading={false}
         refetch={vi.fn()}
         skills={SAMPLE_SKILLS}
-      />
+      />,
     )
     fireEvent.click(screen.getByText('wf'))
     fireEvent.click(screen.getByText('Add Step'))
@@ -338,7 +438,14 @@ describe('WorkflowsPanel — reorder steps', () => {
   ]
 
   it('first step Up button is disabled', () => {
-    render(<WorkflowsPanel workflows={TWO_STEP_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={TWO_STEP_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('wf'))
 
     const stepRows = document.querySelectorAll('.bg-gray-800\\/50')
@@ -349,7 +456,14 @@ describe('WorkflowsPanel — reorder steps', () => {
   })
 
   it('last step Down button is disabled', () => {
-    render(<WorkflowsPanel workflows={TWO_STEP_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={TWO_STEP_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('wf'))
 
     const stepRows = document.querySelectorAll('.bg-gray-800\\/50')
@@ -359,7 +473,14 @@ describe('WorkflowsPanel — reorder steps', () => {
   })
 
   it('Down button moves step down (first step becomes second)', () => {
-    render(<WorkflowsPanel workflows={TWO_STEP_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={TWO_STEP_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('wf'))
 
     let steps = screen.getAllByText(/^Step (One|Two)$/)
@@ -378,7 +499,14 @@ describe('WorkflowsPanel — reorder steps', () => {
   })
 
   it('Up button moves step up (when not at index 0)', () => {
-    render(<WorkflowsPanel workflows={TWO_STEP_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={TWO_STEP_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('wf'))
 
     const stepRows = document.querySelectorAll('.bg-gray-800\\/50')
@@ -399,7 +527,14 @@ describe('WorkflowsPanel — reorder steps', () => {
 // ──────────────────────────────────────────────────────────────────────────────
 describe('WorkflowsPanel — delete step', () => {
   it('clicking X on a step removes it from the list', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     fireEvent.click(screen.getByText('my-workflow'))
 
     expect(screen.getByText('Do thing')).toBeInTheDocument()
@@ -422,7 +557,14 @@ describe('WorkflowsPanel — delete step', () => {
 // ──────────────────────────────────────────────────────────────────────────────
 describe('WorkflowsPanel — delete workflow', () => {
   it('clicking X on a workflow in the sidebar opens confirm dialog', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     const sidebarDeleteBtns = document.querySelectorAll('button[title="Delete workflow"]')
     expect(sidebarDeleteBtns.length).toBe(2)
     fireEvent.click(sidebarDeleteBtns[0])
@@ -437,10 +579,17 @@ describe('WorkflowsPanel — delete workflow', () => {
       http.delete('/api/workflows/:name', () => {
         deleteCallCount++
         return HttpResponse.json({ ok: true })
-      })
+      }),
     )
     const refetch = vi.fn().mockResolvedValue(undefined)
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={refetch} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={refetch}
+        skills={null}
+      />,
+    )
 
     fireEvent.click(screen.getByText('my-workflow'))
     expect(screen.getByDisplayValue('my-workflow')).toBeInTheDocument()
@@ -456,7 +605,14 @@ describe('WorkflowsPanel — delete workflow', () => {
   })
 
   it('cancel button in delete dialog dismisses it', () => {
-    render(<WorkflowsPanel workflows={SAMPLE_WORKFLOWS} loading={false} refetch={vi.fn()} skills={null} />)
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
     const sidebarDeleteBtns = document.querySelectorAll('button[title="Delete workflow"]')
     fireEvent.click(sidebarDeleteBtns[0])
     expect(screen.getByText('my-workflow', { selector: 'span.font-semibold' })).toBeInTheDocument()

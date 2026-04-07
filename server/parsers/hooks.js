@@ -27,9 +27,11 @@ function readHookScripts() {
   const scripts = []
   try {
     if (!fs.existsSync(HOOKS_DIR)) return scripts
-    const files = fs.readdirSync(HOOKS_DIR).filter(f =>
-      f.endsWith('.sh') || f.endsWith('.js') || f.endsWith('.py') || f.endsWith('.bat')
-    )
+    const files = fs
+      .readdirSync(HOOKS_DIR)
+      .filter(
+        (f) => f.endsWith('.sh') || f.endsWith('.js') || f.endsWith('.py') || f.endsWith('.bat'),
+      )
     for (const file of files) {
       try {
         const filePath = path.join(HOOKS_DIR, file)
@@ -41,9 +43,13 @@ function readHookScripts() {
           lastModified: stat.mtimeMs,
           size: stat.size,
         })
-      } catch { /* skip unreadable */ }
+      } catch {
+        /* skip unreadable */
+      }
     }
-  } catch { /* dir doesn't exist */ }
+  } catch {
+    /* dir doesn't exist */
+  }
   return scripts
 }
 

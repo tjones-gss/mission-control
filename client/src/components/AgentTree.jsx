@@ -34,7 +34,9 @@ const DEFAULT_TOOL_COLOR = 'bg-gray-800 text-gray-400'
 function ToolPill({ name, count }) {
   const color = TOOL_COLORS[name] || DEFAULT_TOOL_COLOR
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono ${color}`}>
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono ${color}`}
+    >
       {name} <span className="opacity-60">×{count}</span>
     </span>
   )
@@ -77,12 +79,17 @@ function SkillPicker({ sessionId, skills }) {
       <Zap size={11} className="text-gray-600" />
       <select
         value={selectedSkill}
-        onChange={e => { setSelectedSkill(e.target.value); setError(null) }}
+        onChange={(e) => {
+          setSelectedSkill(e.target.value)
+          setError(null)
+        }}
         className="bg-gray-900 border border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-400 focus:outline-none focus:border-indigo-500"
       >
         <option value="">Skill...</option>
-        {allSkills.map(s => (
-          <option key={s.name} value={s.name}>{s.command || `/${s.name}`}</option>
+        {allSkills.map((s) => (
+          <option key={s.name} value={s.name}>
+            {s.command || `/${s.name}`}
+          </option>
         ))}
       </select>
       <button
@@ -92,20 +99,36 @@ function SkillPicker({ sessionId, skills }) {
       >
         {running ? 'Running...' : 'Run'}
       </button>
-      {error && <span className="text-[10px] text-red-400 truncate max-w-[120px]" title={error}>Failed</span>}
+      {error && (
+        <span className="text-[10px] text-red-400 truncate max-w-[120px]" title={error}>
+          Failed
+        </span>
+      )}
     </div>
   )
 }
 
-export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, skills, streaming }) {
+export function AgentTree({
+  session,
+  sessionUpdateVersion,
+  intelligenceVersion,
+  skills,
+  streaming,
+}) {
   const [subTab, setSubTab] = useState('conversation')
-  const [sessionOptions, setSessionOptions] = useState({ permissionMode: '', model: '', effort: '' })
+  const [sessionOptions, setSessionOptions] = useState({
+    permissionMode: '',
+    model: '',
+    effort: '',
+  })
   const [compacting, setCompacting] = useState(false)
 
   // Fetch messages for sparkline (only when summary tab is active)
   const { data: messagesData } = useApi(
-    subTab === 'summary' && session?.sessionId ? `/api/sessions/${session.sessionId}/messages` : null,
-    [sessionUpdateVersion]
+    subTab === 'summary' && session?.sessionId
+      ? `/api/sessions/${session.sessionId}/messages`
+      : null,
+    [sessionUpdateVersion],
   )
 
   const handleCompact = useCallback(async () => {
@@ -117,28 +140,48 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: '/compact' }),
       })
-    } catch { /* ignore */ }
-    finally { setCompacting(false) }
+    } catch {
+      /* ignore */
+    } finally {
+      setCompacting(false)
+    }
   }, [session?.sessionId, compacting])
 
-  if (!session) return (
-    <div className="p-6 text-gray-600 text-sm">Select a session to inspect</div>
-  )
+  if (!session) return <div className="p-6 text-gray-600 text-sm">Select a session to inspect</div>
 
-  const { agentTree, slug, sessionId, cwd, model, gitBranch, lastThought, lastText, lastAction, toolUseCounts } = session
+  const {
+    agentTree,
+    slug,
+    sessionId,
+    cwd,
+    model,
+    gitBranch,
+    lastThought,
+    lastText,
+    lastAction,
+    toolUseCounts,
+  } = session
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 shrink-0 overflow-x-auto no-scrollbar">
-        {['conversation', 'timeline', 'summary', 'intel', 'config', 'memory', 'plans', 'hooks', 'mcp'].map(tab => (
+        {[
+          'conversation',
+          'timeline',
+          'summary',
+          'intel',
+          'config',
+          'memory',
+          'plans',
+          'hooks',
+          'mcp',
+        ].map((tab) => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
             className={`px-2.5 py-1 rounded text-xs capitalize transition-colors whitespace-nowrap ${
-              subTab === tab
-                ? 'bg-gray-800 text-gray-100'
-                : 'text-gray-600 hover:text-gray-400'
+              subTab === tab ? 'bg-gray-800 text-gray-100' : 'text-gray-600 hover:text-gray-400'
             }`}
           >
             {tab}
@@ -222,11 +265,12 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
 
       {subTab === 'summary' && (
         <div className="flex-1 p-4 overflow-y-auto space-y-4">
-
           {/* Header */}
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-xs text-gray-400">{slug || sessionId.slice(0, 8)}</span>
+              <span className="font-mono text-xs text-gray-400">
+                {slug || sessionId.slice(0, 8)}
+              </span>
               <span className="font-mono text-xs text-gray-700">{sessionId.slice(0, 16)}…</span>
               {gitBranch && (
                 <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-800 text-green-400 text-[10px] font-mono">
@@ -241,22 +285,30 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
               )}
             </div>
             {cwd && (
-              <div className="text-[10px] text-gray-700 font-mono truncate" title={cwd}>{cwd}</div>
+              <div className="text-[10px] text-gray-700 font-mono truncate" title={cwd}>
+                {cwd}
+              </div>
             )}
           </div>
 
           {/* Thinking section */}
           {lastThought && (
             <div className="rounded-lg border-l-2 border-amber-700 bg-amber-900/20 p-3 space-y-1">
-              <div className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">THINK</div>
-              <div className="text-xs text-amber-200/70 font-mono leading-relaxed">{lastThought}</div>
+              <div className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">
+                THINK
+              </div>
+              <div className="text-xs text-amber-200/70 font-mono leading-relaxed">
+                {lastThought}
+              </div>
             </div>
           )}
 
           {/* Output section */}
           {lastText && (
             <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-cyan-500 uppercase tracking-wider">OUT</div>
+              <div className="text-[10px] font-semibold text-cyan-500 uppercase tracking-wider">
+                OUT
+              </div>
               <div className="text-xs text-cyan-100/80 leading-relaxed">{lastText}</div>
             </div>
           )}
@@ -264,9 +316,13 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
           {/* Last action section */}
           {lastAction && (
             <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">ACT</div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                ACT
+              </div>
               <div className="flex items-center gap-2 font-mono text-xs">
-                <span className={`px-1.5 py-0.5 rounded text-[10px] ${TOOL_COLORS[lastAction.name] || DEFAULT_TOOL_COLOR}`}>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] ${TOOL_COLORS[lastAction.name] || DEFAULT_TOOL_COLOR}`}
+                >
                   {lastAction.name}
                 </span>
                 <span className="text-gray-500 truncate">{lastAction.summary}</span>
@@ -277,7 +333,9 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
           {/* Tools used */}
           {toolUseCounts && Object.keys(toolUseCounts).length > 0 && (
             <div className="space-y-1.5">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">TOOLS</div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                TOOLS
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(toolUseCounts)
                   .sort((a, b) => b[1] - a[1])
@@ -296,8 +354,15 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
           {/* Cost sparkline */}
           {messagesData?.messages?.length > 1 && (
             <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Cost Over Time</div>
-              <CostSparkline messages={messagesData.messages} model={session.model} width={300} height={48} />
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                Cost Over Time
+              </div>
+              <CostSparkline
+                messages={messagesData.messages}
+                model={session.model}
+                width={300}
+                height={48}
+              />
             </div>
           )}
 
@@ -336,14 +401,18 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-gray-400 mt-0.5 line-clamp-2">{sub.description}</div>
+                      <div className="text-xs text-gray-400 mt-0.5 line-clamp-2">
+                        {sub.description}
+                      </div>
                       <div className="text-xs text-gray-600 mt-1 flex gap-3">
                         <span>{sub.messageCount} msgs</span>
                         {sub.startTime && sub.endTime && (
                           <span>{timeRange(sub.startTime, sub.endTime)}</span>
                         )}
                         {sub.model && (
-                          <span className="text-gray-700">{sub.model.split('-').slice(-2).join('-')}</span>
+                          <span className="text-gray-700">
+                            {sub.model.split('-').slice(-2).join('-')}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -354,7 +423,6 @@ export function AgentTree({ session, sessionUpdateVersion, intelligenceVersion, 
               <div className="ml-1 pl-3 text-xs text-gray-700">No subagents</div>
             )}
           </div>
-
         </div>
       )}
     </div>

@@ -53,12 +53,21 @@ vi.mock('multer', () => {
 })
 vi.mock('../../pty-session.js', () => ({
   startQuery: vi.fn().mockResolvedValue({ ok: true, streaming: true }),
-  spawnNewSession: vi.fn().mockResolvedValue({ ok: true, sessionId: 'new-pty-123', streaming: true }),
+  spawnNewSession: vi
+    .fn()
+    .mockResolvedValue({ ok: true, sessionId: 'new-pty-123', streaming: true }),
   isQueryActive: vi.fn().mockReturnValue(false),
   getQueryStatus: vi.fn().mockReturnValue({ active: false, pendingApprovals: [] }),
   resolveApproval: vi.fn().mockReturnValue(true),
   cancelQuery: vi.fn().mockReturnValue(true),
-  VALID_PERMISSION_MODES: new Set(['plan', 'auto', 'default', 'acceptEdits', 'dontAsk', 'bypassPermissions']),
+  VALID_PERMISSION_MODES: new Set([
+    'plan',
+    'auto',
+    'default',
+    'acceptEdits',
+    'dontAsk',
+    'bypassPermissions',
+  ]),
   VALID_MODEL_SHORTCUTS: new Set(['sonnet', 'opus', 'haiku']),
 }))
 
@@ -68,7 +77,14 @@ import fs from 'fs'
 import { getAllSessions, getSessionById } from '../../parsers/sessions.js'
 import { getSessionMessages } from '../../parsers/messages.js'
 import { runClaude } from '../../claude-cli.js'
-import { startQuery, spawnNewSession, isQueryActive, getQueryStatus, resolveApproval, cancelQuery } from '../../pty-session.js'
+import {
+  startQuery,
+  spawnNewSession,
+  isQueryActive,
+  getQueryStatus,
+  resolveApproval,
+  cancelQuery,
+} from '../../pty-session.js'
 import { onEvent } from '../../sse.js'
 import { router } from '../../routes/sessions.js'
 
@@ -129,7 +145,10 @@ describe('GET /:sessionId/messages', () => {
   })
 
   it('200 with messages when found', async () => {
-    const messages = [{ role: 'user', content: 'Hello' }, { role: 'assistant', content: 'Hi!' }]
+    const messages = [
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi!' },
+    ]
     getSessionMessages.mockReturnValue(messages)
     const res = await request(app).get('/abc123/messages')
     expect(res.status).toBe(200)
@@ -164,11 +183,13 @@ describe('POST /:sessionId/message', () => {
     expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
     expect(res.body.streaming).toBe(true)
-    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: 'abc123',
-      prompt: 'hello',
-      cwd: '/tmp',
-    }))
+    expect(startQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'abc123',
+        prompt: 'hello',
+        cwd: '/tmp',
+      }),
+    )
   })
 
   it('409 when query already active', async () => {
@@ -181,14 +202,18 @@ describe('POST /:sessionId/message', () => {
   it('passes sdkOptions with permissionMode to startQuery', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
     startQuery.mockResolvedValue({ ok: true, streaming: true })
-    const res = await request(app).post('/abc123/message').send({
-      message: 'hello',
-      options: { permissionMode: 'plan', model: 'sonnet' },
-    })
+    const res = await request(app)
+      .post('/abc123/message')
+      .send({
+        message: 'hello',
+        options: { permissionMode: 'plan', model: 'sonnet' },
+      })
     expect(res.status).toBe(202)
-    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
-      sdkOptions: { permissionMode: 'plan', model: 'sonnet' },
-    }))
+    expect(startQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sdkOptions: { permissionMode: 'plan', model: 'sonnet' },
+      }),
+    )
   })
 
   it('503 when startQuery rejects', async () => {
@@ -219,9 +244,11 @@ describe('POST /:sessionId/message', () => {
       options: '{"permissionMode":"auto"}',
     })
     expect(res.status).toBe(202)
-    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
-      sdkOptions: { permissionMode: 'auto' },
-    }))
+    expect(startQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sdkOptions: { permissionMode: 'auto' },
+      }),
+    )
   })
 })
 
@@ -246,11 +273,13 @@ describe('POST /:sessionId/skill', () => {
     const res = await request(app).post('/abc123/skill').send({ skill: 'commit' })
     expect(res.status).toBe(202)
     expect(res.body.ok).toBe(true)
-    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: 'abc123',
-      prompt: '/commit',
-      cwd: '/tmp',
-    }))
+    expect(startQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'abc123',
+        prompt: '/commit',
+        cwd: '/tmp',
+      }),
+    )
   })
 
   it('sends skill with args via PTY', async () => {
@@ -258,9 +287,11 @@ describe('POST /:sessionId/skill', () => {
     startQuery.mockResolvedValue({ ok: true, streaming: true })
     const res = await request(app).post('/abc123/skill').send({ skill: 'commit', args: '-m "fix"' })
     expect(res.status).toBe(202)
-    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: '/commit -m "fix"',
-    }))
+    expect(startQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: '/commit -m "fix"',
+      }),
+    )
   })
 
   it('409 when query already active for skill', async () => {
@@ -281,14 +312,18 @@ describe('POST /:sessionId/skill', () => {
   it('passes sdkOptions to startQuery for skill', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
     startQuery.mockResolvedValue({ ok: true, streaming: true })
-    const res = await request(app).post('/abc123/skill').send({
-      skill: 'commit',
-      options: { permissionMode: 'auto' },
-    })
+    const res = await request(app)
+      .post('/abc123/skill')
+      .send({
+        skill: 'commit',
+        options: { permissionMode: 'auto' },
+      })
     expect(res.status).toBe(202)
-    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({
-      sdkOptions: { permissionMode: 'auto' },
-    }))
+    expect(startQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sdkOptions: { permissionMode: 'auto' },
+      }),
+    )
   })
 })
 
@@ -324,12 +359,16 @@ describe('POST /new', () => {
 
   it('201 when worktree session created via CLI', async () => {
     runClaude.mockResolvedValue({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 })
-    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello', worktree: true })
+    const res = await request(app)
+      .post('/new')
+      .send({ cwd: '/tmp', prompt: 'hello', worktree: true })
     expect(res.status).toBe(201)
     expect(res.body.ok).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({
-      args: expect.arrayContaining(['-p', 'hello', '--worktree']),
-    }))
+    expect(runClaude).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: expect.arrayContaining(['-p', 'hello', '--worktree']),
+      }),
+    )
   })
 
   it('503 when PTY spawn fails', async () => {
@@ -349,20 +388,26 @@ describe('POST /:sessionId/tool-approval', () => {
   })
 
   it('400 when decision invalid', async () => {
-    const res = await request(app).post('/abc123/tool-approval').send({ approvalId: 'x', decision: 'maybe' })
+    const res = await request(app)
+      .post('/abc123/tool-approval')
+      .send({ approvalId: 'x', decision: 'maybe' })
     expect(res.status).toBe(400)
   })
 
   it('200 when approval resolved', async () => {
     resolveApproval.mockReturnValue(true)
-    const res = await request(app).post('/abc123/tool-approval').send({ approvalId: 'x', decision: 'allow' })
+    const res = await request(app)
+      .post('/abc123/tool-approval')
+      .send({ approvalId: 'x', decision: 'allow' })
     expect(res.status).toBe(200)
     expect(res.body.ok).toBe(true)
   })
 
   it('404 when approval not found', async () => {
     resolveApproval.mockReturnValue(false)
-    const res = await request(app).post('/abc123/tool-approval').send({ approvalId: 'x', decision: 'deny' })
+    const res = await request(app)
+      .post('/abc123/tool-approval')
+      .send({ approvalId: 'x', decision: 'deny' })
     expect(res.status).toBe(404)
   })
 })
@@ -388,7 +433,10 @@ describe('POST /:sessionId/cancel', () => {
 
 describe('GET /:sessionId/query-status', () => {
   it('returns query status', async () => {
-    getQueryStatus.mockReturnValue({ active: true, pendingApprovals: [{ approvalId: 'a1', toolName: 'Bash' }] })
+    getQueryStatus.mockReturnValue({
+      active: true,
+      pendingApprovals: [{ approvalId: 'a1', toolName: 'Bash' }],
+    })
     const res = await request(app).get('/abc123/query-status')
     expect(res.status).toBe(200)
     expect(res.body.active).toBe(true)
@@ -409,17 +457,17 @@ describe('POST /:sessionId/message — image upload', () => {
     expect(res.status).toBe(202)
     expect(startQuery).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringContaining('[User attached an image. View it using the Read tool at: C:/tmp/oversight-uploads/1234-abcdef.png]'),
-      })
+        prompt: expect.stringContaining(
+          '[User attached an image. View it using the Read tool at: C:/tmp/oversight-uploads/1234-abcdef.png]',
+        ),
+      }),
     )
   })
 
   it('sends plain prompt without image reference when no file', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
     startQuery.mockResolvedValue({ ok: true, streaming: true })
-    const res = await request(app)
-      .post('/abc123/message')
-      .send({ message: 'hello' })
+    const res = await request(app).post('/abc123/message').send({ message: 'hello' })
     expect(res.status).toBe(202)
     const calledPrompt = startQuery.mock.calls[0][0].prompt
     expect(calledPrompt).not.toContain('[User attached an image')
@@ -445,10 +493,7 @@ describe('POST /:sessionId/message — image upload', () => {
   })
 
   it('cleans up file on 400 missing message', async () => {
-    const res = await request(app)
-      .post('/abc123/message')
-      .set('x-test-file', '1')
-      .send({})
+    const res = await request(app).post('/abc123/message').set('x-test-file', '1').send({})
     expect(res.status).toBe(400)
     expect(fs.unlinkSync).toHaveBeenCalledWith('C:\\tmp\\oversight-uploads\\1234-abcdef.png')
   })
@@ -488,13 +533,9 @@ describe('POST /:sessionId/message — image upload', () => {
   it('handles undefined options gracefully', async () => {
     getSessionById.mockReturnValue({ sessionId: 'abc123', cwd: '/tmp' })
     startQuery.mockResolvedValue({ ok: true, streaming: true })
-    const res = await request(app)
-      .post('/abc123/message')
-      .send({ message: 'hi' })
+    const res = await request(app).post('/abc123/message').send({ message: 'hi' })
     expect(res.status).toBe(202)
-    expect(startQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ sdkOptions: {} })
-    )
+    expect(startQuery).toHaveBeenCalledWith(expect.objectContaining({ sdkOptions: {} }))
   })
 })
 

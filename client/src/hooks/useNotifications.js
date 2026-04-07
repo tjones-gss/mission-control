@@ -5,7 +5,9 @@ export function getNotificationPrefs() {
   try {
     const raw = localStorage.getItem('oversight.notifications')
     if (raw) return JSON.parse(raw)
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { enabled: true, sound: true }
 }
 
@@ -31,9 +33,7 @@ export function useNotifications(sessions, soundEngine) {
     if (!sessions?.length) return
     const prefs = getNotificationPrefs()
 
-    const currentNeedsInput = new Set(
-      sessions.filter(s => s.needsInput).map(s => s.sessionId)
-    )
+    const currentNeedsInput = new Set(sessions.filter((s) => s.needsInput).map((s) => s.sessionId))
 
     // Clear muted IDs that are no longer needsInput (so they re-notify if they come back)
     for (const id of mutedIdsRef.current) {
@@ -51,7 +51,7 @@ export function useNotifications(sessions, soundEngine) {
     const newlyWaiting = []
     for (const id of currentNeedsInput) {
       if (!prevIdsRef.current.has(id) && !mutedIdsRef.current.has(id)) {
-        const session = sessions.find(s => s.sessionId === id)
+        const session = sessions.find((s) => s.sessionId === id)
         if (session) newlyWaiting.push(session)
       }
     }

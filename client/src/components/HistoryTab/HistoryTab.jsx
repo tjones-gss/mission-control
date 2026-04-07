@@ -25,22 +25,25 @@ export function HistoryTab({ historyVersion }) {
     }
   }, [])
 
-  const fetchPage = useCallback(async (newOffset = 0, replace = true, signal) => {
-    const params = new URLSearchParams({ limit: PAGE_SIZE, offset: newOffset })
-    if (projectFilter) params.set('project', projectFilter)
-    try {
-      const res = await fetch(`/api/history?${params}`, { signal })
-      if (!res.ok) return
-      const data = await res.json()
-      setEntries(prev => replace ? data : [...prev, ...data])
-      setHasMore(data.length === PAGE_SIZE)
-      setOffset(newOffset + data.length)
-    } catch (err) {
-      if (err.name === 'AbortError') return
-      setFetchError('Failed to load history')
-      console.error('Failed to fetch history:', err)
-    }
-  }, [projectFilter])
+  const fetchPage = useCallback(
+    async (newOffset = 0, replace = true, signal) => {
+      const params = new URLSearchParams({ limit: PAGE_SIZE, offset: newOffset })
+      if (projectFilter) params.set('project', projectFilter)
+      try {
+        const res = await fetch(`/api/history?${params}`, { signal })
+        if (!res.ok) return
+        const data = await res.json()
+        setEntries((prev) => (replace ? data : [...prev, ...data]))
+        setHasMore(data.length === PAGE_SIZE)
+        setOffset(newOffset + data.length)
+      } catch (err) {
+        if (err.name === 'AbortError') return
+        setFetchError('Failed to load history')
+        console.error('Failed to fetch history:', err)
+      }
+    },
+    [projectFilter],
+  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -49,10 +52,10 @@ export function HistoryTab({ historyVersion }) {
     return () => controller.abort()
   }, [fetchStats, fetchPage, historyVersion])
 
-  const allProjects = [...new Set(entries.map(e => e.project).filter(Boolean))]
+  const allProjects = [...new Set(entries.map((e) => e.project).filter(Boolean))]
 
   const filtered = search
-    ? entries.filter(e => e.display?.toLowerCase().includes(search.toLowerCase()))
+    ? entries.filter((e) => e.display?.toLowerCase().includes(search.toLowerCase()))
     : entries
 
   return (
@@ -65,22 +68,27 @@ export function HistoryTab({ historyVersion }) {
         <input
           type="text"
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Search history\u2026"
           className="flex-1 bg-gray-900 border border-gray-800 rounded px-2 py-1 text-xs text-gray-300 placeholder-gray-700 focus:outline-none focus:border-gray-600"
         />
         <select
           value={projectFilter}
-          onChange={e => { setProjectFilter(e.target.value); fetchPage(0, true) }}
+          onChange={(e) => {
+            setProjectFilter(e.target.value)
+            fetchPage(0, true)
+          }}
           className="bg-gray-900 border border-gray-800 rounded px-2 py-1 text-xs text-gray-400 focus:outline-none"
         >
           <option value="">All projects</option>
-          {allProjects.map(p => (
-            <option key={p} value={p}>{p.split(/[\\/]/).pop()}</option>
+          {allProjects.map((p) => (
+            <option key={p} value={p}>
+              {p.split(/[\\/]/).pop()}
+            </option>
           ))}
         </select>
         <button
-          onClick={() => setGrouped(g => !g)}
+          onClick={() => setGrouped((g) => !g)}
           aria-label={grouped ? 'Flat view' : 'Group by project'}
           title={grouped ? 'Flat view' : 'Group by project'}
           className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${grouped ? 'bg-gray-800 text-gray-200' : 'text-gray-600 hover:text-gray-400'}`}

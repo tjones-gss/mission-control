@@ -17,7 +17,9 @@ function ServerCard({ server }) {
       <div className="flex items-center gap-2 mb-2">
         <Server size={14} className="text-indigo-400 shrink-0" />
         <span className="text-sm font-medium text-gray-200 truncate">{server.name}</span>
-        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border shrink-0 ${transport.cls}`}>
+        <span
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border shrink-0 ${transport.cls}`}
+        >
           <TransportIcon size={9} />
           {transport.label}
         </span>
@@ -27,7 +29,9 @@ function ServerCard({ server }) {
         {server.command && (
           <div className="flex items-center gap-1.5">
             <span className="text-gray-500 shrink-0">cmd:</span>
-            <span className="text-gray-300 font-mono truncate">{server.command} {server.args?.join(' ')}</span>
+            <span className="text-gray-300 font-mono truncate">
+              {server.command} {server.args?.join(' ')}
+            </span>
           </div>
         )}
         {server.url && (
@@ -75,11 +79,13 @@ export function McpDashboard({ mcpVersion = 0 }) {
     <div className="flex flex-col gap-3 p-3 overflow-y-auto h-full">
       <div className="flex items-center gap-2 mb-1">
         <Server size={13} className="text-indigo-400" />
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">MCP Servers</span>
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          MCP Servers
+        </span>
         <span className="text-xs text-gray-500">{servers.length}</span>
       </div>
       <div className="grid gap-2 grid-cols-1 lg:grid-cols-2">
-        {servers.map(server => (
+        {servers.map((server) => (
           <ServerCard key={server.name} server={server} />
         ))}
       </div>

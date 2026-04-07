@@ -6,25 +6,31 @@ export function useApi(url, deps = []) {
   const [error, setError] = useState(null)
   const controllerRef = useRef(null)
 
-  const refetch = useCallback(async (signal) => {
-    if (!url) return
-    setLoading(true)
-    try {
-      const res = await fetch(url, { signal })
-      if (!res.ok) {
-        let msg = `HTTP ${res.status}`
-        try { const body = await res.json(); msg = body.detail ?? body.error ?? msg } catch {}
-        throw new Error(msg)
+  const refetch = useCallback(
+    async (signal) => {
+      if (!url) return
+      setLoading(true)
+      try {
+        const res = await fetch(url, { signal })
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`
+          try {
+            const body = await res.json()
+            msg = body.detail ?? body.error ?? msg
+          } catch {}
+          throw new Error(msg)
+        }
+        setData(await res.json())
+        setError(null)
+      } catch (e) {
+        if (e.name === 'AbortError') return
+        setError(e.message)
+      } finally {
+        setLoading(false)
       }
-      setData(await res.json())
-      setError(null)
-    } catch (e) {
-      if (e.name === 'AbortError') return
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [url])
+    },
+    [url],
+  )
 
   useEffect(() => {
     if (!url) {

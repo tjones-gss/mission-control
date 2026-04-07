@@ -94,11 +94,9 @@ const TEAM_NAME_RE = /^[a-zA-Z0-9_-]+$/
 
 export function validateTeamName(name, res) {
   if (!name || !TEAM_NAME_RE.test(name)) {
-    res
-      .status(400)
-      .json({
-        error: 'Invalid team name. Only letters, digits, underscores, and hyphens are allowed.',
-      })
+    res.status(400).json({
+      error: 'Invalid team name. Only letters, digits, underscores, and hyphens are allowed.',
+    })
     return false
   }
   return true

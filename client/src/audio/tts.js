@@ -11,7 +11,7 @@ export function getAvailableVoices() {
   if (voices.length > 0) return Promise.resolve(voices)
 
   if (voicesPromise) return voicesPromise
-  voicesPromise = new Promise(resolve => {
+  voicesPromise = new Promise((resolve) => {
     let resolved = false
     const handler = () => {
       resolved = true
@@ -43,7 +43,7 @@ export function speak(text, voiceName, volume = 0.7) {
   utterance.volume = volume
   if (voiceName) {
     const voices = speechSynthesis.getVoices()
-    const match = voices.find(v => v.name === voiceName)
+    const match = voices.find((v) => v.name === voiceName)
     if (match) utterance.voice = match
   }
   speechSynthesis.speak(utterance)

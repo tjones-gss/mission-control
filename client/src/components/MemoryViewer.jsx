@@ -16,9 +16,7 @@ function MemoryFile({ memory }) {
       >
         <Chevron size={12} className="text-gray-500 shrink-0" />
         <FileText size={12} className="text-cyan-400 shrink-0" />
-        <span className="text-xs text-gray-200 truncate flex-1">
-          {fm?.name || memory.filename}
-        </span>
+        <span className="text-xs text-gray-200 truncate flex-1">{fm?.name || memory.filename}</span>
         {fm?.type && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700 shrink-0">
             {fm.type}
@@ -27,9 +25,7 @@ function MemoryFile({ memory }) {
       </button>
       {expanded && (
         <div className="px-3 py-2 border-t border-gray-800">
-          {fm?.description && (
-            <p className="text-xs text-gray-400 mb-2 italic">{fm.description}</p>
-          )}
+          {fm?.description && <p className="text-xs text-gray-400 mb-2 italic">{fm.description}</p>}
           <div className="max-h-[300px] overflow-y-auto">
             <Markdown>{memory.body}</Markdown>
           </div>
@@ -64,10 +60,9 @@ function ContentSection({ title, icon: Icon, content, defaultOpen = false }) {
 }
 
 export function MemoryViewer({ sessionId, memoryVersion = 0 }) {
-  const { data, loading } = useApi(
-    sessionId ? `/api/sessions/${sessionId}/memory` : null,
-    [memoryVersion]
-  )
+  const { data, loading } = useApi(sessionId ? `/api/sessions/${sessionId}/memory` : null, [
+    memoryVersion,
+  ])
 
   if (!sessionId) {
     return <div className="p-4 text-xs text-gray-500">Select a session to view memory</div>
@@ -87,15 +82,13 @@ export function MemoryViewer({ sessionId, memoryVersion = 0 }) {
     <div className="flex flex-col gap-3 p-3 overflow-y-auto h-full">
       <div className="flex items-center gap-2 mb-1">
         <BookOpen size={13} className="text-indigo-400" />
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Memory & Instructions</span>
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          Memory & Instructions
+        </span>
       </div>
 
       {/* Global CLAUDE.md */}
-      <ContentSection
-        title="Global CLAUDE.md"
-        icon={FileText}
-        content={globalMd?.content}
-      />
+      <ContentSection title="Global CLAUDE.md" icon={FileText} content={globalMd?.content} />
 
       {/* Project CLAUDE.md files */}
       {project?.map((p, i) => (

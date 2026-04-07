@@ -6,8 +6,19 @@ import { http, HttpResponse } from 'msw'
 import { HistoryFeed } from '../../components/HistoryTab/HistoryFeed.jsx'
 
 const ENTRIES = [
-  { sessionId: 's1', timestamp: 1711500000000, display: 'git status', project: '/home/user/my-project' },
-  { sessionId: 's2', timestamp: 1711500060000, display: 'A very long command that exceeds eighty characters and should be truncated with an ellipsis at the end', project: '/home/user/other' },
+  {
+    sessionId: 's1',
+    timestamp: 1711500000000,
+    display: 'git status',
+    project: '/home/user/my-project',
+  },
+  {
+    sessionId: 's2',
+    timestamp: 1711500060000,
+    display:
+      'A very long command that exceeds eighty characters and should be truncated with an ellipsis at the end',
+    project: '/home/user/other',
+  },
 ]
 
 const defaultProps = () => ({
@@ -41,7 +52,8 @@ describe('HistoryFeed — rendering', () => {
   it('truncates long entries (>80 chars) with ellipsis', () => {
     render(<HistoryFeed {...defaultProps()} />)
 
-    const truncated = 'A very long command that exceeds eighty characters and should be truncated with \u2026'
+    const truncated =
+      'A very long command that exceeds eighty characters and should be truncated with \u2026'
     expect(screen.getByText(truncated)).toBeInTheDocument()
 
     // Full text should not be visible
@@ -51,7 +63,8 @@ describe('HistoryFeed — rendering', () => {
   it('expands truncated entry on click', async () => {
     render(<HistoryFeed {...defaultProps()} />)
 
-    const truncated = 'A very long command that exceeds eighty characters and should be truncated with \u2026'
+    const truncated =
+      'A very long command that exceeds eighty characters and should be truncated with \u2026'
     const truncatedEl = screen.getByText(truncated)
 
     // Click the parent row to expand

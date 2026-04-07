@@ -22,17 +22,29 @@ function createMockSoundEngine() {
       ttsVoice: null,
       customSounds: {},
     })),
-    updatePrefs: vi.fn(function (partial) { return this.getPrefs() }),
+    updatePrefs: vi.fn(function (partial) {
+      return this.getPrefs()
+    }),
     addCustomSound: vi.fn(() => true),
     removeCustomSound: vi.fn(),
   }
 }
 
 const defaultShortcuts = {
-  nextSession: 'j', prevSession: 'k', openDetail: 'Enter', backToBoard: 'Escape',
-  tabAgents: '1', tabTasks: '2', tabWorkflows: '3', tabSkills: '4',
-  quickApprove: 'y', quickContinue: 'c', focusInput: '/', showHelp: '?',
-  toggleSettings: ',', toggleMute: 'm',
+  nextSession: 'j',
+  prevSession: 'k',
+  openDetail: 'Enter',
+  backToBoard: 'Escape',
+  tabAgents: '1',
+  tabTasks: '2',
+  tabWorkflows: '3',
+  tabSkills: '4',
+  quickApprove: 'y',
+  quickContinue: 'c',
+  focusInput: '/',
+  showHelp: '?',
+  toggleSettings: ',',
+  toggleMute: 'm',
 }
 
 // Mock speechSynthesis for SoundsVoiceTab
@@ -44,7 +56,9 @@ beforeAll(() => {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }
-  global.SpeechSynthesisUtterance = vi.fn(function (text) { this.text = text })
+  global.SpeechSynthesisUtterance = vi.fn(function (text) {
+    this.text = text
+  })
 })
 
 beforeEach(() => {
@@ -59,7 +73,7 @@ function renderModal(props = {}) {
       shortcuts={props.shortcuts || defaultShortcuts}
       updateShortcut={props.updateShortcut || vi.fn()}
       resetShortcuts={props.resetShortcuts || vi.fn()}
-    />
+    />,
   )
 }
 
@@ -137,7 +151,9 @@ describe('SettingsModal — close behavior', () => {
     const onClose = vi.fn()
     renderModal({ onClose })
     const closeButtons = screen.getAllByRole('button')
-    const xButton = closeButtons.find(b => b.getAttribute('role') !== 'switch' && !b.textContent.includes('Settings'))
+    const xButton = closeButtons.find(
+      (b) => b.getAttribute('role') !== 'switch' && !b.textContent.includes('Settings'),
+    )
     fireEvent.click(xButton)
     expect(onClose).toHaveBeenCalled()
   })

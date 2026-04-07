@@ -5,7 +5,14 @@ import { server } from '../mocks/server.js'
 import { http, HttpResponse } from 'msw'
 import { SessionControlBar } from '../../components/SessionControlBar.jsx'
 
-const SESSION = { sessionId: 'test-123', slug: 'my-proj', displayName: 'My Session', model: 'claude-sonnet-4-20250514', isActive: true, needsInput: false }
+const SESSION = {
+  sessionId: 'test-123',
+  slug: 'my-proj',
+  displayName: 'My Session',
+  model: 'claude-sonnet-4-20250514',
+  isActive: true,
+  needsInput: false,
+}
 
 const defaultProps = () => ({
   session: SESSION,
@@ -16,7 +23,11 @@ const defaultProps = () => ({
 describe('SessionControlBar', () => {
   it('returns null when no session', () => {
     const { container } = render(
-      <SessionControlBar session={null} sessionOptions={{ permissionMode: '', model: '', effort: '' }} onOptionsChange={vi.fn()} />
+      <SessionControlBar
+        session={null}
+        sessionOptions={{ permissionMode: '', model: '', effort: '' }}
+        onOptionsChange={vi.fn()}
+      />,
     )
     expect(container.innerHTML).toBe('')
   })
@@ -27,12 +38,22 @@ describe('SessionControlBar', () => {
   })
 
   it('shows "needs input" for needsInput session', () => {
-    render(<SessionControlBar {...defaultProps()} session={{ ...SESSION, isActive: false, needsInput: true }} />)
+    render(
+      <SessionControlBar
+        {...defaultProps()}
+        session={{ ...SESSION, isActive: false, needsInput: true }}
+      />,
+    )
     expect(screen.getByText('needs input')).toBeInTheDocument()
   })
 
   it('shows "idle" for inactive session', () => {
-    render(<SessionControlBar {...defaultProps()} session={{ ...SESSION, isActive: false, needsInput: false }} />)
+    render(
+      <SessionControlBar
+        {...defaultProps()}
+        session={{ ...SESSION, isActive: false, needsInput: false }}
+      />,
+    )
     expect(screen.getByText('idle')).toBeInTheDocument()
   })
 
@@ -55,7 +76,7 @@ describe('SessionControlBar', () => {
       http.post('/api/sessions/:sessionId/name', async ({ request }) => {
         capturedBody = await request.json()
         return HttpResponse.json({ ok: true })
-      })
+      }),
     )
     render(<SessionControlBar {...defaultProps()} />)
     await userEvent.click(screen.getByTitle('Rename session'))

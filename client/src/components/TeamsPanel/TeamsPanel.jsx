@@ -8,7 +8,7 @@ function flattenInbox(inboxes) {
 }
 
 function countUnread(inboxes) {
-  return flattenInbox(inboxes).filter(m => !m.read && !m.archived).length
+  return flattenInbox(inboxes).filter((m) => !m.read && !m.archived).length
 }
 
 export function TeamsPanel({ teams, refetch }) {
@@ -22,7 +22,7 @@ export function TeamsPanel({ teams, refetch }) {
     )
   }
 
-  const selected = teams.find(t => t.name === selectedName)
+  const selected = teams.find((t) => t.name === selectedName)
   const allMessages = selected ? flattenInbox(selected.inboxes) : []
 
   return (
@@ -30,16 +30,20 @@ export function TeamsPanel({ teams, refetch }) {
       {/* Team list */}
       <div className="w-48 shrink-0 border-r border-gray-800 overflow-y-auto">
         <div className="px-3 py-2 border-b border-gray-800">
-          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Teams</span>
+          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+            Teams
+          </span>
         </div>
-        {teams.map(team => {
+        {teams.map((team) => {
           const unread = countUnread(team.inboxes)
           return (
             <button
               key={team.name}
               onClick={() => setSelectedName(team.name)}
               className={`w-full flex items-center gap-2 px-3 py-2.5 text-left text-xs transition-colors ${
-                selectedName === team.name ? 'bg-gray-800 text-gray-100' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900'
+                selectedName === team.name
+                  ? 'bg-gray-800 text-gray-100'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900'
               }`}
             >
               <Users size={11} className="text-purple-400 shrink-0" />
@@ -63,15 +67,19 @@ export function TeamsPanel({ teams, refetch }) {
               <Users size={13} className="text-purple-400" />
               <span className="text-sm font-semibold text-purple-300">{selected.name}</span>
             </div>
-            {selected.description && <p className="text-xs text-gray-500">{selected.description}</p>}
+            {selected.description && (
+              <p className="text-xs text-gray-500">{selected.description}</p>
+            )}
             {(selected.members || []).length > 0 && (
               <div className="space-y-1">
-                {selected.members.map(m => (
+                {selected.members.map((m) => (
                   <div key={m.agentId} className="flex items-center gap-2 text-xs">
                     <Bot size={11} className="text-gray-600" />
                     <span className="text-gray-400">{m.name}</span>
                     <span className="text-gray-700">{m.agentType}</span>
-                    <span className="ml-auto text-gray-700">{m.model?.split('-').slice(-2).join('-')}</span>
+                    <span className="ml-auto text-gray-700">
+                      {m.model?.split('-').slice(-2).join('-')}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -82,7 +90,9 @@ export function TeamsPanel({ teams, refetch }) {
           <div className="px-3 py-1.5 border-b border-gray-800 shrink-0">
             <div className="flex items-center gap-1.5">
               <Inbox size={11} className="text-gray-600" />
-              <span className="text-xs text-gray-600 uppercase tracking-wider font-semibold">Inbox</span>
+              <span className="text-xs text-gray-600 uppercase tracking-wider font-semibold">
+                Inbox
+              </span>
             </div>
           </div>
           <TeamInboxFeed teamName={selected.name} messages={allMessages} onUpdate={refetch} />

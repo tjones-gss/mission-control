@@ -15,7 +15,7 @@ export function SettingsTabs({ soundEngine, shortcuts, updateShortcut, resetShor
   return (
     <div>
       <div className="flex border-b border-gray-700">
-        {TABS.map(tab => (
+        {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}

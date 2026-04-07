@@ -8,7 +8,10 @@ async function goToTeams(page) {
 test.describe('teams tab', () => {
   test('navigate to teams tab shows Teams panel', async ({ page }) => {
     await goToTeams(page)
-    const hasEmptyState = await page.getByText(/no teams configured/i).isVisible().catch(() => false)
+    const hasEmptyState = await page
+      .getByText(/no teams configured/i)
+      .isVisible()
+      .catch(() => false)
     const hasTeamsList = await page.locator('button', { hasText: /Teams/i }).first().isVisible()
     expect(hasEmptyState || hasTeamsList).toBe(true)
   })

@@ -25,34 +25,42 @@ describe('formatAsMarkdown()', () => {
   })
 
   it('formats user text blocks', () => {
-    const messages = [{
-      type: 'user',
-      blocks: [{ type: 'text', text: 'Hello, Claude!' }],
-    }]
+    const messages = [
+      {
+        type: 'user',
+        blocks: [{ type: 'text', text: 'Hello, Claude!' }],
+      },
+    ]
     const md = formatAsMarkdown(baseSession, messages)
     expect(md).toContain('## User')
     expect(md).toContain('Hello, Claude!')
   })
 
   it('formats assistant text blocks', () => {
-    const messages = [{
-      type: 'assistant',
-      blocks: [{ type: 'text', text: 'Here is my response.' }],
-    }]
+    const messages = [
+      {
+        type: 'assistant',
+        blocks: [{ type: 'text', text: 'Here is my response.' }],
+      },
+    ]
     const md = formatAsMarkdown(baseSession, messages)
     expect(md).toContain('## Assistant')
     expect(md).toContain('Here is my response.')
   })
 
   it('formats tool_use blocks', () => {
-    const messages = [{
-      type: 'assistant',
-      blocks: [{
-        type: 'tool_use',
-        name: 'Bash',
-        input: { command: 'ls -la' },
-      }],
-    }]
+    const messages = [
+      {
+        type: 'assistant',
+        blocks: [
+          {
+            type: 'tool_use',
+            name: 'Bash',
+            input: { command: 'ls -la' },
+          },
+        ],
+      },
+    ]
     const md = formatAsMarkdown(baseSession, messages)
     expect(md).toContain('### Tool: Bash')
     expect(md).toContain('```json')
@@ -61,23 +69,29 @@ describe('formatAsMarkdown()', () => {
   })
 
   it('formats tool_result blocks', () => {
-    const messages = [{
-      type: 'user',
-      blocks: [{
-        type: 'tool_result',
-        content: 'file1.js\nfile2.js',
-      }],
-    }]
+    const messages = [
+      {
+        type: 'user',
+        blocks: [
+          {
+            type: 'tool_result',
+            content: 'file1.js\nfile2.js',
+          },
+        ],
+      },
+    ]
     const md = formatAsMarkdown(baseSession, messages)
     expect(md).toContain('#### Result')
     expect(md).toContain('file1.js\nfile2.js')
   })
 
   it('formats thinking blocks as collapsed details', () => {
-    const messages = [{
-      type: 'assistant',
-      blocks: [{ type: 'thinking', text: 'Let me think about this...' }],
-    }]
+    const messages = [
+      {
+        type: 'assistant',
+        blocks: [{ type: 'thinking', text: 'Let me think about this...' }],
+      },
+    ]
     const md = formatAsMarkdown(baseSession, messages)
     expect(md).toContain('<details><summary>Thinking</summary>')
     expect(md).toContain('Let me think about this...')

@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../hooks/useKeyboardShortcuts.js', () => ({
-  ACTION_LABELS: { selectNext: 'Next session', selectPrev: 'Previous session' }
+  ACTION_LABELS: { selectNext: 'Next session', selectPrev: 'Previous session' },
 }))
 
 import { ShortcutsTab } from '../../components/settings/ShortcutsTab.jsx'

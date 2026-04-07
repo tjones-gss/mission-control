@@ -21,9 +21,24 @@ const SAMPLE_STATS = {
 }
 
 const SAMPLE_ENTRIES = [
-  { display: 'git status', timestamp: Date.now() - 1000, project: '/Users/me/my-project', sessionId: 's1' },
-  { display: 'npm run dev', timestamp: Date.now() - 2000, project: '/Users/me/other-project', sessionId: 's2' },
-  { display: 'git commit -m "fix bug"', timestamp: Date.now() - 3000, project: '/Users/me/my-project', sessionId: 's3' },
+  {
+    display: 'git status',
+    timestamp: Date.now() - 1000,
+    project: '/Users/me/my-project',
+    sessionId: 's1',
+  },
+  {
+    display: 'npm run dev',
+    timestamp: Date.now() - 2000,
+    project: '/Users/me/other-project',
+    sessionId: 's2',
+  },
+  {
+    display: 'git commit -m "fix bug"',
+    timestamp: Date.now() - 3000,
+    project: '/Users/me/my-project',
+    sessionId: 's3',
+  },
 ]
 
 function setupMocks(entries = SAMPLE_ENTRIES, stats = SAMPLE_STATS) {
@@ -86,7 +101,12 @@ describe('HistoryTab — feed', () => {
   })
 
   it('expands entry on click to show full text', async () => {
-    const longEntry = { display: 'a'.repeat(200), timestamp: Date.now(), project: '/p', sessionId: 's' }
+    const longEntry = {
+      display: 'a'.repeat(200),
+      timestamp: Date.now(),
+      project: '/p',
+      sessionId: 's',
+    }
     setupMocks([longEntry])
     render(<HistoryTab historyVersion={0} />)
     await waitFor(() => screen.getByText(/^a+/))
@@ -147,7 +167,10 @@ describe('HistoryTab — load more', () => {
   it('shows Load More button when results may have more pages', async () => {
     // 100 entries = full page, so Load More should appear
     const fullPage = Array.from({ length: 100 }, (_, i) => ({
-      display: `cmd-${i}`, timestamp: Date.now() - i * 1000, project: '/p', sessionId: `s${i}`,
+      display: `cmd-${i}`,
+      timestamp: Date.now() - i * 1000,
+      project: '/p',
+      sessionId: `s${i}`,
     }))
     setupMocks(fullPage)
     render(<HistoryTab historyVersion={0} />)
