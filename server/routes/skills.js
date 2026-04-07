@@ -11,7 +11,7 @@ const SKILLS_DIR = path.join(os.homedir(), '.claude', 'skills')
 
 router.get('/', (req, res) => res.json(getAllSkills()))
 
-router.get('/:name/raw', async (req, res) => {
+router.get('/:name/raw', async (req, res, next) => {
   const { name } = req.params
   if (!validateName(name, res)) return
   const filePath = path.join(SKILLS_DIR, `${name}.md`)
@@ -20,11 +20,11 @@ router.get('/:name/raw', async (req, res) => {
     res.type('text/plain').send(content)
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })
-    throw err
+    next(err)
   }
 })
 
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   const { name, content } = req.body ?? {}
   if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name is required.' })
   if (!validateName(name, res)) return
@@ -40,12 +40,12 @@ router.post('/', async (req, res) => {
     await fs.mkdir(SKILLS_DIR, { recursive: true })
     await fs.writeFile(filePath, content, 'utf8')
   } catch (err) {
-    throw err
+    return next(err)
   }
   res.status(201).json({ ok: true, name })
 })
 
-router.put('/:name', async (req, res) => {
+router.put('/:name', async (req, res, next) => {
   const { name } = req.params
   if (!validateName(name, res)) return
   const { content } = req.body ?? {}
@@ -55,30 +55,32 @@ router.put('/:name', async (req, res) => {
     await fs.access(filePath)
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })
-    throw err
+    return next(err)
   }
   try {
     await fs.writeFile(filePath, content, 'utf8')
   } catch (err) {
-    throw err
+    return next(err)
   }
   res.json({ ok: true, name })
 })
 
-router.delete('/:name', async (req, res) => {
+router.delete('/:name', async (req, res, next) => {
   const { name } = req.params
   if (!validateName(name, res)) return
   const filePath = path.join(SKILLS_DIR, `${name}.md`)
   // Ensure the resolved path is inside SKILLS_DIR (user skills only)
   const resolved = path.resolve(filePath)
   if (!resolved.startsWith(path.resolve(SKILLS_DIR) + path.sep)) {
-    return res.status(403).json({ error: 'Cannot delete skills outside the user skills directory.' })
+    return res
+      .status(403)
+      .json({ error: 'Cannot delete skills outside the user skills directory.' })
   }
   try {
     await fs.unlink(resolved)
     res.json({ ok: true, name })
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })
-    throw err
+    next(err)
   }
 })

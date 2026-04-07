@@ -12,7 +12,7 @@ export const router = Router()
 
 router.get('/', (req, res) => res.json(getAllTeams()))
 
-router.post('/:name/inbox', async (req, res) => {
+router.post('/:name/inbox', async (req, res, next) => {
   const { name } = req.params
   if (!validateTeamName(name, res)) return
 
@@ -28,7 +28,7 @@ router.post('/:name/inbox', async (req, res) => {
     await fs.access(teamPath)
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'team not found' })
-    throw err
+    return next(err)
   }
 
   try {
@@ -62,11 +62,11 @@ router.post('/:name/inbox', async (req, res) => {
 
     res.status(201).json(message)
   } catch (err) {
-    throw err
+    next(err)
   }
 })
 
-router.patch('/:name/inbox/:messageId', async (req, res) => {
+router.patch('/:name/inbox/:messageId', async (req, res, next) => {
   const { name, messageId } = req.params
   if (!validateTeamName(name, res)) return
   if (!validateMessageId(messageId, res)) return
@@ -82,7 +82,7 @@ router.patch('/:name/inbox/:messageId', async (req, res) => {
     await fs.access(teamPath)
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'team not found' })
-    throw err
+    return next(err)
   }
 
   try {
@@ -91,19 +91,21 @@ router.patch('/:name/inbox/:messageId', async (req, res) => {
       await fs.access(inboxesPath)
     } catch (err) {
       if (err.code === 'ENOENT') return res.status(404).json({ error: 'message not found' })
-      throw err
+      return next(err)
     }
 
-    const files = (await fs.readdir(inboxesPath)).filter(f => f.endsWith('.json'))
+    const files = (await fs.readdir(inboxesPath)).filter((f) => f.endsWith('.json'))
 
     for (const file of files) {
       const filePath = path.join(inboxesPath, file)
       let messages
       try {
         messages = JSON.parse(await fs.readFile(filePath, 'utf-8'))
-      } catch { continue }
+      } catch {
+        continue
+      }
 
-      const idx = messages.findIndex(m => m.id === messageId)
+      const idx = messages.findIndex((m) => m.id === messageId)
       if (idx === -1) continue
 
       if (typeof updates.read !== 'undefined') messages[idx].read = updates.read
@@ -119,6 +121,6 @@ router.patch('/:name/inbox/:messageId', async (req, res) => {
 
     res.status(404).json({ error: 'message not found' })
   } catch (err) {
-    throw err
+    next(err)
   }
 })
