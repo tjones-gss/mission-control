@@ -5,6 +5,7 @@ import path from 'path'
 import os from 'os'
 import { randomUUID } from 'crypto'
 import { validateTeamName, validateMessageId, sanitizeSender } from '../utils/validate.js'
+import { atomicWriteJson } from '../lib/atomic-write.js'
 
 const TEAMS_DIR = path.join(os.homedir(), '.claude', 'teams')
 
@@ -54,12 +55,7 @@ router.post('/:name/inbox', async (req, res, next) => {
     }
 
     messages.push(message)
-
-    // Atomic write: write to temp file then rename
-    const tmpFile = dashboardFile + '.tmp.' + randomUUID().slice(0, 8)
-    await fs.writeFile(tmpFile, JSON.stringify(messages, null, 2))
-    await fs.rename(tmpFile, dashboardFile)
-
+    await atomicWriteJson(dashboardFile, messages)
     res.status(201).json(message)
   } catch (err) {
     next(err)
@@ -111,11 +107,7 @@ router.patch('/:name/inbox/:messageId', async (req, res, next) => {
       if (typeof updates.read !== 'undefined') messages[idx].read = updates.read
       if (typeof updates.archived !== 'undefined') messages[idx].archived = updates.archived
 
-      // Atomic write
-      const tmpFile = filePath + '.tmp.' + randomUUID().slice(0, 8)
-      await fs.writeFile(tmpFile, JSON.stringify(messages, null, 2))
-      await fs.rename(tmpFile, filePath)
-
+      await atomicWriteJson(filePath, messages)
       return res.json(messages[idx])
     }
 
