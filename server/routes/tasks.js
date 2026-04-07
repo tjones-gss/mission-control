@@ -79,23 +79,42 @@ router.put('/:sessionId/:taskId', async (req, res, next) => {
   }
 
   const filePath = path.join(TASKS_DIR, sessionId, `${taskId}.json`)
+
+  // Read the existing task FIRST so missing fields in the request body
+  // fall back to the existing values instead of getting wiped to ''.
+  // The previous handler always defaulted subject/description/owner/etc.
+  // to '', which meant a partial PUT like { status: 'in_progress' } would
+  // blow away subject + description + owner — silent data loss caught
+  // by Run #29 probe. Read-modify-write isn't safe against concurrent
+  // partial PUTs (last-write-wins is still possible) but at least no
+  // single PUT destroys fields it didn't mention.
+  let existing
   try {
-    await fs.access(filePath)
+    existing = JSON.parse(await fs.readFile(filePath, 'utf8'))
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Task not found' })
     return next(err)
   }
 
   try {
+    const body = req.body || {}
     const task = {
       id: taskId,
-      subject: req.body.subject || '',
-      description: req.body.description || '',
-      activeForm: req.body.activeForm || '',
-      status: req.body.status || 'pending',
-      owner: req.body.owner || '',
-      blocks: Array.isArray(req.body.blocks) ? req.body.blocks : [],
-      blockedBy: Array.isArray(req.body.blockedBy) ? req.body.blockedBy : [],
+      subject: body.subject !== undefined ? body.subject : existing.subject || '',
+      description: body.description !== undefined ? body.description : existing.description || '',
+      activeForm: body.activeForm !== undefined ? body.activeForm : existing.activeForm || '',
+      status: body.status !== undefined ? body.status : existing.status || 'pending',
+      owner: body.owner !== undefined ? body.owner : existing.owner || '',
+      blocks: Array.isArray(body.blocks)
+        ? body.blocks
+        : Array.isArray(existing.blocks)
+          ? existing.blocks
+          : [],
+      blockedBy: Array.isArray(body.blockedBy)
+        ? body.blockedBy
+        : Array.isArray(existing.blockedBy)
+          ? existing.blockedBy
+          : [],
     }
 
     await atomicWriteJson(filePath, task)
