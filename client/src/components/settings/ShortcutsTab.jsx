@@ -38,6 +38,19 @@ export function ShortcutsTab({ shortcuts, updateShortcut, resetShortcuts }) {
     return () => document.removeEventListener('keydown', handleKeyCapture, true)
   }, [rebinding, updateShortcut])
 
+  // Render a binding the way users expect to see it: "Ctrl+S" not "Ctrl+s",
+  // "j" stays "j". Only the trailing key (after the last "+") gets uppercased
+  // and only when it's a single printable char so we don't mangle "Enter",
+  // "Escape", "ArrowUp" etc.
+  const formatBinding = (key) => {
+    if (!key) return key
+    const parts = key.split('+')
+    const last = parts.pop()
+    if (last.length === 1) parts.push(last.toUpperCase())
+    else parts.push(last)
+    return parts.join('+')
+  }
+
   return (
     <div className="space-y-4">
       <section>
@@ -72,7 +85,11 @@ export function ShortcutsTab({ shortcuts, updateShortcut, resetShortcuts }) {
                         : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-gray-500'
                   }`}
                 >
-                  {rebinding === action ? 'Press a key...' : isEmpty ? '(unset)' : key}
+                  {rebinding === action
+                    ? 'Press a key...'
+                    : isEmpty
+                      ? '(unset)'
+                      : formatBinding(key)}
                 </button>
               </div>
             )
