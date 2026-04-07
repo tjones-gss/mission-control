@@ -47,6 +47,18 @@ app.use('/api/mcp-servers', mcpRouter)
 app.use('/api/managers', managersRouter)
 app.use('/api/health', healthRouter)
 
+// JSON 404 for any unmatched /api/* request — without this, Express
+// returns its built-in "Cannot POST X" HTML page, which forces every
+// client to handle two error response formats.
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    error: 'Not found',
+    code: 'NOT_FOUND',
+    method: req.method,
+    path: req.originalUrl,
+  })
+})
+
 // Error handler (must be last)
 app.use(errorHandler)
 

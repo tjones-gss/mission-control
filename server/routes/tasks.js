@@ -18,9 +18,16 @@ router.get('/:sessionId', (req, res) => {
   res.json(getTasksForSession(req.params.sessionId))
 })
 
-router.post('/:sessionId', async (req, res) => {
+router.post('/:sessionId', async (req, res, next) => {
   const { sessionId } = req.params
   if (!validateSessionId(sessionId, res)) return
+
+  // Reject empty subject — without this, the user could create a task
+  // with no title that's impossible to identify in the board.
+  const subject = typeof req.body.subject === 'string' ? req.body.subject.trim() : ''
+  if (!subject) {
+    return res.status(400).json({ error: 'subject is required' })
+  }
 
   try {
     const sessionDir = path.join(TASKS_DIR, sessionId)
@@ -43,7 +50,7 @@ router.post('/:sessionId', async (req, res) => {
     const newId = String(maxId + 1)
     const task = {
       id: newId,
-      subject: req.body.subject || '',
+      subject,
       description: req.body.description || '',
       activeForm: req.body.activeForm || '',
       status: req.body.status || 'pending',
@@ -56,11 +63,15 @@ router.post('/:sessionId', async (req, res) => {
     await fs.writeFile(filePath, JSON.stringify(task, null, 2))
     res.status(201).json(task)
   } catch (err) {
-    throw err
+    // Express 4 does NOT auto-catch async rejections — must call next(err)
+    // to reach the shared errorHandler. The previous `throw err` here
+    // bubbled to process.unhandledRejection and the client request hung
+    // until the 30s timeout.
+    next(err)
   }
 })
 
-router.put('/:sessionId/:taskId', async (req, res) => {
+router.put('/:sessionId/:taskId', async (req, res, next) => {
   const { sessionId, taskId } = req.params
   if (!VALID_ID.test(sessionId) || !VALID_ID.test(taskId)) {
     return res.status(400).json({ error: 'Invalid sessionId or taskId' })
@@ -71,7 +82,7 @@ router.put('/:sessionId/:taskId', async (req, res) => {
     await fs.access(filePath)
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Task not found' })
-    throw err
+    return next(err)
   }
 
   try {
@@ -89,11 +100,11 @@ router.put('/:sessionId/:taskId', async (req, res) => {
     await fs.writeFile(filePath, JSON.stringify(task, null, 2))
     res.json(task)
   } catch (err) {
-    throw err
+    next(err)
   }
 })
 
-router.delete('/:sessionId/:taskId', async (req, res) => {
+router.delete('/:sessionId/:taskId', async (req, res, next) => {
   const { sessionId, taskId } = req.params
   if (!VALID_ID.test(sessionId) || !VALID_ID.test(taskId)) {
     return res.status(400).json({ error: 'Invalid sessionId or taskId' })
@@ -105,6 +116,6 @@ router.delete('/:sessionId/:taskId', async (req, res) => {
     res.json({ ok: true })
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Task not found' })
-    throw err
+    next(err)
   }
 })
