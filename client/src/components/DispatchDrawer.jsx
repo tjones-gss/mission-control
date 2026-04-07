@@ -36,6 +36,7 @@ function ChildRow({ child, selected, onToggle, dispatchState }) {
   const pending = dispatchState?.status === 'pending'
   const ok = dispatchState?.status === 'ok'
   const failed = dispatchState?.status === 'failed'
+  const errorMessage = dispatchState?.error || ''
   // Strip leading/trailing whitespace and collapse newlines so the
   // preview stays single-line. lastText is the last assistant text
   // block from the session's JSONL — exactly what the dispatcher needs
@@ -46,12 +47,14 @@ function ChildRow({ child, selected, onToggle, dispatchState }) {
     <button
       type="button"
       onClick={onToggle}
-      title={child.lastText || child.slug}
+      title={failed ? `Dispatch failed: ${errorMessage}` : child.lastText || child.slug}
       className={[
         'w-full flex flex-col gap-1 px-2 py-1.5 rounded text-left transition-colors min-w-0',
-        selected
-          ? 'bg-indigo-900/30 border border-indigo-700'
-          : 'border border-transparent hover:bg-gray-800/60',
+        failed
+          ? 'bg-red-950/40 border border-red-800/60'
+          : selected
+            ? 'bg-indigo-900/30 border border-indigo-700'
+            : 'border border-transparent hover:bg-gray-800/60',
       ].join(' ')}
     >
       <div className="flex items-center gap-2 min-w-0">
@@ -76,7 +79,12 @@ function ChildRow({ child, selected, onToggle, dispatchState }) {
         {ok && <Check size={12} className="shrink-0 text-green-400" />}
         {failed && <AlertCircle size={12} className="shrink-0 text-red-400" />}
       </div>
-      {preview && (
+      {failed && errorMessage && (
+        // Make the error visible inline so the user knows WHY it failed.
+        // Previously the only signal was a tiny red icon with no tooltip.
+        <div className="pl-[26px] text-[11px] text-red-400 truncate min-w-0">⚠ {errorMessage}</div>
+      )}
+      {!failed && preview && (
         // Indent under the checkbox + status dot so the preview lines up
         // with the slug above. truncate keeps it to a single line — full
         // text is in the title attribute on hover.

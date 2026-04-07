@@ -169,20 +169,34 @@ function parseSessionFile(filePath, projectDirName, filename) {
       if (lastThought && lastAction && lastText && model) break
     }
 
-    // Detect if session is waiting for human input
+    // Detect if session is waiting for human input.
+    //
+    // Two earlier bugs caused the dashboard to fire false-positive
+    // "session needs your input" notifications constantly:
+    //
+    //   1. The previous heuristic flagged ANY assistant message with
+    //      tool_use blocks as needsInput=true. But tool_use means the
+    //      assistant is mid-turn, waiting for tool RESULTS, not for the
+    //      user. The correct stop_reason for "waiting on user" is
+    //      'end_turn'; tool_use turns produce stop_reason='tool_use'.
+    //
+    //   2. needsInput could be true even on an isActive session, which
+    //      is contradictory — an active session is currently running, so
+    //      it cannot also be waiting for the user. We now require !isActive.
+    //
+    // Result: a session is "needs input" only if (a) it's not currently
+    // active, (b) it was modified within the abandoned threshold, AND
+    // (c) the very last main-thread record is an assistant message with
+    // stop_reason === 'end_turn'.
     const ABANDONED_THRESHOLD_MS = 4 * 60 * 60 * 1000 // 4 hours
     let needsInput = false
-    if (Date.now() - lastModified < ABANDONED_THRESHOLD_MS) {
-      // Find the last main-thread record
+    if (!isActive && Date.now() - lastModified < ABANDONED_THRESHOLD_MS) {
       for (let i = records.length - 1; i >= 0; i--) {
         const r = records[i]
         if (r.isSidechain) continue
         if (r.type === 'assistant') {
           const stopReason = r.message?.stop_reason || r.stop_reason
-          const hasToolUse =
-            Array.isArray(r.message?.content) &&
-            r.message.content.some((b) => b.type === 'tool_use')
-          if (stopReason === 'end_turn' || hasToolUse) {
+          if (stopReason === 'end_turn') {
             needsInput = true
           }
         }

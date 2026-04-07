@@ -409,7 +409,7 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Sessions list */}
         <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col">
-          <div className="px-3 py-2 border-b border-gray-800 flex items-center">
+          <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Sessions
             </span>
@@ -519,7 +519,7 @@ export default function App() {
           {activeTab === 'agents' && (
             <>
               {/* Board / Detail toggle bar */}
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800 shrink-0">
+              <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-gray-800">
                 {agentView === 'detail' && (
                   <button
                     onClick={() => setAgentView('board')}
