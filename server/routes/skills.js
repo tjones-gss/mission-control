@@ -9,17 +9,40 @@ export const router = Router()
 
 const SKILLS_DIR = path.join(os.homedir(), '.claude', 'skills')
 
+// User skills can live in either of two on-disk layouts:
+//   ~/.claude/skills/<name>.md             (flat file — uncommon)
+//   ~/.claude/skills/<name>/SKILL.md       (subdirectory — the standard
+//                                            layout used by every plugin)
+// Resolve the actual path by checking both, preferring the flat form
+// when it exists for backwards compat with skills authored in this UI.
+async function resolveSkillPath(name) {
+  const flat = path.join(SKILLS_DIR, `${name}.md`)
+  try {
+    await fs.access(flat)
+    return flat
+  } catch {
+    /* try subdir */
+  }
+  const subdir = path.join(SKILLS_DIR, name, 'SKILL.md')
+  try {
+    await fs.access(subdir)
+    return subdir
+  } catch {
+    return null
+  }
+}
+
 router.get('/', (req, res) => res.json(getAllSkills()))
 
 router.get('/:name/raw', async (req, res, next) => {
   const { name } = req.params
   if (!validateName(name, res)) return
-  const filePath = path.join(SKILLS_DIR, `${name}.md`)
   try {
+    const filePath = await resolveSkillPath(name)
+    if (!filePath) return res.status(404).json({ error: 'Skill not found.' })
     const content = await fs.readFile(filePath, 'utf8')
     res.type('text/plain').send(content)
   } catch (err) {
-    if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })
     next(err)
   }
 })
@@ -50,34 +73,47 @@ router.put('/:name', async (req, res, next) => {
   if (!validateName(name, res)) return
   const { content } = req.body ?? {}
   if (typeof content !== 'string') return res.status(400).json({ error: 'content is required.' })
-  const filePath = path.join(SKILLS_DIR, `${name}.md`)
   try {
-    await fs.access(filePath)
+    const filePath = await resolveSkillPath(name)
+    if (!filePath) return res.status(404).json({ error: 'Skill not found.' })
+    // Defense-in-depth: make sure we never write outside SKILLS_DIR
+    const resolved = path.resolve(filePath)
+    if (!resolved.startsWith(path.resolve(SKILLS_DIR) + path.sep)) {
+      return res
+        .status(403)
+        .json({ error: 'Cannot edit skills outside the user skills directory.' })
+    }
+    await fs.writeFile(resolved, content, 'utf8')
+    res.json({ ok: true, name })
   } catch (err) {
-    if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })
-    return next(err)
+    next(err)
   }
-  try {
-    await fs.writeFile(filePath, content, 'utf8')
-  } catch (err) {
-    return next(err)
-  }
-  res.json({ ok: true, name })
 })
 
 router.delete('/:name', async (req, res, next) => {
   const { name } = req.params
   if (!validateName(name, res)) return
-  const filePath = path.join(SKILLS_DIR, `${name}.md`)
-  // Ensure the resolved path is inside SKILLS_DIR (user skills only)
-  const resolved = path.resolve(filePath)
-  if (!resolved.startsWith(path.resolve(SKILLS_DIR) + path.sep)) {
-    return res
-      .status(403)
-      .json({ error: 'Cannot delete skills outside the user skills directory.' })
-  }
   try {
+    const filePath = await resolveSkillPath(name)
+    if (!filePath) return res.status(404).json({ error: 'Skill not found.' })
+    const resolved = path.resolve(filePath)
+    if (!resolved.startsWith(path.resolve(SKILLS_DIR) + path.sep)) {
+      return res
+        .status(403)
+        .json({ error: 'Cannot delete skills outside the user skills directory.' })
+    }
     await fs.unlink(resolved)
+    // For subdirectory-style skills, also remove the empty parent dir
+    // (only if it's empty — preserve sibling files like helper docs).
+    if (path.basename(resolved) === 'SKILL.md') {
+      const parent = path.dirname(resolved)
+      try {
+        const remaining = await fs.readdir(parent)
+        if (remaining.length === 0) await fs.rmdir(parent)
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
     res.json({ ok: true, name })
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })
