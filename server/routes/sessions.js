@@ -516,6 +516,11 @@ router.post('/:sessionId/fork', async (req, res) => {
 // Name endpoint
 // ──────────────────────────────────────────────────────────────────────────────
 
+// Display names can hold any unicode (we want emoji and punctuation), but
+// long ones break the sidebar layout. 80 chars is enough for any sensible
+// session label and well below the 100-char file-name cap used elsewhere.
+const MAX_DISPLAY_NAME_LENGTH = 80
+
 router.post('/:sessionId/name', async (req, res) => {
   const { sessionId } = req.params
   const { name } = req.body
@@ -523,12 +528,32 @@ router.post('/:sessionId/name', async (req, res) => {
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'name is required' })
   }
+  const trimmed = name.trim()
+  if (trimmed.length > MAX_DISPLAY_NAME_LENGTH) {
+    return res.status(400).json({
+      error: `name too long (max ${MAX_DISPLAY_NAME_LENGTH} characters)`,
+    })
+  }
 
   const names = await loadSessionNames()
-  names[sessionId] = name.trim()
+  names[sessionId] = trimmed
   await saveSessionNames(names)
 
-  res.json({ ok: true, sessionId, displayName: name.trim() })
+  res.json({ ok: true, sessionId, displayName: trimmed })
+})
+
+// Clear a custom display name and fall back to the auto-generated slug.
+// Without this endpoint there was no way to undo a rename through the
+// dashboard — once set, the custom name was permanent.
+router.delete('/:sessionId/name', async (req, res) => {
+  const { sessionId } = req.params
+  const names = await loadSessionNames()
+  if (names[sessionId] === undefined) {
+    return res.status(404).json({ error: 'no custom display name set' })
+  }
+  delete names[sessionId]
+  await saveSessionNames(names)
+  res.json({ ok: true, sessionId, displayName: null })
 })
 
 // ──────────────────────────────────────────────────────────────────────────────
