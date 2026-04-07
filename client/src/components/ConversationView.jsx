@@ -45,11 +45,27 @@ function ToolUseBlock({ name, input }) {
   const color = TOOL_COLORS[name] || 'bg-gray-800 text-gray-400'
   const filePath = FILE_TOOLS.has(name) ? input?.file_path : null
 
+  // The header used to be a <button>, but FilePath renders its own
+  // <button> + <a> elements (copy-path, vscode://). Nesting buttons is
+  // invalid HTML and triggered React's validateDOMNesting warning.
+  // Use a div with role=button + keyboard handling instead.
+  const toggle = () => setOpen((o) => !o)
+  const onKey = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      toggle()
+    }
+  }
+
   return (
     <div className="rounded overflow-hidden">
-      <button
-        className={`flex items-center gap-2 px-2 py-1 text-xs font-mono w-full text-left ${color}`}
-        onClick={() => setOpen((o) => !o)}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        className={`flex items-center gap-2 px-2 py-1 text-xs font-mono w-full text-left cursor-pointer ${color}`}
+        onClick={toggle}
+        onKeyDown={onKey}
       >
         <span>{name}</span>
         {filePath && (
@@ -63,7 +79,7 @@ function ToolUseBlock({ name, input }) {
           </span>
         )}
         <span className="opacity-50 text-[10px] ml-auto">{open ? '▲' : '▼'}</span>
-      </button>
+      </div>
       {open && (
         <pre className="bg-gray-900 text-gray-400 text-[11px] font-mono p-2 overflow-x-auto">
           {JSON.stringify(input, null, 2)}

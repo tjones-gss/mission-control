@@ -12,7 +12,16 @@ import { getMemoryForSession } from '../parsers/memory.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
-import { startQuery, spawnNewSession, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
+import {
+  startQuery,
+  spawnNewSession,
+  isQueryActive,
+  getQueryStatus,
+  resolveApproval,
+  cancelQuery,
+  VALID_PERMISSION_MODES,
+  VALID_MODEL_SHORTCUTS,
+} from '../pty-session.js'
 import { onEvent } from '../sse.js'
 import { validateSessionId } from '../utils/validate.js'
 import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
@@ -42,7 +51,9 @@ try {
       fs.unlinkSync(filePath)
     }
   }
-} catch { /* ignore cleanup errors */ }
+} catch {
+  /* ignore cleanup errors */
+}
 
 const storage = multer.diskStorage({
   destination: UPLOAD_DIR,
@@ -65,7 +76,12 @@ const upload = multer({
 })
 
 function mimeToExt(mime) {
-  const map = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' }
+  const map = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+  }
   return map[mime] || '.bin'
 }
 
@@ -74,7 +90,11 @@ function cleanupTempFile(filePath, sessionId) {
 
   // Clean up after session_update indicates response complete, or 5-min timeout
   const timeout = setTimeout(() => {
-    try { fs.unlinkSync(filePath) } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath)
+    } catch {
+      /* already gone */
+    }
     if (removeListener) removeListener()
   }, 300_000)
 
@@ -83,7 +103,11 @@ function cleanupTempFile(filePath, sessionId) {
     if (!data?.filePath?.includes(sessionId)) return
     // Response started — wait a bit for completion, then clean up
     setTimeout(() => {
-      try { fs.unlinkSync(filePath) } catch { /* already gone */ }
+      try {
+        fs.unlinkSync(filePath)
+      } catch {
+        /* already gone */
+      }
       clearTimeout(timeout)
       removeListener()
     }, 5000)
@@ -91,7 +115,12 @@ function cleanupTempFile(filePath, sessionId) {
 }
 
 function cleanupUploadedFile(req) {
-  if (req.file) try { fs.unlinkSync(req.file.path) } catch { /* ignore */ }
+  if (req.file)
+    try {
+      fs.unlinkSync(req.file.path)
+    } catch {
+      /* ignore */
+    }
 }
 
 export const router = Router()
@@ -185,14 +214,18 @@ async function saveSessionNames(names) {
 // Read endpoints
 // ──────────────────────────────────────────────────────────────────────────────
 
-router.get('/', async (req, res) => {
-  const sessions = getAllSessions()
-  const names = await loadSessionNames()
-  const enriched = sessions.map(s => ({
-    ...s,
-    displayName: names[s.sessionId] || null,
-  }))
-  res.json(enriched)
+router.get('/', async (req, res, next) => {
+  try {
+    const sessions = getAllSessions()
+    const names = await loadSessionNames()
+    const enriched = sessions.map((s) => ({
+      ...s,
+      displayName: names[s.sessionId] || null,
+    }))
+    res.json(enriched)
+  } catch (err) {
+    next(err)
+  }
 })
 
 router.get('/:sessionId', async (req, res) => {
@@ -293,9 +326,7 @@ router.post('/:sessionId/message', upload.single('image'), async (req, res) => {
   const message = req.body.message
   let options
   try {
-    options = typeof req.body.options === 'string'
-      ? JSON.parse(req.body.options)
-      : req.body.options
+    options = typeof req.body.options === 'string' ? JSON.parse(req.body.options) : req.body.options
   } catch {
     cleanupUploadedFile(req)
     return res.status(400).json({ error: 'Invalid options JSON' })
@@ -401,7 +432,11 @@ router.post('/new', async (req, res) => {
     const args = buildCliArgs(baseArgs, options)
     const { stdout, stderr } = await runClaude({ args, cwd, timeoutMs: 300_000 })
     let result
-    try { result = JSON.parse(stdout) } catch { result = { raw: stdout } }
+    try {
+      result = JSON.parse(stdout)
+    } catch {
+      result = { raw: stdout }
+    }
     return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
   } catch (err) {
     return res.status(503).json({
@@ -428,12 +463,10 @@ router.post('/:sessionId/fork', async (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' })
 
   try {
-    const args = buildCliArgs([
-      '--resume', sessionId,
-      '--fork-session',
-      '-p', prompt.trim(),
-      '--output-format', 'json',
-    ], options)
+    const args = buildCliArgs(
+      ['--resume', sessionId, '--fork-session', '-p', prompt.trim(), '--output-format', 'json'],
+      options,
+    )
 
     const { stdout, stderr } = await runClaude({
       args,
