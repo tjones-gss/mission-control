@@ -27,6 +27,15 @@ function noFiles() {
   fs.existsSync.mockReturnValue(false)
 }
 
+// The parser now calls fs.readdirSync(userSkillsDir, { withFileTypes: true })
+// and inspects entry.isFile() / entry.isDirectory() so it can support BOTH the
+// flat ~/.claude/skills/<name>.md layout AND the subdir <name>/SKILL.md layout.
+// Plain strings are no longer enough — the test mocks must yield Dirent-like
+// objects with both methods present.
+function flatFile(name) {
+  return { name, isFile: () => true, isDirectory: () => false }
+}
+
 describe('getAllSkills()', () => {
   it('returns empty skills when user skills dir and plugin config are missing', () => {
     noFiles()
@@ -52,7 +61,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['my-skill.md'])
+    fs.readdirSync.mockReturnValue([flatFile('my-skill.md')])
     fs.readFileSync.mockReturnValue(skillContent)
 
     const result = getAllSkills()
@@ -71,7 +80,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['unnamed-skill.md'])
+    fs.readdirSync.mockReturnValue([flatFile('unnamed-skill.md')])
     fs.readFileSync.mockReturnValue(skillContent)
 
     const result = getAllSkills()
@@ -86,7 +95,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['my-skill.md'])
+    fs.readdirSync.mockReturnValue([flatFile('my-skill.md')])
     fs.readFileSync.mockReturnValue(skillContent)
 
     const result = getAllSkills()
@@ -98,7 +107,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['README.txt', 'notes.json'])
+    fs.readdirSync.mockReturnValue([flatFile('README.txt'), flatFile('notes.json')])
     // readFileSync should not be called since no .md files
     fs.readFileSync.mockReturnValue('')
 
@@ -112,7 +121,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['broken.md'])
+    fs.readdirSync.mockReturnValue([flatFile('broken.md')])
     fs.readFileSync.mockImplementation(() => {
       throw new Error('cannot read')
     })

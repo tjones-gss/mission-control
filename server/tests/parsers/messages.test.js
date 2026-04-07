@@ -58,7 +58,12 @@ describe('getSessionMessages()', () => {
     fs.readFileSync.mockReturnValue('')
 
     const result = getSessionMessages('sess-1')
-    expect(result).toEqual({ sessionId: 'sess-1', messages: [] })
+    // The parser now returns paging metadata alongside the messages array
+    // (totalCount/offset/hasMore) so the dashboard can render a Load older
+    // button. Match on the core fields the original test cared about.
+    expect(result).toMatchObject({ sessionId: 'sess-1', messages: [] })
+    expect(result.totalCount).toBe(0)
+    expect(result.hasMore).toBe(false)
   })
 
   it('parses user messages with string content', () => {

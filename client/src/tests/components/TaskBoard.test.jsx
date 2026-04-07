@@ -45,10 +45,12 @@ describe('TaskBoard', () => {
   })
 
   it('shows section headers with counts', () => {
+    // Section labels were renamed to match the form values exactly
+    // (commit 3b877a8): Active → In Progress, Done → Completed.
     render(<TaskBoard {...defaultProps()} />)
-    expect(screen.getByText('Active (1)')).toBeInTheDocument()
+    expect(screen.getByText('In Progress (1)')).toBeInTheDocument()
     expect(screen.getByText('Pending (1)')).toBeInTheDocument()
-    expect(screen.getByText('Done (1)')).toBeInTheDocument()
+    expect(screen.getByText('Completed (1)')).toBeInTheDocument()
   })
 
   it('shows "+ New Task" button', () => {

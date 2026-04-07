@@ -5,6 +5,10 @@ vi.mock('fs', () => {
     writeFile: vi.fn(),
     mkdir: vi.fn(),
     unlink: vi.fn(),
+    readdir: vi.fn(),
+    rmdir: vi.fn(),
+    // rename is required by lib/atomic-write.js (writeFile-then-rename pattern).
+    rename: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
@@ -30,6 +34,8 @@ app.use('/', router)
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // atomic-write.rename must succeed by default or every write path is 500
+  fsp.rename.mockResolvedValue(undefined)
 })
 
 // ─── GET / ──────────────────────────────────────────────────────────────────
@@ -48,15 +54,21 @@ describe('GET /', () => {
 
 describe('GET /:name/raw', () => {
   it('404 when skill not found', async () => {
+    // The route now uses resolveSkillPath which probes both
+    //   ~/.claude/skills/<name>/SKILL.md  (subdir layout)
+    //   ~/.claude/skills/<name>.md        (flat layout)
+    // via fs.access. If both reject, resolveSkillPath returns null and the
+    // route emits 404. Mock access to fail so we exercise that path.
     const err = new Error('not found')
     err.code = 'ENOENT'
-    fsp.readFile.mockRejectedValue(err)
+    fsp.access.mockRejectedValue(err)
     const res = await request(app).get('/missing/raw')
     expect(res.status).toBe(404)
     expect(res.body.error).toMatch(/skill not found/i)
   })
 
   it('200 returns text/plain content', async () => {
+    fsp.access.mockResolvedValue(undefined) // resolveSkillPath finds the file
     fsp.readFile.mockResolvedValue('# My Skill\nDo the thing.')
     const res = await request(app).get('/myskill/raw')
     expect(res.status).toBe(200)
@@ -64,10 +76,13 @@ describe('GET /:name/raw', () => {
     expect(res.text).toContain('# My Skill')
   })
 
-  it('colons are valid in skill names', async () => {
-    fsp.readFile.mockResolvedValue('# Colon Skill')
+  it('colons in skill names are now rejected (Windows file basenames)', async () => {
+    // Skill names previously allowed colons for namespaced plugin skills,
+    // but ':' is reserved on Windows and the writable path now matches
+    // Claude Code's stricter rules. Verify the validator rejects them.
     const res = await request(app).get('/my:skill/raw')
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/invalid skill name/i)
   })
 })
 
@@ -108,13 +123,10 @@ describe('POST /', () => {
     expect(res.body).toEqual({ ok: true, name: 'newskill' })
   })
 
-  it('201 when name uses colons (valid chars)', async () => {
-    fsp.access.mockRejectedValue({ code: 'ENOENT' })
-    fsp.mkdir.mockResolvedValue(undefined)
-    fsp.writeFile.mockResolvedValue(undefined)
+  it('400 when name uses colons (no longer accepted on the writable path)', async () => {
     const res = await request(app).post('/').send({ name: 'my:skill', content: '# Colon Skill' })
-    expect(res.status).toBe(201)
-    expect(res.body).toEqual({ ok: true, name: 'my:skill' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/invalid skill name/i)
   })
 })
 

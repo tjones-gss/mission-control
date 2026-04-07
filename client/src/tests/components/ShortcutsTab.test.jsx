@@ -20,16 +20,18 @@ describe('ShortcutsTab', () => {
   })
 
   it('renders shortcut list with action labels and current keys', () => {
+    // The component now uppercases single-character keys via formatBinding()
+    // (Ctrl+S not Ctrl+s, J not j) — see commit b046e0c.
     render(<ShortcutsTab {...defaultProps} />)
     expect(screen.getByText('Next session')).toBeInTheDocument()
     expect(screen.getByText('Previous session')).toBeInTheDocument()
-    expect(screen.getByText('j')).toBeInTheDocument()
-    expect(screen.getByText('k')).toBeInTheDocument()
+    expect(screen.getByText('J')).toBeInTheDocument()
+    expect(screen.getByText('K')).toBeInTheDocument()
   })
 
   it('clicking a key button starts rebinding (shows "Press a key...")', async () => {
     render(<ShortcutsTab {...defaultProps} />)
-    await userEvent.click(screen.getByText('j'))
+    await userEvent.click(screen.getByText('J'))
     expect(screen.getByText('Press a key...')).toBeInTheDocument()
   })
 

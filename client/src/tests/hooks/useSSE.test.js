@@ -114,6 +114,9 @@ describe('useSSE', () => {
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
 
+    // Keep this list in sync with the `events` array in useSSE.js. New
+    // SSE channels were added for live workflow/skill/memory/plan/config/hooks
+    // refreshes — adding them here ensures the test catches future drift.
     const expectedEvents = [
       'session_update',
       'new_session',
@@ -126,6 +129,12 @@ describe('useSSE', () => {
       'sdk_error',
       'tool_approval_request',
       'tool_approval_resolved',
+      'workflows_update',
+      'skills_update',
+      'memory_update',
+      'plan_update',
+      'config_update',
+      'hooks_update',
     ]
 
     expectedEvents.forEach((eventType) => {

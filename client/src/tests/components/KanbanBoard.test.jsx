@@ -122,13 +122,17 @@ describe('KanbanBoard — needsInput indicator', () => {
     expect(amberPings.length).toBeGreaterThan(0)
   })
 
-  it('does not show amber indicator when needsInput is false', () => {
+  it('does not show amber indicator when needsInput is false and session is not idle-recent', () => {
+    // KanbanBoard now shows an amber idle dot for inactive sessions touched
+    // within the last hour (yellow-idle indicator added in dab26b0). To assert
+    // the needsInput-driven amber path stays off, push lastModified beyond
+    // the 1-hour idle window so neither amber path triggers.
     const sessions = [
       makeSession({
         sessionId: 'i1',
         isActive: false,
         needsInput: false,
-        lastModified: NOW - 30 * 60_000,
+        lastModified: NOW - 2 * 60 * 60_000,
       }),
     ]
     const { container } = render(

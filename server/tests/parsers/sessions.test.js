@@ -292,7 +292,13 @@ describe('getAllSessions()', () => {
 })
 
 describe('needsInput detection', () => {
-  function setupSession(records, mtimeMs = Date.now() - 10_000) {
+  // The default mtime is now 10 minutes ago. The needsInput logic
+  // requires !isActive (active = mtime within 5 minutes), so any test
+  // expecting needsInput=true must use a mtime older than 5 minutes.
+  // The previous default of 10 seconds always made isActive=true and
+  // forced needsInput=false, masking the entire feature.
+  const NEEDS_INPUT_MTIME = Date.now() - 10 * 60 * 1000
+  function setupSession(records, mtimeMs = NEEDS_INPUT_MTIME) {
     const jsonl = records.map((r) => JSON.stringify(r)).join('\n')
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync
@@ -318,7 +324,11 @@ describe('needsInput detection', () => {
     expect(sess.needsInput).toBe(true)
   })
 
-  it('sets needsInput=true when last main record is assistant with tool_use blocks', () => {
+  it('sets needsInput=false when last main record is an assistant tool_use turn', () => {
+    // Tool_use means the assistant is mid-turn waiting for tool RESULTS,
+    // not for the user. The previous heuristic incorrectly flagged this
+    // as needsInput=true and produced constant false-positive notifications.
+    // The new heuristic only triggers on stop_reason='end_turn'.
     const user = makeRecord({ uuid: 'u1', type: 'user' })
     const assistant = makeRecord({
       uuid: 'a1',
@@ -329,7 +339,7 @@ describe('needsInput detection', () => {
       },
     })
     const sess = setupSession([user, assistant])
-    expect(sess.needsInput).toBe(true)
+    expect(sess.needsInput).toBe(false)
   })
 
   it('sets needsInput=false when last main record is a user message', () => {

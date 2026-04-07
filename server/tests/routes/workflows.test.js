@@ -5,6 +5,9 @@ vi.mock('fs', () => {
     writeFile: vi.fn(),
     mkdir: vi.fn(),
     unlink: vi.fn(),
+    // rename is required by lib/atomic-write.js (writeFile-then-rename pattern).
+    // Without it every write path turns into a 500.
+    rename: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
@@ -28,6 +31,8 @@ app.use('/', router)
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // atomic-write.rename must succeed by default or every write path is 500
+  fsp.rename.mockResolvedValue(undefined)
 })
 
 // ─── GET / ──────────────────────────────────────────────────────────────────
