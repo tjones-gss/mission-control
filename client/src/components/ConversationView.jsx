@@ -722,6 +722,18 @@ export function ConversationView({
           blocks: [{ type: 'text', text }],
         },
       ])
+      // Sending is an explicit user action — always bring them back to
+      // the tail of the conversation so they can see their just-sent
+      // message, the generating indicator, and the incoming response.
+      // Without this, a user who was scrolled up reading older context
+      // clicks Send and sees nothing change (paused auto-scroll eats
+      // the update). Unpause + snap to bottom on the next frame so the
+      // new pending-message render has landed in the DOM first.
+      setPaused(false)
+      requestAnimationFrame(() => {
+        const el = scrollRef.current
+        if (el) el.scrollTop = el.scrollHeight
+      })
       try {
         let fetchOpts
         if (imageFile) {
