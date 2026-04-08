@@ -414,8 +414,12 @@ export default function App() {
         </nav>
       </header>
 
-      {/* Body */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Body — reserve 36px at the bottom for the DispatchDrawerHandle,
+          which is fixed at bottom-0 center. Without this clearance the
+          handle sits directly on top of the ConversationView's message
+          input + send button, intercepting clicks and making the input
+          effectively unusable. */}
+      <div className="flex-1 flex overflow-hidden pb-9">
         {/* Left: Sessions list */}
         <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col">
           <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
