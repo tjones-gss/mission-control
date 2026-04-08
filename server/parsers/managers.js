@@ -43,8 +43,17 @@ export function getManagers(sessions = getAllSessions()) {
 
   for (const session of sessions) {
     if (!session.cwd) continue
-    const parent = normalizeDir(path.dirname(session.cwd))
-    if (!parent) continue
+    // Normalize FIRST so the dirname call works against forward slashes.
+    // path.dirname uses the host platform's separator: on Linux CI it's
+    // path.posix which doesn't recognize backslashes, so 'C:\\foo\\bar'
+    // would parse as a single filename and dirname would return '.',
+    // collapsing every Windows-style cwd into one phantom group. Always
+    // use path.posix.dirname against the normalized (forward-slash) form
+    // to get cross-platform behavior.
+    const normalized = normalizeDir(session.cwd)
+    if (!normalized) continue
+    const parent = path.posix.dirname(normalized)
+    if (!parent || parent === '.') continue
     if (!groups.has(parent)) groups.set(parent, [])
     groups.get(parent).push(session)
   }
