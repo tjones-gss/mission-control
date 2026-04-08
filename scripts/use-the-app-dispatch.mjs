@@ -53,11 +53,16 @@ async function main() {
 
   // Expand all manager groups so we can pick any child
   console.log('\n== 3. Expand all manager groups ==')
-  const collapsed = drawer.locator('button').filter({ has: page.locator('svg.lucide-chevron-right') })
+  const collapsed = drawer
+    .locator('button')
+    .filter({ has: page.locator('svg.lucide-chevron-right') })
   const n = await collapsed.count()
   console.log('  collapsed groups:', n)
   for (let i = 0; i < n; i++) {
-    await collapsed.nth(i).click().catch(() => {})
+    await collapsed
+      .nth(i)
+      .click()
+      .catch(() => {})
     await page.waitForTimeout(100)
   }
 
@@ -80,7 +85,10 @@ async function main() {
   await page.waitForTimeout(300)
 
   // Read selected badge
-  const badge = await drawer.getByText(/\d+ selected/).textContent().catch(() => null)
+  const badge = await drawer
+    .getByText(/\d+ selected/)
+    .textContent()
+    .catch(() => null)
   console.log('  selected badge:', badge)
 
   console.log('\n== 5. Type and dispatch ==')

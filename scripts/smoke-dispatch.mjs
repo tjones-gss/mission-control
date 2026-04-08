@@ -27,7 +27,9 @@ async function main() {
       const resp = await req.response().catch(() => null)
       if (resp) {
         const body = await resp.text().catch(() => '<no body>')
-        logs.push(`[fin] ${resp.status()} POST ${req.url().replace(BASE, '')} → ${body.slice(0, 150)}`)
+        logs.push(
+          `[fin] ${resp.status()} POST ${req.url().replace(BASE, '')} → ${body.slice(0, 150)}`,
+        )
       } else {
         logs.push(`[fin-no-resp] POST ${req.url().replace(BASE, '')}`)
       }
@@ -103,11 +105,16 @@ async function main() {
   // The drawer default-expands only the FIRST manager, and the first
   // child in that group happens to be the session we just sent to —
   // which will 409 with "A query is already active".
-  const collapsedManagers = drawer.locator('button').filter({ has: page.locator('svg.lucide-chevron-right') })
+  const collapsedManagers = drawer
+    .locator('button')
+    .filter({ has: page.locator('svg.lucide-chevron-right') })
   const collapsedCount = await collapsedManagers.count()
   console.log('→ collapsed managers to expand:', collapsedCount)
   for (let i = 0; i < collapsedCount; i++) {
-    await collapsedManagers.nth(i).click().catch(() => {})
+    await collapsedManagers
+      .nth(i)
+      .click()
+      .catch(() => {})
     await page.waitForTimeout(100)
   }
 
@@ -118,13 +125,20 @@ async function main() {
     .filter({ has: page.locator('span.uppercase:has-text("done")') })
     .first()
   await doneChildRow.waitFor({ state: 'visible', timeout: 5_000 })
-  const childSlug = await doneChildRow.locator('span.truncate').first().textContent().catch(() => '?')
+  const childSlug = await doneChildRow
+    .locator('span.truncate')
+    .first()
+    .textContent()
+    .catch(() => '?')
   console.log('→ clicking done child:', childSlug)
   await doneChildRow.click()
   await page.waitForTimeout(500)
 
   // Check if "N selected" badge appeared
-  const selectedBadge = await drawer.getByText(/\d+ selected/).textContent().catch(() => null)
+  const selectedBadge = await drawer
+    .getByText(/\d+ selected/)
+    .textContent()
+    .catch(() => null)
   console.log('→ selected badge:', selectedBadge || '(none)')
 
   // Type a message

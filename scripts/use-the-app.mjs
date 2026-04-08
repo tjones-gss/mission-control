@@ -143,7 +143,10 @@ async function main() {
   // ── Check if the typed message is VISIBLE in the conversation
   console.log('\n== 7. Verify message is visible on screen ==')
   const markLocator = page.getByText(MARK, { exact: false })
-  const visible = await markLocator.first().isVisible().catch(() => false)
+  const visible = await markLocator
+    .first()
+    .isVisible()
+    .catch(() => false)
   const count = await markLocator.count().catch(() => 0)
   console.log('  message visible?', visible, 'count=', count)
 

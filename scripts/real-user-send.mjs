@@ -84,7 +84,8 @@ async function runConversationViewFlow(page, targetSid, mark) {
   const results = []
   const netlog = []
   page.on('request', (r) => {
-    if (r.url().includes('/api/sessions/')) netlog.push(`REQ ${r.method()} ${r.url().replace(BASE, '')}`)
+    if (r.url().includes('/api/sessions/'))
+      netlog.push(`REQ ${r.method()} ${r.url().replace(BASE, '')}`)
   })
   page.on('response', (r) => {
     if (/\/api\/sessions\/[^/]+\/message$/.test(r.url())) {
@@ -145,7 +146,11 @@ async function runConversationViewFlow(page, targetSid, mark) {
   await input.waitFor({ state: 'visible', timeout: 15_000 })
   const placeholder = await input.getAttribute('placeholder')
   const disabled = await input.isDisabled()
-  results.push({ name: 'input present', pass: true, detail: `placeholder=${JSON.stringify(placeholder)}` })
+  results.push({
+    name: 'input present',
+    pass: true,
+    detail: `placeholder=${JSON.stringify(placeholder)}`,
+  })
   results.push({ name: 'input not disabled', pass: !disabled })
   if (disabled) return { results, netlog }
 
@@ -237,9 +242,9 @@ async function runConversationViewFlow(page, targetSid, mark) {
   let assistantText = null
   let gotOnServer = false
   for (let i = 0; i < 120; i++) {
-    const msgs = await fetchJson(`http://localhost:3001/api/sessions/${targetSid}/messages?limit=50`).catch(
-      () => null,
-    )
+    const msgs = await fetchJson(
+      `http://localhost:3001/api/sessions/${targetSid}/messages?limit=50`,
+    ).catch(() => null)
     if (msgs?.messages) {
       for (let k = msgs.messages.length - 1; k >= 0; k--) {
         const m = msgs.messages[k]
@@ -275,7 +280,10 @@ async function runConversationViewFlow(page, targetSid, mark) {
     let visibleInUi = false
     const snippet = assistantText.slice(0, Math.min(30, assistantText.length))
     for (let i = 0; i < 40; i++) {
-      const matches = await page.getByText(snippet, { exact: false }).count().catch(() => 0)
+      const matches = await page
+        .getByText(snippet, { exact: false })
+        .count()
+        .catch(() => 0)
       if (matches > 0) {
         visibleInUi = true
         break
@@ -296,7 +304,8 @@ async function runDispatchFlow(page, mark) {
   const results = []
   const netlog = []
   page.on('request', (r) => {
-    if (r.url().includes('/api/sessions/')) netlog.push(`REQ ${r.method()} ${r.url().replace(BASE, '')}`)
+    if (r.url().includes('/api/sessions/'))
+      netlog.push(`REQ ${r.method()} ${r.url().replace(BASE, '')}`)
   })
 
   await page.goto(BASE, { waitUntil: 'domcontentloaded' })

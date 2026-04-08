@@ -17,7 +17,9 @@ function countMark(path, mark) {
   return (readFileSync(path, 'utf8').match(new RegExp(mark, 'g')) || []).length
 }
 
-async function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
+async function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms))
+}
 
 async function trySend(sid, mark) {
   const start = Date.now()
@@ -41,7 +43,7 @@ async function trySend(sid, mark) {
 }
 
 async function main() {
-  const mgrs = await fetch('http://localhost:3001/api/managers').then(r => r.json())
+  const mgrs = await fetch('http://localhost:3001/api/managers').then((r) => r.json())
   const now = Date.now()
   const hourAgo = now - 60 * 60 * 1000
   const CURRENT = 'bac7b314-f182-4357-bc6c-f9a2071618c0'
@@ -54,7 +56,7 @@ async function main() {
     }
   }
   // Pick 6 recent sessions
-  const recent = candidates.filter(c => c.lastModified > hourAgo).slice(0, 6)
+  const recent = candidates.filter((c) => c.lastModified > hourAgo).slice(0, 6)
   console.log(`testing ${recent.length} recent idle sessions`)
 
   for (const c of recent) {
@@ -66,4 +68,7 @@ async function main() {
   }
 }
 
-main().catch(e => { console.error(e); process.exit(1) })
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})
