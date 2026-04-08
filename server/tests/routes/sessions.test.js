@@ -86,7 +86,7 @@ import {
   cancelQuery,
 } from '../../pty-session.js'
 import { onEvent } from '../../sse.js'
-import { router } from '../../routes/sessions.js'
+import { router, _resetSessionsCache } from '../../routes/sessions.js'
 
 const app = express()
 app.use(express.json())
@@ -94,6 +94,9 @@ app.use('/', router)
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // The GET / handler memoizes getAllSessions() with a short TTL; reset
+  // between tests so a prior test's mock return value doesn't leak.
+  _resetSessionsCache()
 })
 
 // ─── GET / ──────────────────────────────────────────────────────────────────

@@ -231,6 +231,13 @@ function getCachedSessions() {
   return data
 }
 
+// Exported so the unit tests can reset between cases — vi.resetAllMocks()
+// doesn't clear the route's in-memory cache, which would otherwise leak
+// the previous test's mock return value into the next test.
+export function _resetSessionsCache() {
+  sessionsCache = { data: null, expiresAt: 0 }
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const sessions = getCachedSessions()
