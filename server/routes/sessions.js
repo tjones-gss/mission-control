@@ -215,9 +215,25 @@ async function saveSessionNames(names) {
 // Read endpoints
 // ──────────────────────────────────────────────────────────────────────────────
 
+// Memoize getAllSessions() with a short TTL. Scanning every project's
+// .jsonl history is fully synchronous and can take 500ms-2s with 60+
+// sessions on disk. The dashboard fires this from useApi on first paint
+// and tab switches; without caching, parallel e2e workers saturate the
+// single-threaded event loop and time out. The watcher emits SSE events
+// on file changes, so a 3s TTL still feels live.
+let sessionsCache = { data: null, expiresAt: 0 }
+const SESSIONS_CACHE_TTL_MS = 3_000
+function getCachedSessions() {
+  const now = Date.now()
+  if (sessionsCache.data && sessionsCache.expiresAt > now) return sessionsCache.data
+  const data = getAllSessions()
+  sessionsCache = { data, expiresAt: now + SESSIONS_CACHE_TTL_MS }
+  return data
+}
+
 router.get('/', async (req, res, next) => {
   try {
-    const sessions = getAllSessions()
+    const sessions = getCachedSessions()
     const names = await loadSessionNames()
     const enriched = sessions.map((s) => ({
       ...s,

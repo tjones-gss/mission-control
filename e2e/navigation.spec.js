@@ -28,8 +28,10 @@ test.describe('navigation', () => {
     await page.getByRole('button', { name: 'Workflows' }).click()
     // The Workflows panel has a "Workflows" heading in its left sidebar
     await expect(page.getByRole('button', { name: 'Workflows' })).toHaveClass(/bg-gray-800/)
-    // WorkflowsPanel renders a "Workflows" label and a New button
-    await expect(page.getByRole('button', { name: /New/ })).toBeVisible()
+    // WorkflowsPanel renders a "Workflows" label and a "New" button.
+    // Use exact:true so we don't accidentally match the sidebar's
+    // "New session" button which also contains "New".
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible()
   })
 
   test('can switch to Skills tab', async ({ page }) => {

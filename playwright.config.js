@@ -5,8 +5,20 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Cap to 2 workers locally too: the dashboard's first-paint fires
+  // ~6 useApi calls in parallel against a single-threaded Node server,
+  // and 4+ headless browsers all hammering it at once produces head-of-
+  // line blocking that exceeds even the bumped 15s expect timeout.
+  workers: process.env.CI ? 1 : 2,
   reporter: 'html',
+  // The dashboard mounts ~6 useApi calls on first paint (sessions,
+  // skills, workflows, teams, history-stats, plans). Node serializes
+  // them and /api/sessions in particular can take >1s when there are
+  // 60+ session JSONLs to scan. The default 5s expect + 30s test
+  // timeouts were too tight under that load, especially with parallel
+  // workers all hitting the same backend at once.
+  timeout: 60_000,
+  expect: { timeout: 15_000 },
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
@@ -20,13 +32,26 @@ export default defineConfig({
   webServer: [
     {
       command: 'cd server && npm run dev',
-      url: 'http://localhost:3001',
+      // Probe /api/health (returns 200) instead of root (returns 404).
+      // Playwright's reuseExistingServer probe needs a 2xx/3xx response
+      // to consider the server ready; root returning 404 made it think
+      // the server wasn't up and try to spawn its own → EADDRINUSE.
+      url: 'http://localhost:3001/api/health',
       reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+      // Disable the per-IP rate limit under e2e. The e2e suite fires
+      // thousands of requests in a few minutes (API CRUD tests plus
+      // the dashboard's 6+ concurrent useApi calls per test) and the
+      // dev-default 2000/15min cap starts returning 429 ~halfway
+      // through the suite. OVERSIGHT_RATE_LIMIT=0 is the documented
+      // opt-out in middleware/security.js.
+      env: { OVERSIGHT_RATE_LIMIT: '0' },
     },
     {
       command: 'cd client && npm run dev',
       url: 'http://localhost:5173',
       reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
     },
   ],
 })

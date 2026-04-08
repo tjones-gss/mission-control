@@ -35,7 +35,26 @@ async function resolveSkillPath(name) {
   }
 }
 
-router.get('/', (req, res) => res.json(getAllSkills()))
+// Memoize getAllSkills() with a short TTL. Scanning ~/.claude/skills,
+// commands, and every installed plugin's SKILL.md files is fully
+// synchronous and can take 500ms-2s with many plugins. The dashboard
+// fires this from multiple useApi consumers on first paint and on tab
+// switches, which can saturate the single-threaded event loop and make
+// e2e tests time out under parallel workers.
+let skillsCache = { data: null, expiresAt: 0 }
+const SKILLS_CACHE_TTL_MS = 5_000
+function getCachedSkills() {
+  const now = Date.now()
+  if (skillsCache.data && skillsCache.expiresAt > now) return skillsCache.data
+  const data = getAllSkills()
+  skillsCache = { data, expiresAt: now + SKILLS_CACHE_TTL_MS }
+  return data
+}
+function invalidateSkillsCache() {
+  skillsCache = { data: null, expiresAt: 0 }
+}
+
+router.get('/', (req, res) => res.json(getCachedSkills()))
 
 router.get('/:name/raw', async (req, res, next) => {
   const { name } = req.params
@@ -76,6 +95,7 @@ router.post('/', async (req, res, next) => {
   } catch (err) {
     return next(err)
   }
+  invalidateSkillsCache()
   res.status(201).json({ ok: true, name })
 })
 
@@ -95,6 +115,7 @@ router.put('/:name', async (req, res, next) => {
         .json({ error: 'Cannot edit skills outside the user skills directory.' })
     }
     await atomicWrite(resolved, content)
+    invalidateSkillsCache()
     res.json({ ok: true, name })
   } catch (err) {
     next(err)
@@ -125,6 +146,7 @@ router.delete('/:name', async (req, res, next) => {
         /* best-effort cleanup */
       }
     }
+    invalidateSkillsCache()
     res.json({ ok: true, name })
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Skill not found.' })

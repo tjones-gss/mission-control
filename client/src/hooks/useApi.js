@@ -10,6 +10,7 @@ export function useApi(url, deps = []) {
     async (signal) => {
       if (!url) return
       setLoading(true)
+      let aborted = false
       try {
         const res = await fetch(url, { signal })
         if (!res.ok) {
@@ -23,10 +24,19 @@ export function useApi(url, deps = []) {
         setData(await res.json())
         setError(null)
       } catch (e) {
-        if (e.name === 'AbortError') return
+        if (e.name === 'AbortError') {
+          aborted = true
+          return
+        }
         setError(e.message)
       } finally {
-        setLoading(false)
+        // Don't flip loading=false on an aborted fetch — under React
+        // StrictMode the effect mounts → cleanup aborts → mounts again,
+        // and the aborted first fetch was racing to set loading=false
+        // BEFORE the second fetch landed, leaving consumers briefly in
+        // {data: null, loading: false} → "No data" empty state. Caught
+        // by an e2e test that queried during that microtask gap.
+        if (!aborted) setLoading(false)
       }
     },
     [url],
