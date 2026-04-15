@@ -18,7 +18,7 @@ describe('ToolApprovalBanner', () => {
         approval={makeApproval({ toolName: 'Bash' })}
         onApprove={vi.fn()}
         onDeny={vi.fn()}
-      />
+      />,
     )
     expect(screen.getByText('Bash')).toBeInTheDocument()
   })
@@ -29,11 +29,11 @@ describe('ToolApprovalBanner', () => {
         approval={makeApproval({ toolName: 'Bash' })}
         onApprove={vi.fn()}
         onDeny={vi.fn()}
-      />
+      />,
     )
     const toolPill = screen.getByText('Bash')
     const expectedClasses = TOOL_COLORS['Bash'].split(' ')
-    expectedClasses.forEach(cls => {
+    expectedClasses.forEach((cls) => {
       expect(toolPill).toHaveClass(cls)
     })
   })
@@ -44,7 +44,7 @@ describe('ToolApprovalBanner', () => {
         approval={makeApproval({ toolName: 'UnknownTool' })}
         onApprove={vi.fn()}
         onDeny={vi.fn()}
-      />
+      />,
     )
     const toolPill = screen.getByText('UnknownTool')
     expect(toolPill).toHaveClass('bg-gray-800')
@@ -58,7 +58,7 @@ describe('ToolApprovalBanner', () => {
         approval={makeApproval({ approvalId: 'appr-42' })}
         onApprove={onApprove}
         onDeny={vi.fn()}
-      />
+      />,
     )
     fireEvent.click(screen.getByText('Allow'))
     expect(onApprove).toHaveBeenCalledTimes(1)
@@ -72,7 +72,7 @@ describe('ToolApprovalBanner', () => {
         approval={makeApproval({ approvalId: 'appr-42' })}
         onApprove={vi.fn()}
         onDeny={onDeny}
-      />
+      />,
     )
     fireEvent.click(screen.getByText('Deny'))
     expect(onDeny).toHaveBeenCalledTimes(1)
@@ -85,20 +85,14 @@ describe('ToolApprovalBanner', () => {
         approval={makeApproval({ input: { command: 'ls -la' } })}
         onApprove={vi.fn()}
         onDeny={vi.fn()}
-      />
+      />,
     )
     expect(screen.queryByText(/"command"/)).not.toBeInTheDocument()
   })
 
   it('expand toggle reveals the input JSON', () => {
     const approval = makeApproval({ input: { command: 'ls -la' } })
-    render(
-      <ToolApprovalBanner
-        approval={approval}
-        onApprove={vi.fn()}
-        onDeny={vi.fn()}
-      />
-    )
+    render(<ToolApprovalBanner approval={approval} onApprove={vi.fn()} onDeny={vi.fn()} />)
     // The toggle button is the one that shows ChevronDown/ChevronUp (no text label)
     // It sits between the tool pill and the Allow/Deny buttons
     const expandButton = screen.getByRole('button', { name: '' })

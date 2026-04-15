@@ -1,5 +1,5 @@
-const cache = new Map()     // sessionId → { result, timestamp }
-const inFlight = new Map()  // sessionId → Promise
+const cache = new Map() // sessionId → { result, timestamp }
+const inFlight = new Map() // sessionId → Promise
 const TTL_MS = 60_000
 const MAX_ENTRIES = 20
 

@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../audio/tts.js', () => ({
-  getAvailableVoices: vi.fn(() => Promise.resolve([]))
+  getAvailableVoices: vi.fn(() => Promise.resolve([])),
 }))
 
 import { SoundsVoiceTab } from '../../components/settings/SoundsVoiceTab.jsx'
@@ -16,7 +16,7 @@ const mockSoundEngine = {
     events: {
       needsInput: { sound: 'chime', voice: false },
       sessionError: { sound: 'alert', voice: false },
-    }
+    },
   })),
   updatePrefs: vi.fn((partial) => ({ ...mockSoundEngine.getPrefs(), ...partial })),
   playPreset: vi.fn(),

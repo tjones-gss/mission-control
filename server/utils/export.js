@@ -6,7 +6,9 @@ export function formatAsMarkdown(session, messages) {
   // Header
   lines.push(`# Session: ${session.slug || session.sessionId}`)
   lines.push('')
-  lines.push(`**Model:** ${session.model || 'unknown'} | **Started:** ${session.firstTimestamp || 'unknown'} | **Messages:** ${messages.length}`)
+  lines.push(
+    `**Model:** ${session.model || 'unknown'} | **Started:** ${session.firstTimestamp || 'unknown'} | **Messages:** ${messages.length}`,
+  )
   lines.push(`**Project:** ${session.cwd || 'unknown'}`)
   lines.push('')
   lines.push('---')
@@ -76,13 +78,17 @@ function formatBlocks(blocks, lines) {
 }
 
 export function formatAsJson(session, messages) {
-  return JSON.stringify({
-    sessionId: session.sessionId,
-    slug: session.slug || null,
-    model: session.model || null,
-    cwd: session.cwd || null,
-    firstTimestamp: session.firstTimestamp || null,
-    messageCount: messages.length,
-    messages,
-  }, null, 2)
+  return JSON.stringify(
+    {
+      sessionId: session.sessionId,
+      slug: session.slug || null,
+      model: session.model || null,
+      cwd: session.cwd || null,
+      firstTimestamp: session.firstTimestamp || null,
+      messageCount: messages.length,
+      messages,
+    },
+    null,
+    2,
+  )
 }

@@ -45,7 +45,7 @@ describe('watcher', () => {
     startWatcher()
     expect(chokidar.watch).toHaveBeenCalledWith(
       CLAUDE_DIR,
-      expect.objectContaining({ persistent: true, ignoreInitial: true })
+      expect.objectContaining({ persistent: true, ignoreInitial: true }),
     )
   })
 

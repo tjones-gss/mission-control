@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../hooks/useApi.js', () => ({
-  useApi: vi.fn()
+  useApi: vi.fn(),
 }))
 
 import { useApi } from '../../hooks/useApi.js'
@@ -15,7 +15,7 @@ const INTEL_DATA = {
   flags: ['High token usage'],
   subagents: '2 active',
   recommendation: 'Consider splitting',
-  analyzedAt: Date.now()
+  analyzedAt: Date.now(),
 }
 
 const defaultProps = { sessionId: 'test-123', intelligenceVersion: 1, active: true }
@@ -62,7 +62,12 @@ describe('IntelView', () => {
 
   it('shows error state with "Intel analysis failed"', () => {
     localStorage.setItem('intel_enabled', 'true')
-    useApi.mockReturnValue({ data: null, loading: false, error: 'analysis_failed', refetch: vi.fn() })
+    useApi.mockReturnValue({
+      data: null,
+      loading: false,
+      error: 'analysis_failed',
+      refetch: vi.fn(),
+    })
     render(<IntelView {...defaultProps} />)
     expect(screen.getByText(/Intel analysis failed/)).toBeInTheDocument()
   })

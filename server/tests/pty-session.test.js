@@ -21,11 +21,15 @@ function createMockTerm() {
     }),
     removeListener: vi.fn((event, handler) => {
       if (capturedOn[event]) {
-        capturedOn[event] = capturedOn[event].filter(h => h !== handler)
+        capturedOn[event] = capturedOn[event].filter((h) => h !== handler)
       }
     }),
-    onData: vi.fn(handler => { capturedOnData = handler }),
-    onExit: vi.fn(handler => { capturedOnExit = handler }),
+    onData: vi.fn((handler) => {
+      capturedOnData = handler
+    }),
+    onExit: vi.fn((handler) => {
+      capturedOnExit = handler
+    }),
   }
   return term
 }
@@ -105,14 +109,15 @@ async function bootSession(sessionId, opts = {}) {
   // Phase 1: Trust prompt appears — waitForReady detects "trust" and sends Enter
   const trustData = '\x1b[?2004h\x1b[?1004hDo you trust this folder?'
   if (capturedOn['data'] && capturedOn['data'].length > 0) {
-    capturedOn['data'].forEach(h => h(trustData))
+    capturedOn['data'].forEach((h) => h(trustData))
   }
   await Promise.resolve()
 
   // Phase 2: After trust accepted, full UI loads with "Claude Code" + status bar with /effort
-  const uiData = '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76\x1b[38;2;153;153;153m\x1b[16;181H\xe2\x97\x90 medium \xc2\xb7 /effort'
+  const uiData =
+    '\x1b[?2004h\x1b[?1004hClaude Code v2.1.76\x1b[38;2;153;153;153m\x1b[16;181H\xe2\x97\x90 medium \xc2\xb7 /effort'
   if (capturedOn['data'] && capturedOn['data'].length > 0) {
-    capturedOn['data'].forEach(h => h(uiData))
+    capturedOn['data'].forEach((h) => h(uiData))
   }
 
   // Advance past the 500ms post-detection pause in waitForReady
@@ -158,9 +163,10 @@ describe('isQueryActive()', () => {
     expect(isQueryActive(sid)).toBe(true)
 
     // Finish the boot so the session is cleaned up for the module
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004htrust this folder'))
+    if (capturedOn['data']) capturedOn['data'].forEach((h) => h('\x1b[?2004htrust this folder'))
     await Promise.resolve()
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
+    if (capturedOn['data'])
+      capturedOn['data'].forEach((h) => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(150)
     await promise
@@ -203,7 +209,7 @@ describe('startQuery()', () => {
   it('spawns PTY with --resume and sessionId', async () => {
     const sid = uniqueSession()
     await bootSession(sid)
-    const expectedCmd = process.platform === 'win32' ? 'claude.exe' : 'claude'
+    const expectedCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude'
     expect(pty.spawn).toHaveBeenCalledWith(
       expectedCmd,
       expect.arrayContaining(['--resume', sid]),
@@ -214,7 +220,7 @@ describe('startQuery()', () => {
   it('passes cwd to pty.spawn', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { cwd: '/my/project' })
-    const expectedCmd = process.platform === 'win32' ? 'claude.exe' : 'claude'
+    const expectedCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude'
     expect(pty.spawn).toHaveBeenCalledWith(
       expectedCmd,
       expect.any(Array),
@@ -230,14 +236,15 @@ describe('startQuery()', () => {
     await Promise.resolve()
 
     // Second call while first is still in waitForReady (busy=true)
-    await expect(
-      startQuery({ sessionId: sid, prompt: 'second', cwd: '/tmp' })
-    ).rejects.toThrow('A query is already active for this session')
+    await expect(startQuery({ sessionId: sid, prompt: 'second', cwd: '/tmp' })).rejects.toThrow(
+      'A query is already active for this session',
+    )
 
     // Clean up
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004htrust this folder'))
+    if (capturedOn['data']) capturedOn['data'].forEach((h) => h('\x1b[?2004htrust this folder'))
     await Promise.resolve()
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
+    if (capturedOn['data'])
+      capturedOn['data'].forEach((h) => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(150)
     await first
@@ -254,10 +261,7 @@ describe('startQuery()', () => {
   it('emits sdk_message after writing prompt', async () => {
     const sid = uniqueSession()
     await bootSession(sid)
-    expect(emit).toHaveBeenCalledWith(
-      'sdk_message',
-      expect.objectContaining({ sessionId: sid }),
-    )
+    expect(emit).toHaveBeenCalledWith('sdk_message', expect.objectContaining({ sessionId: sid }))
   })
 
   it('resolves with { ok: true, streaming: true }', async () => {
@@ -311,15 +315,15 @@ describe('startQuery()', () => {
   })
 
   it('rejects when sessionId is null', async () => {
-    await expect(
-      startQuery({ sessionId: null, prompt: 'hi', cwd: '/tmp' })
-    ).rejects.toThrow('sessionId is required')
+    await expect(startQuery({ sessionId: null, prompt: 'hi', cwd: '/tmp' })).rejects.toThrow(
+      'sessionId is required',
+    )
   })
 
   it('rejects when sessionId is undefined', async () => {
-    await expect(
-      startQuery({ sessionId: undefined, prompt: 'hi', cwd: '/tmp' })
-    ).rejects.toThrow('sessionId is required')
+    await expect(startQuery({ sessionId: undefined, prompt: 'hi', cwd: '/tmp' })).rejects.toThrow(
+      'sessionId is required',
+    )
   })
 
   it('sanitizes control characters from prompt before writing to PTY', async () => {
@@ -341,7 +345,7 @@ describe('startQuery()', () => {
     await Promise.resolve()
 
     // Trigger exit event before silence timer fires — simulates PTY crash on init
-    if (capturedOn['exit']) capturedOn['exit'].forEach(h => h())
+    if (capturedOn['exit']) capturedOn['exit'].forEach((h) => h())
 
     await expect(promise).rejects.toThrow()
   })
@@ -375,14 +379,16 @@ describe('waitForReady() trust prompt acceptance', () => {
     await Promise.resolve()
 
     // Fire trust prompt data (includes first bracketed paste enable)
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hDo you trust this folder?'))
+    if (capturedOn['data'])
+      capturedOn['data'].forEach((h) => h('\x1b[?2004hDo you trust this folder?'))
     await Promise.resolve()
 
     // The trust prompt should trigger an Enter
     expect(mockTerm.write).toHaveBeenCalledWith('\r')
 
     // Now fire Claude Code UI (includes second bracketed paste enable)
-    if (capturedOn['data']) capturedOn['data'].forEach(h => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
+    if (capturedOn['data'])
+      capturedOn['data'].forEach((h) => h('\x1b[?2004hClaude Code v2.1.76 /effort'))
     vi.advanceTimersByTime(500)
     await vi.advanceTimersByTimeAsync(150)
     await promise
@@ -565,11 +571,11 @@ describe('handlePtyData — approval detection', () => {
 
   it('does not emit a second approval when one is already unresolved', () => {
     capturedOnData('Do you want to allow this?')
-    const countAfterFirst = emit.mock.calls.filter(c => c[0] === 'tool_approval_request').length
+    const countAfterFirst = emit.mock.calls.filter((c) => c[0] === 'tool_approval_request').length
 
     // Second matching chunk — should be ignored because an unresolved approval exists
     capturedOnData('Do you want to allow that?')
-    const countAfterSecond = emit.mock.calls.filter(c => c[0] === 'tool_approval_request').length
+    const countAfterSecond = emit.mock.calls.filter((c) => c[0] === 'tool_approval_request').length
 
     expect(countAfterSecond).toBe(countAfterFirst)
   })
@@ -581,7 +587,9 @@ describe('handlePtyData — approval detection', () => {
 
   it('does not false-positive on [Y/n] in middle of conversational text', () => {
     // This would false-positive without the tail-only + end-of-string anchor fix
-    capturedOnData('You can use [Y/n] prompts in your CLI.\nThe tool is working now.\nStill running.\nAlmost done.\nDone processing.')
+    capturedOnData(
+      'You can use [Y/n] prompts in your CLI.\nThe tool is working now.\nStill running.\nAlmost done.\nDone processing.',
+    )
     expect(emit).not.toHaveBeenCalledWith('tool_approval_request', expect.any(Object))
   })
 })

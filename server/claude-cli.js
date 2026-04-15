@@ -1,5 +1,8 @@
 import { spawn } from 'child_process'
 
+// On Windows, npm shims are .cmd files — child_process.spawn needs shell:true or the full name
+const CLAUDE_CMD = process.platform === 'win32' ? 'claude.cmd' : 'claude'
+
 /**
  * Spawn the claude CLI as a subprocess with proper environment isolation.
  * @param {object} options
@@ -19,15 +22,19 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
     const spawnOpts = { env, stdio: ['pipe', 'pipe', 'pipe'] }
     if (cwd) spawnOpts.cwd = cwd
 
-    const child = spawn('claude', args, spawnOpts)
+    const child = spawn(CLAUDE_CMD, args, spawnOpts)
 
     // Close stdin immediately — claude CLI waits for EOF on stdin when it is a pipe
     child.stdin.end()
 
     let stdout = ''
     let stderr = ''
-    child.stdout.on('data', chunk => { stdout += chunk })
-    child.stderr.on('data', chunk => { stderr += chunk })
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
 
     const timer = setTimeout(() => {
       child.kill()
@@ -36,7 +43,7 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
       reject(err)
     }, timeoutMs)
 
-    child.on('error', err => {
+    child.on('error', (err) => {
       clearTimeout(timer)
       err.stderrOutput = stderr
       reject(err)

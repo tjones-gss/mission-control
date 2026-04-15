@@ -2,7 +2,8 @@
 // - Unix: /home/user/file.js, /tmp/foo.txt
 // - Windows: C:\Users\file.js, C:/Users/file.js
 // Optionally followed by :lineNumber
-const FILE_PATH_RE = /(?:(?:[A-Za-z]:[\\/]|\/(?:home|Users|tmp|var|etc|opt|usr|mnt|srv|root|c\/Users))[^\s"'`,;)}\]>]+)/g
+const FILE_PATH_RE =
+  /(?:(?:[A-Za-z]:[\\/]|\/(?:home|Users|tmp|var|etc|opt|usr|mnt|srv|root|c\/Users))[^\s"'`,;)}\]>]+)/g
 
 export function extractFilePaths(text) {
   if (!text) return []
@@ -24,7 +25,8 @@ export function extractFilePaths(text) {
     }
 
     // Skip URLs
-    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('ftp://')) continue
+    if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('ftp://'))
+      continue
 
     matches.push({
       path,

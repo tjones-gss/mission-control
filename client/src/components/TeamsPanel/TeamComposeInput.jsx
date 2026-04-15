@@ -28,7 +28,10 @@ export function TeamComposeInput({ teamName, onSent }) {
   }
 
   function handleKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
   }
 
   return (
@@ -38,7 +41,7 @@ export function TeamComposeInput({ teamName, onSent }) {
         <input
           type="text"
           value={content}
-          onChange={e => setContent(e.target.value)}
+          onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={`Message ${teamName}...`}
           className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-600"

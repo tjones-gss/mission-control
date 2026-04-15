@@ -1,5 +1,20 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { Eye, GitBranch, ListTodo, Command, HelpCircle, LayoutGrid, List, ArrowLeft, Bell, Settings, Plus, Users, History } from 'lucide-react'
+import {
+  Eye,
+  GitBranch,
+  ListTodo,
+  Command,
+  HelpCircle,
+  LayoutGrid,
+  List,
+  ArrowLeft,
+  Bell,
+  Settings,
+  Plus,
+  Users,
+  History,
+  Layers,
+} from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
 import { useNotifications, getNotificationPrefs } from './hooks/useNotifications.js'
@@ -19,6 +34,8 @@ import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
 import { ShortcutHelpOverlay } from './components/ShortcutHelpOverlay.jsx'
+import { DispatchDrawer, DispatchDrawerHandle } from './components/DispatchDrawer.jsx'
+import { DispatchSignal } from './components/DispatchSignal.jsx'
 import { projectLabel } from './utils/session.js'
 
 const TABS = [
@@ -67,6 +84,9 @@ export default function App() {
   const [showLegend, setShowLegend] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
+  const [showDispatch, setShowDispatch] = useState(false)
+  // Dispatch signal animation: { from: {x,y}, to: {x,y}, sessionId } or null
+  const [dispatchSignal, setDispatchSignal] = useState(null)
   const [events, setEvents] = useState([])
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
@@ -78,23 +98,31 @@ export default function App() {
   const [memoryVersion, setMemoryVersion] = useState(0)
 
   const { data: sessions, refetch: refetchSessions } = useApi('/api/sessions', [sessionsVersion])
-  const { data: tasks, loading: tasksLoading, refetch: refetchTasks } = useApi(
-    selectedSessionId ? `/api/tasks/${selectedSessionId}` : null,
-    [selectedSessionId, tasksVersion]
-  )
-  const { data: workflows, loading: workflowsLoading, refetch: refetchWorkflows } = useApi('/api/workflows')
+  const {
+    data: tasks,
+    loading: tasksLoading,
+    refetch: refetchTasks,
+  } = useApi(selectedSessionId ? `/api/tasks/${selectedSessionId}` : null, [
+    selectedSessionId,
+    tasksVersion,
+  ])
+  const {
+    data: workflows,
+    loading: workflowsLoading,
+    refetch: refetchWorkflows,
+  } = useApi('/api/workflows')
   const { data: skills, loading: skillsLoading, refetch: refetchSkills } = useApi('/api/skills')
   const { data: teams, refetch: refetchTeams } = useApi('/api/teams', [teamsVersion])
 
   // Auto-select first active session
   useEffect(() => {
     if (sessions?.length && !selectedSessionId) {
-      const active = sessions.find(s => s.isActive) || sessions[0]
+      const active = sessions.find((s) => s.isActive) || sessions[0]
       setSelectedSessionId(active.sessionId)
     }
   }, [sessions, selectedSessionId])
 
-  const selectedSession = sessions?.find(s => s.sessionId === selectedSessionId)
+  const selectedSession = sessions?.find((s) => s.sessionId === selectedSessionId)
 
   // SDK streaming session
   const streaming = useStreamingSession(selectedSessionId)
@@ -104,57 +132,72 @@ export default function App() {
   const lastSessionSoundRef = useRef(0)
 
   const sessionsDebounceRef = useRef(null)
-  const { connected } = useSSE(useCallback(evt => {
-    // Forward SDK events to streaming handler
-    streaming.handleSdkEvent(evt)
+  const { connected } = useSSE(
+    useCallback(
+      (evt) => {
+        // Forward SDK events to streaming handler
+        streaming.handleSdkEvent(evt)
 
-    setEvents(prev => [...prev.slice(-199), evt])
-    if (evt.type === 'session_update' || evt.type === 'new_session') {
-      if (!sessionsDebounceRef.current) {
-        sessionsDebounceRef.current = setTimeout(() => {
-          sessionsDebounceRef.current = null
-          setSessionsVersion(v => v + 1)
-        }, 100)
-      }
-    }
-    if (evt.type === 'task_update') {
-      setTasksVersion(v => v + 1)
-    }
-    if (evt.type === 'intelligence_update') {
-      setIntelligenceVersion(v => v + 1)
-    }
-    if (evt.type === 'team_update') {
-      setTeamsVersion(v => v + 1)
-    }
-    if (evt.type === 'history_update') {
-      setHistoryVersion(v => v + 1)
-    }
-    if (evt.type === 'plan_update') {
-      setPlanVersion(v => v + 1)
-    }
-    if (evt.type === 'config_update') {
-      setConfigVersion(v => v + 1)
-    }
-    if (evt.type === 'memory_update') {
-      setMemoryVersion(v => v + 1)
-    }
+        setEvents((prev) => [...prev.slice(-199), evt])
+        if (evt.type === 'session_update' || evt.type === 'new_session') {
+          if (!sessionsDebounceRef.current) {
+            sessionsDebounceRef.current = setTimeout(() => {
+              sessionsDebounceRef.current = null
+              setSessionsVersion((v) => v + 1)
+            }, 100)
+          }
+        }
+        if (evt.type === 'task_update') {
+          setTasksVersion((v) => v + 1)
+        }
+        if (evt.type === 'intelligence_update') {
+          setIntelligenceVersion((v) => v + 1)
+        }
+        if (evt.type === 'team_update') {
+          setTeamsVersion((v) => v + 1)
+        }
+        if (evt.type === 'history_update') {
+          setHistoryVersion((v) => v + 1)
+        }
+        if (evt.type === 'plan_update') {
+          setPlanVersion((v) => v + 1)
+        }
+        if (evt.type === 'config_update') {
+          setConfigVersion((v) => v + 1)
+        }
+        if (evt.type === 'memory_update') {
+          setMemoryVersion((v) => v + 1)
+        }
+        if (evt.type === 'workflows_update') {
+          refetchWorkflows?.()
+        }
+        if (evt.type === 'skills_update') {
+          refetchSkills?.()
+        }
 
-    // Play sound for non-session events (needsInput is handled by useNotifications)
-    const soundEvent = SSE_SOUND_MAP[evt.type]
-    if (soundEvent && getNotificationPrefs().sound) {
-      // Throttle session_update sounds to avoid noise
-      if (evt.type === 'session_update') {
-        const now = Date.now()
-        if (now - lastSessionSoundRef.current < SESSION_UPDATE_SOUND_COOLDOWN) return
-        lastSessionSoundRef.current = now
-      }
-      soundEngine.play(soundEvent, evt.sessionId ? { projectLabel: evt.projectLabel || 'session' } : undefined)
-    }
-  }, [soundEngine, streaming.handleSdkEvent]))
+        // Play sound for non-session events (needsInput is handled by useNotifications)
+        const soundEvent = SSE_SOUND_MAP[evt.type]
+        if (soundEvent && getNotificationPrefs().sound) {
+          // Throttle session_update sounds to avoid noise
+          if (evt.type === 'session_update') {
+            const now = Date.now()
+            if (now - lastSessionSoundRef.current < SESSION_UPDATE_SOUND_COOLDOWN) return
+            lastSessionSoundRef.current = now
+          }
+          soundEngine.play(
+            soundEvent,
+            evt.sessionId ? { projectLabel: evt.projectLabel || 'session' } : undefined,
+          )
+        }
+      },
+      [soundEngine, streaming.handleSdkEvent],
+    ),
+  )
 
-  const activeSessions = sessions?.filter(s => s.isActive) || []
+  const activeSessions = sessions?.filter((s) => s.isActive) || []
   const { requestPermission, muteSession, mutedIds } = useNotifications(sessions, soundEngine)
-  const needsInputSessions = sessions?.filter(s => s.needsInput && !mutedIds.current.has(s.sessionId)) || []
+  const needsInputSessions =
+    sessions?.filter((s) => s.needsInput && !mutedIds.current.has(s.sessionId)) || []
 
   // Keyboard shortcuts — use refs so handler identity is stable and keydown listener
   // doesn't churn on every session update
@@ -163,62 +206,80 @@ export default function App() {
   const selectedSessionRef = useRef(selectedSession)
   const showSettingsRef = useRef(showSettings)
   const showLegendRef = useRef(showLegend)
-  useEffect(() => { sessionsRef.current = sessions }, [sessions])
-  useEffect(() => { selectedSessionIdRef.current = selectedSessionId }, [selectedSessionId])
-  useEffect(() => { selectedSessionRef.current = selectedSession }, [selectedSession])
-  useEffect(() => { showSettingsRef.current = showSettings }, [showSettings])
-  useEffect(() => { showLegendRef.current = showLegend }, [showLegend])
+  useEffect(() => {
+    sessionsRef.current = sessions
+  }, [sessions])
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId
+  }, [selectedSessionId])
+  useEffect(() => {
+    selectedSessionRef.current = selectedSession
+  }, [selectedSession])
+  useEffect(() => {
+    showSettingsRef.current = showSettings
+  }, [showSettings])
+  useEffect(() => {
+    showLegendRef.current = showLegend
+  }, [showLegend])
 
-  const shortcutHandlers = useMemo(() => ({
-    nextSession: () => {
-      const s = sessionsRef.current
-      if (!s?.length) return
-      const idx = s.findIndex(x => x.sessionId === selectedSessionIdRef.current)
-      const next = s[(idx + 1) % s.length]
-      if (next) setSelectedSessionId(next.sessionId)
-    },
-    prevSession: () => {
-      const s = sessionsRef.current
-      if (!s?.length) return
-      const idx = s.findIndex(x => x.sessionId === selectedSessionIdRef.current)
-      const prev = s[(idx - 1 + s.length) % s.length]
-      if (prev) setSelectedSessionId(prev.sessionId)
-    },
-    openDetail: () => setAgentView('detail'),
-    backToBoard: () => {
-      if (showSettingsRef.current) setShowSettings(false)
-      else if (showLegendRef.current) setShowLegend(false)
-      else setAgentView('board')
-    },
-    tabAgents: () => setActiveTab('agents'),
-    tabTasks: () => setActiveTab('tasks'),
-    tabWorkflows: () => setActiveTab('workflows'),
-    tabSkills: () => setActiveTab('skills'),
-    quickApprove: () => {
-      const session = selectedSessionRef.current
-      if (session?.needsInput) {
-        sendQuickReply(session.sessionId, 'yes')
-      }
-    },
-    quickContinue: () => {
-      const session = selectedSessionRef.current
-      if (session?.needsInput) {
-        sendQuickReply(session.sessionId, 'continue')
-      }
-    },
-    focusInput: () => {
-      const input = document.querySelector('[data-shortcut-focus="message-input"]')
-      if (input) input.focus()
-    },
-    showHelp: () => setShowShortcutHelp(prev => !prev),
-    toggleSettings: () => setShowSettings(prev => !prev),
-    toggleMute: () => {
-      const id = selectedSessionIdRef.current
-      if (id) muteSession(id)
-    },
-  }), [muteSession]) // stable — only depends on muteSession which is a useCallback
+  const shortcutHandlers = useMemo(
+    () => ({
+      nextSession: () => {
+        const s = sessionsRef.current
+        if (!s?.length) return
+        const idx = s.findIndex((x) => x.sessionId === selectedSessionIdRef.current)
+        const next = s[(idx + 1) % s.length]
+        if (next) setSelectedSessionId(next.sessionId)
+      },
+      prevSession: () => {
+        const s = sessionsRef.current
+        if (!s?.length) return
+        const idx = s.findIndex((x) => x.sessionId === selectedSessionIdRef.current)
+        const prev = s[(idx - 1 + s.length) % s.length]
+        if (prev) setSelectedSessionId(prev.sessionId)
+      },
+      openDetail: () => setAgentView('detail'),
+      backToBoard: () => {
+        if (showSettingsRef.current) setShowSettings(false)
+        else if (showLegendRef.current) setShowLegend(false)
+        else setAgentView('board')
+      },
+      tabAgents: () => setActiveTab('agents'),
+      tabTasks: () => setActiveTab('tasks'),
+      tabWorkflows: () => setActiveTab('workflows'),
+      tabSkills: () => setActiveTab('skills'),
+      quickApprove: () => {
+        const session = selectedSessionRef.current
+        if (session?.needsInput) {
+          sendQuickReply(session.sessionId, 'yes')
+        }
+      },
+      quickContinue: () => {
+        const session = selectedSessionRef.current
+        if (session?.needsInput) {
+          sendQuickReply(session.sessionId, 'continue')
+        }
+      },
+      focusInput: () => {
+        const input = document.querySelector('[data-shortcut-focus="message-input"]')
+        if (input) input.focus()
+      },
+      showHelp: () => setShowShortcutHelp((prev) => !prev),
+      toggleSettings: () => setShowSettings((prev) => !prev),
+      toggleMute: () => {
+        const id = selectedSessionIdRef.current
+        if (id) muteSession(id)
+      },
+      toggleDispatch: () => setShowDispatch((prev) => !prev),
+    }),
+    [muteSession],
+  ) // stable — only depends on muteSession which is a useCallback
 
-  const { shortcuts, updateShortcut, resetDefaults: resetShortcuts } = useKeyboardShortcuts(shortcutHandlers)
+  const {
+    shortcuts,
+    updateShortcut,
+    resetDefaults: resetShortcuts,
+  } = useKeyboardShortcuts(shortcutHandlers)
 
   const [showNewSession, setShowNewSession] = useState(false)
   const [newSessionCwd, setNewSessionCwd] = useState('')
@@ -265,16 +326,30 @@ export default function App() {
     } finally {
       setNewSessionCreating(false)
     }
-  }, [newSessionCwd, newSessionPrompt, newSessionName, newSessionModel, newSessionMode, newSessionEffort, newSessionWorktree, newSessionCreating])
+  }, [
+    newSessionCwd,
+    newSessionPrompt,
+    newSessionName,
+    newSessionModel,
+    newSessionMode,
+    newSessionEffort,
+    newSessionWorktree,
+    newSessionCreating,
+  ])
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
       {/* Header */}
       <header className="flex flex-wrap items-center px-4 py-2 border-b border-gray-800 shrink-0 gap-y-1">
         <span className="text-sm font-bold text-gray-200 tracking-tight">Oversight</span>
-        <span className="ml-2 text-xs text-gray-600 tracking-tight hidden sm:inline">behind the agent curtain</span>
+        <span className="ml-2 text-xs text-gray-600 tracking-tight hidden sm:inline">
+          behind the agent curtain
+        </span>
         {!connected && (
-          <span className="ml-3 flex items-center gap-1.5 text-xs text-red-400" title="Live connection lost — reconnecting...">
+          <span
+            className="ml-3 flex items-center gap-1.5 text-xs text-red-400"
+            title="Live connection lost — reconnecting..."
+          >
             <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
             disconnected
           </span>
@@ -297,7 +372,7 @@ export default function App() {
           </button>
         )}
         <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full md:w-auto md:ml-auto order-last md:order-none">
-          {TABS.map(tab => {
+          {TABS.map((tab) => {
             const Icon = tab.icon
             return (
               <button
@@ -315,8 +390,16 @@ export default function App() {
             )
           })}
           <button
+            onClick={() => setShowDispatch(true)}
+            className="ml-2 flex items-center gap-1 px-2 py-1 rounded text-xs text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30 transition-colors"
+            title="Dispatch Manager (d)"
+          >
+            <Layers size={12} />
+            <span className="hidden md:inline">Dispatch</span>
+          </button>
+          <button
             onClick={() => setShowSettings(true)}
-            className="ml-2 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            className="ml-1 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
             title="Settings (,)"
           >
             <Settings size={14} />
@@ -331,17 +414,21 @@ export default function App() {
         </nav>
       </header>
 
-      {/* Body */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Body — reserve 36px at the bottom for the DispatchDrawerHandle,
+          which is fixed at bottom-0 center. Without this clearance the
+          handle sits directly on top of the ConversationView's message
+          input + send button, intercepting clicks and making the input
+          effectively unusable. */}
+      <div className="flex-1 flex overflow-hidden pb-9">
         {/* Left: Sessions list */}
-        <aside className="hidden md:flex w-56 shrink-0 border-r border-gray-800 overflow-hidden flex-col">
-          <div className="px-3 py-2 border-b border-gray-800 flex items-center">
-            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Sessions</span>
-            {sessions && (
-              <span className="ml-2 text-xs text-gray-500">{sessions.length}</span>
-            )}
+        <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col">
+          <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
+            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              Sessions
+            </span>
+            {sessions && <span className="ml-2 text-xs text-gray-500">{sessions.length}</span>}
             <button
-              onClick={() => setShowNewSession(s => !s)}
+              onClick={() => setShowNewSession((s) => !s)}
               className="ml-auto text-gray-600 hover:text-gray-300 transition-colors p-0.5 rounded"
               title="New session"
             >
@@ -353,29 +440,31 @@ export default function App() {
               <input
                 type="text"
                 value={newSessionName}
-                onChange={e => setNewSessionName(e.target.value)}
+                onChange={(e) => setNewSessionName(e.target.value)}
                 placeholder="Session name (optional)..."
                 className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
               />
               <input
                 type="text"
                 value={newSessionCwd}
-                onChange={e => setNewSessionCwd(e.target.value)}
+                onChange={(e) => setNewSessionCwd(e.target.value)}
                 placeholder="Working directory..."
                 className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
               />
               <input
                 type="text"
                 value={newSessionPrompt}
-                onChange={e => setNewSessionPrompt(e.target.value)}
+                onChange={(e) => setNewSessionPrompt(e.target.value)}
                 placeholder="Prompt..."
                 className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
-                onKeyDown={e => { if (e.key === 'Enter') handleNewSession() }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleNewSession()
+                }}
               />
               <div className="flex gap-1.5">
                 <select
                   value={newSessionModel}
-                  onChange={e => setNewSessionModel(e.target.value)}
+                  onChange={(e) => setNewSessionModel(e.target.value)}
                   className="flex-1 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[11px] text-gray-400 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="">Model...</option>
@@ -385,7 +474,7 @@ export default function App() {
                 </select>
                 <select
                   value={newSessionMode}
-                  onChange={e => setNewSessionMode(e.target.value)}
+                  onChange={(e) => setNewSessionMode(e.target.value)}
                   className="flex-1 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[11px] text-gray-400 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="">Mode...</option>
@@ -398,7 +487,7 @@ export default function App() {
                 </select>
                 <select
                   value={newSessionEffort}
-                  onChange={e => setNewSessionEffort(e.target.value)}
+                  onChange={(e) => setNewSessionEffort(e.target.value)}
                   className="flex-1 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[11px] text-gray-400 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="">Effort...</option>
@@ -412,7 +501,7 @@ export default function App() {
                 <input
                   type="checkbox"
                   checked={newSessionWorktree}
-                  onChange={e => setNewSessionWorktree(e.target.checked)}
+                  onChange={(e) => setNewSessionWorktree(e.target.checked)}
                   className="rounded border-gray-700 bg-gray-900 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-0"
                 />
                 Worktree (isolated copy)
@@ -431,7 +520,10 @@ export default function App() {
             selectedId={selectedSessionId}
             onSelect={setSelectedSessionId}
             onMuteSession={muteSession}
-            onReplySession={id => { setSelectedSessionId(id); setAgentView('detail') }}
+            onReplySession={(id) => {
+              setSelectedSessionId(id)
+              setAgentView('detail')
+            }}
           />
         </aside>
 
@@ -440,7 +532,7 @@ export default function App() {
           {activeTab === 'agents' && (
             <>
               {/* Board / Detail toggle bar */}
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800 shrink-0">
+              <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-gray-800">
                 {agentView === 'detail' && (
                   <button
                     onClick={() => setAgentView('board')}
@@ -466,23 +558,55 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              {agentView === 'board'
-                ? <KanbanBoard
-                    sessions={sessions || []}
-                    selectedId={selectedSessionId}
-                    onSelect={id => { setSelectedSessionId(id); setAgentView('detail') }}
-                  />
-                : <AgentTree session={selectedSession} sessionUpdateVersion={sessionsVersion} intelligenceVersion={intelligenceVersion} skills={skills} streaming={streaming} />
-              }
+              {agentView === 'board' ? (
+                <KanbanBoard
+                  sessions={sessions || []}
+                  selectedId={selectedSessionId}
+                  onSelect={(id) => {
+                    setSelectedSessionId(id)
+                    setAgentView('detail')
+                  }}
+                />
+              ) : (
+                <AgentTree
+                  session={selectedSession}
+                  sessionUpdateVersion={sessionsVersion}
+                  intelligenceVersion={intelligenceVersion}
+                  skills={skills}
+                  streaming={streaming}
+                />
+              )}
             </>
           )}
           {activeTab === 'tasks' && (
-            <TaskBoard tasks={tasks} loading={tasksLoading} sessionId={selectedSessionId} refetch={refetchTasks} />
+            <TaskBoard
+              tasks={tasks}
+              loading={tasksLoading}
+              sessionId={selectedSessionId}
+              refetch={refetchTasks}
+            />
           )}
-          {activeTab === 'workflows' && <WorkflowsPanel workflows={workflows} loading={workflowsLoading} refetch={refetchWorkflows} skills={skills} />}
-          {activeTab === 'skills' && <SkillsPanel skills={skills} loading={skillsLoading} refetch={refetchSkills} />}
-          {activeTab === 'teams' && <ErrorBoundary><TeamsPanel teams={teams} refetch={refetchTeams} /></ErrorBoundary>}
-          {activeTab === 'history' && <ErrorBoundary><HistoryTab historyVersion={historyVersion} /></ErrorBoundary>}
+          {activeTab === 'workflows' && (
+            <WorkflowsPanel
+              workflows={workflows}
+              loading={workflowsLoading}
+              refetch={refetchWorkflows}
+              skills={skills}
+            />
+          )}
+          {activeTab === 'skills' && (
+            <SkillsPanel skills={skills} loading={skillsLoading} refetch={refetchSkills} />
+          )}
+          {activeTab === 'teams' && (
+            <ErrorBoundary>
+              <TeamsPanel teams={teams} refetch={refetchTeams} />
+            </ErrorBoundary>
+          )}
+          {activeTab === 'history' && (
+            <ErrorBoundary>
+              <HistoryTab historyVersion={historyVersion} />
+            </ErrorBoundary>
+          )}
         </main>
 
         {/* Right: Live Feed */}
@@ -504,8 +628,47 @@ export default function App() {
       <ShortcutHelpOverlay
         shortcuts={shortcuts}
         open={showShortcutHelp}
-        onToggle={() => setShowShortcutHelp(prev => !prev)}
+        onToggle={() => setShowShortcutHelp((prev) => !prev)}
       />
+      <DispatchDrawerHandle open={showDispatch} onToggle={() => setShowDispatch((prev) => !prev)} />
+      <DispatchDrawer
+        open={showDispatch}
+        onClose={() => setShowDispatch(false)}
+        onSingleDispatchSuccess={(sessionId, fromRect) => {
+          // Compute target = where the session card lives in the sidebar
+          // (or center of the main panel if no card found). Fire the
+          // electrical-signal animation, close the drawer, and after the
+          // animation arrives at the target, jump to that session's
+          // detail view.
+          const card = document.querySelector(`[data-session-card-id="${sessionId}"]`)
+          const cardRect = card?.getBoundingClientRect()
+          const main = document.querySelector('main')?.getBoundingClientRect()
+          const to = cardRect
+            ? { x: cardRect.left + cardRect.width / 2, y: cardRect.top + cardRect.height / 2 }
+            : main
+              ? { x: main.left + main.width / 2, y: main.top + main.height / 2 }
+              : { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+          const from = fromRect
+            ? { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 }
+            : { x: window.innerWidth / 2, y: window.innerHeight - 100 }
+          setShowDispatch(false)
+          setDispatchSignal({ from, to, sessionId })
+        }}
+      />
+      {dispatchSignal && (
+        <DispatchSignal
+          from={dispatchSignal.from}
+          to={dispatchSignal.to}
+          onComplete={() => {
+            // Switch to the target session's detail view, then clear the
+            // overlay so it doesn't linger as an empty SVG layer.
+            setActiveTab('agents')
+            setSelectedSessionId(dispatchSignal.sessionId)
+            setAgentView('detail')
+            setDispatchSignal(null)
+          }}
+        />
+      )}
     </div>
   )
 }

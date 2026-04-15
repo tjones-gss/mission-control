@@ -10,11 +10,20 @@ const SAMPLE_TEAMS = [
   {
     name: 'alpha-team',
     description: 'First team',
-    members: [{ agentId: 'a1', name: 'worker-1', agentType: 'general', model: 'claude-sonnet-4-6' }],
+    members: [
+      { agentId: 'a1', name: 'worker-1', agentType: 'general', model: 'claude-sonnet-4-6' },
+    ],
     createdAt: Date.now() - 86400000,
     inboxes: {
       agent1: [
-        { id: 'msg-1', sender: 'agent1', content: 'Hello from agent', timestamp: new Date().toISOString(), read: false, archived: false },
+        {
+          id: 'msg-1',
+          sender: 'agent1',
+          content: 'Hello from agent',
+          timestamp: new Date().toISOString(),
+          read: false,
+          archived: false,
+        },
       ],
       dashboard: [],
     },
@@ -89,8 +98,15 @@ describe('TeamsPanel — mark as read', () => {
     server.use(
       http.patch('/api/teams/:name/inbox/:messageId', () => {
         patchCalled = true
-        return HttpResponse.json({ id: 'msg-1', read: true, archived: false, sender: 'agent1', content: 'Hello from agent', timestamp: new Date().toISOString() })
-      })
+        return HttpResponse.json({
+          id: 'msg-1',
+          read: true,
+          archived: false,
+          sender: 'agent1',
+          content: 'Hello from agent',
+          timestamp: new Date().toISOString(),
+        })
+      }),
     )
     render(<TeamsPanel teams={SAMPLE_TEAMS} />)
     await userEvent.click(screen.getByText('alpha-team'))
@@ -108,8 +124,15 @@ describe('TeamsPanel — archive', () => {
     server.use(
       http.patch('/api/teams/:name/inbox/:messageId', () => {
         archiveCalled = true
-        return HttpResponse.json({ id: 'msg-1', read: false, archived: true, sender: 'agent1', content: 'Hello from agent', timestamp: new Date().toISOString() })
-      })
+        return HttpResponse.json({
+          id: 'msg-1',
+          read: false,
+          archived: true,
+          sender: 'agent1',
+          content: 'Hello from agent',
+          timestamp: new Date().toISOString(),
+        })
+      }),
     )
     render(<TeamsPanel teams={SAMPLE_TEAMS} />)
     await userEvent.click(screen.getByText('alpha-team'))
@@ -133,8 +156,18 @@ describe('TeamsPanel — compose', () => {
     server.use(
       http.post('/api/teams/:name/inbox', async ({ request }) => {
         postBody = await request.json()
-        return HttpResponse.json({ id: 'new-id', sender: 'user', content: postBody.content, timestamp: new Date().toISOString(), read: false, archived: false }, { status: 201 })
-      })
+        return HttpResponse.json(
+          {
+            id: 'new-id',
+            sender: 'user',
+            content: postBody.content,
+            timestamp: new Date().toISOString(),
+            read: false,
+            archived: false,
+          },
+          { status: 201 },
+        )
+      }),
     )
     render(<TeamsPanel teams={SAMPLE_TEAMS} />)
     await userEvent.click(screen.getByText('alpha-team'))
@@ -147,7 +180,12 @@ describe('TeamsPanel — compose', () => {
 
   it('does not submit when input is empty', async () => {
     let postCalled = false
-    server.use(http.post('/api/teams/:name/inbox', () => { postCalled = true; return HttpResponse.json({}, { status: 201 }) }))
+    server.use(
+      http.post('/api/teams/:name/inbox', () => {
+        postCalled = true
+        return HttpResponse.json({}, { status: 201 })
+      }),
+    )
     render(<TeamsPanel teams={SAMPLE_TEAMS} />)
     await userEvent.click(screen.getByText('alpha-team'))
     await userEvent.click(screen.getByRole('button', { name: /send/i }))
@@ -155,7 +193,11 @@ describe('TeamsPanel — compose', () => {
   })
 
   it('shows error message on failed compose', async () => {
-    server.use(http.post('/api/teams/:name/inbox', () => HttpResponse.json({ error: 'Server error' }, { status: 500 })))
+    server.use(
+      http.post('/api/teams/:name/inbox', () =>
+        HttpResponse.json({ error: 'Server error' }, { status: 500 }),
+      ),
+    )
     render(<TeamsPanel teams={SAMPLE_TEAMS} />)
     await userEvent.click(screen.getByText('alpha-team'))
     await userEvent.type(screen.getByPlaceholderText(/message alpha-team/i), 'test')

@@ -20,7 +20,7 @@ class MockEventSource {
   }
   removeEventListener(type, handler) {
     if (this.listeners[type]) {
-      this.listeners[type] = this.listeners[type].filter(h => h !== handler)
+      this.listeners[type] = this.listeners[type].filter((h) => h !== handler)
     }
   }
   close() {
@@ -29,7 +29,7 @@ class MockEventSource {
   // Helper for tests to emit events
   emit(type, data) {
     const handlers = this.listeners[type] || []
-    handlers.forEach(h => h({ data: JSON.stringify(data) }))
+    handlers.forEach((h) => h({ data: JSON.stringify(data) }))
   }
 }
 global.EventSource = MockEventSource

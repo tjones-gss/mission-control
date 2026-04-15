@@ -10,12 +10,13 @@ export function TeamInboxFeed({ teamName, messages, onUpdate }) {
   const [paused, setPaused] = useState(false)
 
   const active = messages
-    .filter(m => !m.archived)
+    .filter((m) => !m.archived)
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-  const archived = messages.filter(m => m.archived)
+  const archived = messages.filter((m) => m.archived)
 
   useEffect(() => {
-    if (!paused && bottomRef.current?.scrollIntoView) bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    if (!paused && bottomRef.current?.scrollIntoView)
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
   }, [active.length, paused])
 
   async function patchMessage(id, updates) {
@@ -32,19 +33,23 @@ export function TeamInboxFeed({ teamName, messages, onUpdate }) {
   }
 
   if (!active.length && !archived.length) {
-    return <div className="flex-1 flex items-center justify-center text-xs text-gray-700">No messages yet</div>
+    return (
+      <div className="flex-1 flex items-center justify-center text-xs text-gray-700">
+        No messages yet
+      </div>
+    )
   }
 
   return (
     <div
       className="flex-1 overflow-y-auto p-3 space-y-2"
-      onScroll={e => {
+      onScroll={(e) => {
         const el = e.currentTarget
         const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
         setPaused(!atBottom)
       }}
     >
-      {active.map(msg => (
+      {active.map((msg) => (
         <div
           key={msg.id}
           className={`group rounded-lg px-3 py-2 text-xs ${msg.read ? 'bg-gray-900' : 'bg-gray-900 border border-gray-700'}`}
@@ -82,7 +87,7 @@ export function TeamInboxFeed({ teamName, messages, onUpdate }) {
             {archived.length} archived
           </summary>
           <div className="mt-2 space-y-2">
-            {archived.map(msg => (
+            {archived.map((msg) => (
               <div key={msg.id} className="rounded-lg px-3 py-2 text-xs bg-gray-900 opacity-50">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-gray-500">{msg.sender}</span>

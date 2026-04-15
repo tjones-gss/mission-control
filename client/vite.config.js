@@ -19,7 +19,14 @@ export default defineConfig({
     include: ['src/tests/**/*.test.{js,jsx}'],
     server: {
       deps: {
-        inline: ['@asamuzakjp/css-color', '@csstools/css-calc', '@csstools/css-color-4', '@csstools/css-parser-algorithms', '@csstools/css-tokenizer', '@csstools/color-helpers'],
+        inline: [
+          '@asamuzakjp/css-color',
+          '@csstools/css-calc',
+          '@csstools/css-color-4',
+          '@csstools/css-parser-algorithms',
+          '@csstools/css-tokenizer',
+          '@csstools/color-helpers',
+        ],
       },
     },
   },

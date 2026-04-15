@@ -10,7 +10,10 @@ beforeEach(() => {
 })
 
 const SAMPLE_EVENTS = [
-  { type: 'session_update', data: { filePath: 'projects/C--Users-me-my-project/abc123.jsonl', ts: 1711500000000 } },
+  {
+    type: 'session_update',
+    data: { filePath: 'projects/C--Users-me-my-project/abc123.jsonl', ts: 1711500000000 },
+  },
   { type: 'task_update', data: { filePath: 'tasks/sess1/1.json', ts: 1711500001000 } },
   { type: 'heartbeat', data: { ts: 1711500002000 } },
 ]
@@ -42,7 +45,10 @@ describe('LiveFeed', () => {
 
   it('displays new_session, task_update, team_update events', () => {
     const events = [
-      { type: 'new_session', data: { filePath: 'projects/C--Users-me-app/new.jsonl', ts: 1711500000000 } },
+      {
+        type: 'new_session',
+        data: { filePath: 'projects/C--Users-me-app/new.jsonl', ts: 1711500000000 },
+      },
       { type: 'task_update', data: { filePath: 'tasks/sess1/1.json', ts: 1711500001000 } },
       { type: 'team_update', data: { filePath: 'teams/alpha/inbox.json', ts: 1711500002000 } },
     ]
@@ -53,17 +59,13 @@ describe('LiveFeed', () => {
   })
 
   it('displays history_update event', () => {
-    const events = [
-      { type: 'history_update', data: { ts: 1711500000000 } },
-    ]
+    const events = [{ type: 'history_update', data: { ts: 1711500000000 } }]
     render(<LiveFeed events={events} />)
     expect(screen.getByText('history updated')).toBeInTheDocument()
   })
 
   it('handles unknown event type', () => {
-    const events = [
-      { type: 'custom_unknown', data: { ts: 1711500000000 } },
-    ]
+    const events = [{ type: 'custom_unknown', data: { ts: 1711500000000 } }]
     render(<LiveFeed events={events} />)
     expect(screen.getByText('custom_unknown')).toBeInTheDocument()
   })

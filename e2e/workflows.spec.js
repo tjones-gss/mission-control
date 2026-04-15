@@ -3,6 +3,13 @@ import { test, expect } from '@playwright/test'
 async function goToWorkflows(page) {
   await page.goto('/')
   await page.getByRole('button', { name: 'Workflows' }).click()
+  // Wait for the WorkflowsPanel "New" button to be visible (the most
+  // reliable "panel mounted with data" signal). Under parallel
+  // workers the dashboard's 6+ concurrent useApi calls saturate the
+  // single-threaded Node backend, so this can take 5-15 seconds.
+  await page
+    .getByRole('button', { name: 'New', exact: true })
+    .waitFor({ state: 'visible', timeout: 30_000 })
 }
 
 test.describe('workflows', () => {
@@ -11,7 +18,7 @@ test.describe('workflows', () => {
     // The left panel always shows the "Workflows" section label
     await expect(page.locator('text=Workflows').first()).toBeVisible()
     // The New button is always present at the bottom of the left panel
-    await expect(page.getByRole('button', { name: /New/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible()
   })
 
   test('empty state shows placeholder text', async ({ page }) => {
@@ -22,7 +29,7 @@ test.describe('workflows', () => {
 
   test('clicking New opens a blank editor', async ({ page }) => {
     await goToWorkflows(page)
-    await page.getByRole('button', { name: /New/ }).click()
+    await page.getByRole('button', { name: 'New', exact: true }).click()
 
     // The right panel should now show a Name field and a Description field
     await expect(page.getByPlaceholder('my-workflow')).toBeVisible()
@@ -34,7 +41,7 @@ test.describe('workflows', () => {
 
   test('Save button is disabled when name is empty', async ({ page }) => {
     await goToWorkflows(page)
-    await page.getByRole('button', { name: /New/ }).click()
+    await page.getByRole('button', { name: 'New', exact: true }).click()
 
     const saveBtn = page.getByRole('button', { name: 'Save' })
     await expect(saveBtn).toBeDisabled()
@@ -42,7 +49,7 @@ test.describe('workflows', () => {
 
   test('Save button becomes enabled after entering a name', async ({ page }) => {
     await goToWorkflows(page)
-    await page.getByRole('button', { name: /New/ }).click()
+    await page.getByRole('button', { name: 'New', exact: true }).click()
 
     await page.getByPlaceholder('my-workflow').fill('test-wf-preview')
     const saveBtn = page.getByRole('button', { name: 'Save' })
@@ -52,7 +59,7 @@ test.describe('workflows', () => {
   test('create a new workflow and verify it appears in the list', async ({ page }) => {
     const name = `test-wf-${Date.now()}`
     await goToWorkflows(page)
-    await page.getByRole('button', { name: /New/ }).click()
+    await page.getByRole('button', { name: 'New', exact: true }).click()
 
     await page.getByPlaceholder('my-workflow').fill(name)
     await page.getByPlaceholder('What this workflow does…').fill('Created by E2E test')
@@ -62,23 +69,32 @@ test.describe('workflows', () => {
     // After save the workflow should appear in the left panel list
     await expect(page.getByText(name)).toBeVisible()
 
-    // Clean up: delete the workflow we just created
-    // Hover over the list item to reveal the delete (X) button
-    const listItem = page.locator(`text=${name}`).first()
-    await listItem.hover()
-    const deleteBtn = page.locator('.group').filter({ hasText: name }).getByTitle('Delete workflow')
-    await deleteBtn.click()
+    // Clean up: delete the workflow we just created. The delete (X)
+    // button is opacity-0 group-hover:opacity-100, which means hover
+    // visibility — Playwright's click() waits for actionability and
+    // hover isn't always sticky in headless. Force-click bypasses
+    // the visibility check; the click handler still fires.
+    const groupRow = page.locator('.group').filter({ hasText: name })
+    await groupRow.hover()
+    await groupRow.getByTitle('Delete workflow').click({ force: true })
 
-    // Confirm deletion in the modal
-    await page.getByRole('button', { name: 'Delete' }).click()
+    // Confirm deletion in the modal — scope by the modal's unique
+    // "This cannot be undone." paragraph to avoid colliding with the
+    // row's own Delete button.
+    const modal = page.locator('div').filter({ hasText: 'This cannot be undone.' }).last()
+    await modal.getByRole('button', { name: 'Delete' }).click()
 
-    // The workflow should no longer appear in the list
-    await expect(page.getByText(name)).not.toBeVisible()
+    // The workflow should no longer appear in the LEFT-PANE LIST.
+    // Don't assert on `getByText(name)` globally — after delete, the
+    // editor pane still shows the previous workflow's header + Export
+    // button, both of which contain the name. Scope the assertion to
+    // the .group list rows that wrap each list item.
+    await expect(page.locator('.group').filter({ hasText: name })).toHaveCount(0)
   })
 
   test('workflow editor shows Add Step button', async ({ page }) => {
     await goToWorkflows(page)
-    await page.getByRole('button', { name: /New/ }).click()
+    await page.getByRole('button', { name: 'New', exact: true }).click()
 
     await page.getByPlaceholder('my-workflow').fill('temp-step-test')
     await expect(page.getByRole('button', { name: /Add Step/ })).toBeVisible()
@@ -86,20 +102,22 @@ test.describe('workflows', () => {
 
   test('Add Step menu shows step type options', async ({ page }) => {
     await goToWorkflows(page)
-    await page.getByRole('button', { name: /New/ }).click()
+    await page.getByRole('button', { name: 'New', exact: true }).click()
 
     await page.getByRole('button', { name: /Add Step/ }).click()
 
-    // The dropdown should show the four step types
-    await expect(page.getByRole('button', { name: 'skill' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'agent' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'instruction' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'command' })).toBeVisible()
+    // The dropdown should show the four step types. Use exact:true on
+    // 'skill' so it doesn't collide with the header tab "Skills" or the
+    // "Export as Skill /..." button.
+    await expect(page.getByRole('button', { name: 'skill', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'agent', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'instruction', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'command', exact: true })).toBeVisible()
   })
 
   test('Export as Skill button is disabled for unsaved (new) workflows', async ({ page }) => {
     await goToWorkflows(page)
-    await page.getByRole('button', { name: /New/ }).click()
+    await page.getByRole('button', { name: 'New', exact: true }).click()
 
     await page.getByPlaceholder('my-workflow').fill('unsaved-export-test')
 
@@ -111,10 +129,24 @@ test.describe('workflows', () => {
   test('create workflow then export as skill', async ({ page }) => {
     const name = `test-wf-exp-${Date.now()}`
     await goToWorkflows(page)
-    await page.getByRole('button', { name: /New/ }).click()
+    await page.getByRole('button', { name: 'New', exact: true }).click()
 
     await page.getByPlaceholder('my-workflow').fill(name)
+
+    // Synchronize on the POST /api/workflows response before asserting
+    // on the Export button. Under parallel workers, the default
+    // Playwright click→expect pipeline races against the client's
+    // setIsNew(false) state update, leaving the Export button stuck
+    // disabled with title="Save first before exporting".
+    const postPromise = page.waitForResponse(
+      (r) => r.url().endsWith('/api/workflows') && r.request().method() === 'POST',
+    )
     await page.getByRole('button', { name: 'Save' }).click()
+    await postPromise
+
+    // Wait for the workflow to actually appear in the list — that's
+    // the reliable "save finished + refetch landed" signal.
+    await expect(page.locator('.group').filter({ hasText: name })).toBeVisible({ timeout: 20_000 })
 
     // After save the workflow is persisted; Export button should now be enabled
     const exportBtn = page.getByRole('button', { name: new RegExp(`Export as Skill /${name}`) })
@@ -128,11 +160,11 @@ test.describe('workflows', () => {
     await expect(successMsg.or(conflictMsg)).toBeVisible()
 
     // Clean up: delete the workflow
-    const listItem = page.locator(`text=${name}`).first()
-    await listItem.hover()
-    const deleteBtn = page.locator('.group').filter({ hasText: name }).getByTitle('Delete workflow')
-    await deleteBtn.click()
-    await page.getByRole('button', { name: 'Delete' }).click()
-    await expect(page.getByText(name)).not.toBeVisible()
+    const groupRow = page.locator('.group').filter({ hasText: name })
+    await groupRow.hover()
+    await groupRow.getByTitle('Delete workflow').click({ force: true })
+    const modal = page.locator('div').filter({ hasText: 'This cannot be undone.' }).last()
+    await modal.getByRole('button', { name: 'Delete' }).click()
+    await expect(page.locator('.group').filter({ hasText: name })).toHaveCount(0)
   })
 })

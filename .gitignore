@@ -8,6 +8,7 @@ playwright-report/
 test-results/
 .claude/
 qa-*.png
+.qa-tally.md
 snapshot-*.md
 test-upload.png
 *.output

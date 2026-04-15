@@ -24,13 +24,15 @@ function callHandler() {
     setHeader: vi.fn(),
     flushHeaders: vi.fn(),
     write: vi.fn(),
-    on: vi.fn((event, cb) => { handlers[event] = cb }),
+    on: vi.fn((event, cb) => {
+      handlers[event] = cb
+    }),
   }
   const req = { method: 'GET', url: '/' }
   const next = vi.fn()
 
   // Walk the router stack to find and invoke the GET / handler
-  const layer = router.stack.find(l => l.route && l.route.path === '/' && l.route.methods.get)
+  const layer = router.stack.find((l) => l.route && l.route.path === '/' && l.route.methods.get)
   layer.route.stack[0].handle(req, res, next)
 
   return { res, handlers }
@@ -103,7 +105,9 @@ describe('GET / (SSE stream)', () => {
   it('calls removeClient when heartbeat write throws', () => {
     vi.useFakeTimers()
     const { res } = callHandler()
-    res.write.mockImplementation(() => { throw new Error('write failed') })
+    res.write.mockImplementation(() => {
+      throw new Error('write failed')
+    })
 
     vi.advanceTimersByTime(30000)
     expect(removeClient).toHaveBeenCalledWith(res)

@@ -42,8 +42,9 @@ export function parseFrontmatter(content) {
 function findProjectDirForSession(sessionId) {
   if (!fs.existsSync(PROJECTS_DIR)) return null
 
-  const projectDirs = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
-    .filter(d => d.isDirectory())
+  const projectDirs = fs
+    .readdirSync(PROJECTS_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
 
   for (const dir of projectDirs) {
     const sessionFile = path.join(PROJECTS_DIR, dir.name, `${sessionId}.jsonl`)
@@ -65,9 +66,13 @@ function getSessionCwd(projectDirName, sessionId) {
       try {
         const record = JSON.parse(line)
         if (record.cwd) return record.cwd
-      } catch { /* skip unparseable lines */ }
+      } catch {
+        /* skip unparseable lines */
+      }
     }
-  } catch { /* file unreadable */ }
+  } catch {
+    /* file unreadable */
+  }
   return null
 }
 
@@ -111,8 +116,7 @@ export function getMemoryForSession(sessionId) {
   const memories = []
   try {
     if (fs.existsSync(memoryDir)) {
-      const files = fs.readdirSync(memoryDir)
-        .filter(f => f.endsWith('.md') && f !== 'MEMORY.md')
+      const files = fs.readdirSync(memoryDir).filter((f) => f.endsWith('.md') && f !== 'MEMORY.md')
 
       for (const file of files) {
         const filePath = path.join(memoryDir, file)
@@ -129,7 +133,9 @@ export function getMemoryForSession(sessionId) {
         }
       }
     }
-  } catch { /* memory dir unreadable */ }
+  } catch {
+    /* memory dir unreadable */
+  }
 
   // 6. Read memory index
   const memoryIndex = readFileInfo(path.join(memoryDir, 'MEMORY.md'))

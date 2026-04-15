@@ -5,15 +5,15 @@ import { getAvailableVoices } from '../../audio/tts.js'
 
 const PRESET_NAMES = Object.keys(PRESETS)
 const EVENT_LABELS = {
-  needsInput:        'Needs input',
-  sessionError:      'Session error',
-  sessionComplete:   'Session complete',
-  sessionUpdate:     'Session update',
-  newSession:        'New session',
-  taskUpdate:        'Task update',
+  needsInput: 'Needs input',
+  sessionError: 'Session error',
+  sessionComplete: 'Session complete',
+  sessionUpdate: 'Session update',
+  newSession: 'New session',
+  taskUpdate: 'Task update',
   intelligenceReady: 'Intel ready',
-  teamUpdate:        'Team update',
-  historyUpdate:     'History update',
+  teamUpdate: 'Team update',
+  historyUpdate: 'History update',
 }
 
 export function SoundsVoiceTab({ soundEngine }) {
@@ -27,14 +27,14 @@ export function SoundsVoiceTab({ soundEngine }) {
 
   const updateEventSound = (eventName, sound) => {
     const next = soundEngine.updatePrefs({
-      events: { [eventName]: { ...prefs.events[eventName], sound } }
+      events: { [eventName]: { ...prefs.events[eventName], sound } },
     })
     setPrefs(next)
   }
 
   const updateEventVoice = (eventName, voice) => {
     const next = soundEngine.updatePrefs({
-      events: { [eventName]: { ...prefs.events[eventName], voice } }
+      events: { [eventName]: { ...prefs.events[eventName], voice } },
     })
     setPrefs(next)
   }
@@ -64,23 +64,29 @@ export function SoundsVoiceTab({ soundEngine }) {
   }
 
   const customNames = Object.keys(prefs.customSounds)
-  const allSoundOptions = [...PRESET_NAMES, ...customNames.map(n => `custom:${n}`)]
+  const allSoundOptions = [...PRESET_NAMES, ...customNames.map((n) => `custom:${n}`)]
 
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Event Sounds</h3>
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          Event Sounds
+        </h3>
         <div className="space-y-2">
           {Object.entries(prefs.events).map(([eventName, config]) => (
             <div key={eventName} className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 w-28 shrink-0">{EVENT_LABELS[eventName] || eventName}</span>
+              <span className="text-xs text-gray-400 w-28 shrink-0">
+                {EVENT_LABELS[eventName] || eventName}
+              </span>
               <select
                 value={config.sound}
                 onChange={(e) => updateEventSound(eventName, e.target.value)}
                 className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
               >
-                {allSoundOptions.map(s => (
-                  <option key={s} value={s}>{s}</option>
+                {allSoundOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
                 ))}
               </select>
               <button
@@ -105,7 +111,9 @@ export function SoundsVoiceTab({ soundEngine }) {
       </section>
 
       <section>
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">TTS Voice</h3>
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          TTS Voice
+        </h3>
         <div className="flex items-center gap-2">
           <select
             value={prefs.ttsVoice || ''}
@@ -113,8 +121,10 @@ export function SoundsVoiceTab({ soundEngine }) {
             className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
           >
             <option value="">System default</option>
-            {voices.map(v => (
-              <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+            {voices.map((v) => (
+              <option key={v.name} value={v.name}>
+                {v.name} ({v.lang})
+              </option>
             ))}
           </select>
           <button
@@ -127,10 +137,12 @@ export function SoundsVoiceTab({ soundEngine }) {
       </section>
 
       <section>
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Custom Sounds</h3>
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          Custom Sounds
+        </h3>
         {customNames.length > 0 && (
           <div className="space-y-1 mb-2">
-            {customNames.map(name => (
+            {customNames.map((name) => (
               <div key={name} className="flex items-center gap-2">
                 <span className="text-xs text-gray-400 flex-1">{name}</span>
                 <button

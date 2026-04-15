@@ -1,10 +1,14 @@
 vi.mock('fs', () => {
   return {
     default: {
-      existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
+      existsSync: vi.fn(),
+      readdirSync: vi.fn(),
+      readFileSync: vi.fn(),
       statSync: vi.fn(),
     },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(),
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
     statSync: vi.fn(),
   }
 })
@@ -29,8 +33,8 @@ describe('getMcpServers()', () => {
           command: 'node',
           args: ['server.js'],
           env: { API_KEY: 'secret' },
-        }
-      }
+        },
+      },
     }
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(JSON.stringify(settings))
@@ -49,8 +53,8 @@ describe('getMcpServers()', () => {
   it('detects SSE transport when url is present', () => {
     const settings = {
       mcpServers: {
-        'remote': { url: 'https://example.com/mcp' }
-      }
+        remote: { url: 'https://example.com/mcp' },
+      },
     }
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(JSON.stringify(settings))
@@ -66,7 +70,7 @@ describe('getMcpServers()', () => {
         'server-a': { command: 'a' },
         'server-b': { command: 'b' },
         'server-c': { url: 'http://c' },
-      }
+      },
     }
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(JSON.stringify(settings))
@@ -85,7 +89,7 @@ describe('getMcpServers()', () => {
 
 describe('getMcpServersForSession()', () => {
   it('includes project-level MCP servers', () => {
-    const userSettings = { mcpServers: { 'global': { command: 'g' } } }
+    const userSettings = { mcpServers: { global: { command: 'g' } } }
     const projectSettings = { mcpServers: { 'local-proj': { command: 'l' } } }
 
     fs.existsSync.mockReturnValue(true)
@@ -98,13 +102,13 @@ describe('getMcpServersForSession()', () => {
 
     const result = getMcpServersForSession('/tmp/myproject')
     expect(result.length).toBeGreaterThanOrEqual(2)
-    const names = result.map(s => s.name)
+    const names = result.map((s) => s.name)
     expect(names).toContain('global')
     expect(names).toContain('local-proj')
   })
 
   it('returns user servers when cwd is null', () => {
-    const settings = { mcpServers: { 'srv': { command: 'x' } } }
+    const settings = { mcpServers: { srv: { command: 'x' } } }
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue(JSON.stringify(settings))
 

@@ -4,12 +4,15 @@ export async function analyzeSession(sessionData) {
   const prompt = buildPrompt(sessionData)
   const { stdout } = await runClaude({
     args: [
-      '-p', prompt,
-      '--output-format', 'json',
+      '-p',
+      prompt,
+      '--output-format',
+      'json',
       // Skip all MCP server connections — they cause startup to hang for 30+ seconds
       // when spawned as a subprocess without a TTY (MCP servers wait for connections
       // that never complete in non-interactive mode).
-      '--mcp-config', '{"mcpServers":{}}',
+      '--mcp-config',
+      '{"mcpServers":{}}',
       '--strict-mcp-config',
       // No need to persist a session for a one-shot analysis call
       '--no-session-persistence',
@@ -28,9 +31,18 @@ export async function analyzeSession(sessionData) {
 
 function buildPrompt(session) {
   const {
-    sessionId, slug, cwd, model, gitBranch, isActive,
-    agentTree, toolUseCounts, tokenUsage,
-    lastThought, lastAction, lastText,
+    sessionId,
+    slug,
+    cwd,
+    model,
+    gitBranch,
+    isActive,
+    agentTree,
+    toolUseCounts,
+    tokenUsage,
+    lastThought,
+    lastAction,
+    lastText,
     messageCount,
   } = session
 
@@ -47,18 +59,24 @@ function buildPrompt(session) {
 
   if (agentTree?.subagents?.length > 0) {
     for (const sub of agentTree.subagents) {
-      lines.push(`  Subagent: ${sub.description?.slice(0, 80) || 'unnamed'} (${sub.messageCount} msgs)`)
+      lines.push(
+        `  Subagent: ${sub.description?.slice(0, 80) || 'unnamed'} (${sub.messageCount} msgs)`,
+      )
     }
   }
 
   if (toolUseCounts && Object.keys(toolUseCounts).length > 0) {
-    const top5 = Object.entries(toolUseCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    const top5 = Object.entries(toolUseCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
     lines.push('')
     lines.push('Top tools: ' + top5.map(([n, c]) => `${n}×${c}`).join(', '))
   }
 
   if (tokenUsage) {
-    lines.push(`Tokens: input=${tokenUsage.input} output=${tokenUsage.output} cacheRead=${tokenUsage.cacheRead}`)
+    lines.push(
+      `Tokens: input=${tokenUsage.input} output=${tokenUsage.output} cacheRead=${tokenUsage.cacheRead}`,
+    )
   }
 
   if (lastThought) {
@@ -93,7 +111,10 @@ function parseIntelligence(text) {
   // Strip markdown code fences if present
   let cleaned = text.trim()
   if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim()
+    cleaned = cleaned
+      .replace(/^```[a-z]*\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim()
   }
   const parsed = JSON.parse(cleaned)
   // Validate shape

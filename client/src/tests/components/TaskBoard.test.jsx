@@ -6,7 +6,15 @@ import { http, HttpResponse } from 'msw'
 import { TaskBoard } from '../../components/TaskBoard.jsx'
 
 const SAMPLE_TASKS = [
-  { id: '1', subject: 'Task A', status: 'in_progress', activeForm: 'Working on it', owner: 'alice', description: 'desc', blockedBy: [] },
+  {
+    id: '1',
+    subject: 'Task A',
+    status: 'in_progress',
+    activeForm: 'Working on it',
+    owner: 'alice',
+    description: 'desc',
+    blockedBy: [],
+  },
   { id: '2', subject: 'Task B', status: 'pending', owner: '', description: '', blockedBy: ['1'] },
   { id: '3', subject: 'Task C', status: 'completed', owner: '', description: '', blockedBy: [] },
 ]
@@ -37,10 +45,12 @@ describe('TaskBoard', () => {
   })
 
   it('shows section headers with counts', () => {
+    // Section labels were renamed to match the form values exactly
+    // (commit 3b877a8): Active → In Progress, Done → Completed.
     render(<TaskBoard {...defaultProps()} />)
-    expect(screen.getByText('Active (1)')).toBeInTheDocument()
+    expect(screen.getByText('In Progress (1)')).toBeInTheDocument()
     expect(screen.getByText('Pending (1)')).toBeInTheDocument()
-    expect(screen.getByText('Done (1)')).toBeInTheDocument()
+    expect(screen.getByText('Completed (1)')).toBeInTheDocument()
   })
 
   it('shows "+ New Task" button', () => {
@@ -66,8 +76,11 @@ describe('TaskBoard', () => {
     server.use(
       http.post('/api/tasks/:sessionId', async ({ request }) => {
         capturedBody = await request.json()
-        return HttpResponse.json({ id: '99', subject: capturedBody.subject, status: 'pending' }, { status: 201 })
-      })
+        return HttpResponse.json(
+          { id: '99', subject: capturedBody.subject, status: 'pending' },
+          { status: 201 },
+        )
+      }),
     )
     const props = defaultProps()
     render(<TaskBoard {...props} />)
@@ -103,7 +116,7 @@ describe('TaskBoard', () => {
       http.delete('/api/tasks/:sessionId/:taskId', () => {
         deleteCalled = true
         return HttpResponse.json({ ok: true })
-      })
+      }),
     )
     const props = defaultProps()
     render(<TaskBoard {...props} />)

@@ -19,8 +19,8 @@ export function useStreamingSession(selectedSessionId) {
     if (!selectedSessionId) return
     const capturedId = selectedSessionId
     fetch(`/api/sessions/${selectedSessionId}/query-status`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
         // Guard against stale response after quick session switch
         if (sessionIdRef.current !== capturedId) return
         if (data?.active) {
@@ -39,13 +39,16 @@ export function useStreamingSession(selectedSessionId) {
     if (type === 'sdk_message') {
       setIsStreaming(true)
     } else if (type === 'tool_approval_request') {
-      setPendingApprovals(prev => [...prev, {
-        approvalId: data.approvalId,
-        toolName: data.toolName,
-        input: data.input,
-      }])
+      setPendingApprovals((prev) => [
+        ...prev,
+        {
+          approvalId: data.approvalId,
+          toolName: data.toolName,
+          input: data.input,
+        },
+      ])
     } else if (type === 'tool_approval_resolved') {
-      setPendingApprovals(prev => prev.filter(a => a.approvalId !== data.approvalId))
+      setPendingApprovals((prev) => prev.filter((a) => a.approvalId !== data.approvalId))
     } else if (type === 'sdk_result') {
       setIsStreaming(false)
       setPendingApprovals([])
@@ -69,12 +72,12 @@ export function useStreamingSession(selectedSessionId) {
       })
       // Optimistic removal if server says approval is gone (404 = already resolved)
       if (!res.ok) {
-        setPendingApprovals(prev => prev.filter(a => a.approvalId !== approvalId))
+        setPendingApprovals((prev) => prev.filter((a) => a.approvalId !== approvalId))
       }
     } catch (err) {
       console.warn('Approval failed:', err.message)
       // Remove stale banner on network error to prevent permanent stuck state
-      setPendingApprovals(prev => prev.filter(a => a.approvalId !== approvalId))
+      setPendingApprovals((prev) => prev.filter((a) => a.approvalId !== approvalId))
     }
   }, [])
 
@@ -86,11 +89,11 @@ export function useStreamingSession(selectedSessionId) {
         body: JSON.stringify({ approvalId, decision: 'deny' }),
       })
       if (!res.ok) {
-        setPendingApprovals(prev => prev.filter(a => a.approvalId !== approvalId))
+        setPendingApprovals((prev) => prev.filter((a) => a.approvalId !== approvalId))
       }
     } catch (err) {
       console.warn('Denial failed:', err.message)
-      setPendingApprovals(prev => prev.filter(a => a.approvalId !== approvalId))
+      setPendingApprovals((prev) => prev.filter((a) => a.approvalId !== approvalId))
     }
   }, [])
 

@@ -99,14 +99,20 @@ describe('useSound — initialization', () => {
     renderHook(() => useSound())
     expect(MockAudioContext).not.toHaveBeenCalled()
 
-    act(() => { document.dispatchEvent(new Event('click')) })
+    act(() => {
+      document.dispatchEvent(new Event('click'))
+    })
     expect(MockAudioContext).toHaveBeenCalledTimes(1)
   })
 
   it('only initializes AudioContext once across multiple clicks', () => {
     renderHook(() => useSound())
-    act(() => { document.dispatchEvent(new Event('click')) })
-    act(() => { document.dispatchEvent(new Event('click')) })
+    act(() => {
+      document.dispatchEvent(new Event('click'))
+    })
+    act(() => {
+      document.dispatchEvent(new Event('click'))
+    })
     expect(MockAudioContext).toHaveBeenCalledTimes(1)
   })
 })
@@ -148,7 +154,9 @@ describe('useSound — addCustomSound / removeCustomSound', () => {
     const { result } = renderHook(() => useSound())
 
     let ok
-    act(() => { ok = result.current.addCustomSound('ding', 'AQID') })
+    act(() => {
+      ok = result.current.addCustomSound('ding', 'AQID')
+    })
 
     expect(ok).toBe(true)
     expect(result.current.getPrefs().customSounds.ding).toBe('AQID')
@@ -161,7 +169,9 @@ describe('useSound — addCustomSound / removeCustomSound', () => {
     const huge = 'A'.repeat(700 * 1024)
 
     let ok
-    act(() => { ok = result.current.addCustomSound('big', huge) })
+    act(() => {
+      ok = result.current.addCustomSound('big', huge)
+    })
 
     expect(ok).toBe(false)
     expect(result.current.getPrefs().customSounds.big).toBeUndefined()
@@ -171,13 +181,19 @@ describe('useSound — addCustomSound / removeCustomSound', () => {
     const { result } = renderHook(() => useSound())
 
     let ok
-    act(() => { ok = result.current.addCustomSound('bad name!', 'AQID') })
+    act(() => {
+      ok = result.current.addCustomSound('bad name!', 'AQID')
+    })
     expect(ok).toBe(false)
 
-    act(() => { ok = result.current.addCustomSound('../path', 'AQID') })
+    act(() => {
+      ok = result.current.addCustomSound('../path', 'AQID')
+    })
     expect(ok).toBe(false)
 
-    act(() => { ok = result.current.addCustomSound('good-name_1', 'AQID') })
+    act(() => {
+      ok = result.current.addCustomSound('good-name_1', 'AQID')
+    })
     expect(ok).toBe(true)
   })
 
@@ -187,25 +203,37 @@ describe('useSound — addCustomSound / removeCustomSound', () => {
     // Add a sound that's under per-file cap but will fill aggregate budget
     const chunk = 'A'.repeat(600 * 1024) // ~600KB base64
     let ok
-    act(() => { ok = result.current.addCustomSound('s1', chunk) })
+    act(() => {
+      ok = result.current.addCustomSound('s1', chunk)
+    })
     expect(ok).toBe(true)
 
-    act(() => { ok = result.current.addCustomSound('s2', chunk) })
+    act(() => {
+      ok = result.current.addCustomSound('s2', chunk)
+    })
     expect(ok).toBe(true)
 
-    act(() => { ok = result.current.addCustomSound('s3', chunk) })
+    act(() => {
+      ok = result.current.addCustomSound('s3', chunk)
+    })
     expect(ok).toBe(true)
 
     // 4th should exceed 2MB aggregate
-    act(() => { ok = result.current.addCustomSound('s4', chunk) })
+    act(() => {
+      ok = result.current.addCustomSound('s4', chunk)
+    })
     expect(ok).toBe(false)
   })
 
   it('removeCustomSound deletes and persists', () => {
     const { result } = renderHook(() => useSound())
 
-    act(() => { result.current.addCustomSound('ding', 'AQID') })
-    act(() => { result.current.removeCustomSound('ding') })
+    act(() => {
+      result.current.addCustomSound('ding', 'AQID')
+    })
+    act(() => {
+      result.current.removeCustomSound('ding')
+    })
 
     expect(result.current.getPrefs().customSounds.ding).toBeUndefined()
   })
@@ -219,22 +247,30 @@ describe('useSound — play', () => {
     })
 
     // No click to init AudioContext
-    act(() => { result.current.play('teamUpdate') })
+    act(() => {
+      result.current.play('teamUpdate')
+    })
     // Should not throw
   })
 
   it('play with unknown event name does not throw', () => {
     const { result } = renderHook(() => useSound())
-    act(() => { document.dispatchEvent(new Event('click')) })
+    act(() => {
+      document.dispatchEvent(new Event('click'))
+    })
 
     expect(() => {
-      act(() => { result.current.play('unknownEvent') })
+      act(() => {
+        result.current.play('unknownEvent')
+      })
     }).not.toThrow()
   })
 
   it('play triggers TTS when voice is enabled and sessionContext provided', () => {
     const { result } = renderHook(() => useSound())
-    act(() => { document.dispatchEvent(new Event('click')) })
+    act(() => {
+      document.dispatchEvent(new Event('click'))
+    })
 
     act(() => {
       result.current.play('needsInput', { projectLabel: 'my-project' })
@@ -247,7 +283,9 @@ describe('useSound — play', () => {
 
   it('play does not trigger TTS when voice is disabled', () => {
     const { result } = renderHook(() => useSound())
-    act(() => { document.dispatchEvent(new Event('click')) })
+    act(() => {
+      document.dispatchEvent(new Event('click'))
+    })
 
     act(() => {
       result.current.updatePrefs({ events: { needsInput: { sound: 'chime', voice: false } } })
@@ -262,7 +300,9 @@ describe('useSound — play', () => {
 
   it('play does not trigger TTS when no sessionContext', () => {
     const { result } = renderHook(() => useSound())
-    act(() => { document.dispatchEvent(new Event('click')) })
+    act(() => {
+      document.dispatchEvent(new Event('click'))
+    })
 
     act(() => {
       result.current.play('needsInput')
@@ -276,7 +316,9 @@ describe('useSound — speakText', () => {
   it('calls speechSynthesis.speak with text', () => {
     const { result } = renderHook(() => useSound())
 
-    act(() => { result.current.speakText('Hello world') })
+    act(() => {
+      result.current.speakText('Hello world')
+    })
 
     expect(mockSpeak).toHaveBeenCalled()
     expect(mockSpeak.mock.calls[0][0].text).toBe('Hello world')

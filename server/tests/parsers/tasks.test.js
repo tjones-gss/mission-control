@@ -1,11 +1,17 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    promises,
   }
 })
 
@@ -48,9 +54,9 @@ describe('getTasksForSession()', () => {
     const task = { id: '1', title: 'Good' }
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync.mockReturnValue(['1.json', 'bad.json'])
-    fs.readFileSync
-      .mockReturnValueOnce(JSON.stringify(task))
-      .mockImplementationOnce(() => { throw new Error('bad JSON') })
+    fs.readFileSync.mockReturnValueOnce(JSON.stringify(task)).mockImplementationOnce(() => {
+      throw new Error('bad JSON')
+    })
 
     const result = getTasksForSession('sess-abc')
     expect(result).toHaveLength(1)
@@ -82,7 +88,7 @@ describe('getTasksForSession()', () => {
       .mockReturnValueOnce(JSON.stringify(tasks[2]))
 
     const result = getTasksForSession('sess-abc')
-    expect(result.map(t => t.id)).toEqual(['1', '2', '10'])
+    expect(result.map((t) => t.id)).toEqual(['1', '2', '10'])
   })
 })
 

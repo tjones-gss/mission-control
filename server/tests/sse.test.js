@@ -46,7 +46,7 @@ describe('addClient / removeClient', () => {
     emit('test', { msg: 'hello' })
 
     expect(res.write).toHaveBeenCalledWith(
-      `event: test\ndata: ${JSON.stringify({ msg: 'hello' })}\n\n`
+      `event: test\ndata: ${JSON.stringify({ msg: 'hello' })}\n\n`,
     )
   })
 
@@ -101,7 +101,9 @@ describe('emit', () => {
 
   it('removes a client when write throws an error', () => {
     const res = createTrackedRes()
-    res.write.mockImplementation(() => { throw new Error('connection reset') })
+    res.write.mockImplementation(() => {
+      throw new Error('connection reset')
+    })
     addClient(res)
 
     // Should not throw despite the client erroring
@@ -157,7 +159,9 @@ describe('onEvent', () => {
   })
 
   it('swallows errors thrown by listener callbacks', () => {
-    const badCb = vi.fn(() => { throw new Error('listener exploded') })
+    const badCb = vi.fn(() => {
+      throw new Error('listener exploded')
+    })
     const unsub = onEvent(badCb)
 
     expect(() => emit('test', {})).not.toThrow()
@@ -181,9 +185,7 @@ describe('integration: emit reaches both SSE clients and listeners', () => {
     emit('ci', data)
 
     // SSE client received the write
-    expect(res.write).toHaveBeenCalledWith(
-      `event: ci\ndata: ${JSON.stringify(data)}\n\n`
-    )
+    expect(res.write).toHaveBeenCalledWith(`event: ci\ndata: ${JSON.stringify(data)}\n\n`)
 
     // Listener received the event and data
     expect(listener).toHaveBeenCalledWith('ci', data)

@@ -1,11 +1,17 @@
 vi.mock('fs', () => {
   const promises = {
-    access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(),
-    mkdir: vi.fn(), unlink: vi.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+    unlink: vi.fn(),
   }
   return {
     default: { existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises },
-    existsSync: vi.fn(), readdirSync: vi.fn(), readFileSync: vi.fn(), promises,
+    existsSync: vi.fn(),
+    readdirSync: vi.fn(),
+    readFileSync: vi.fn(),
+    promises,
   }
 })
 
@@ -19,6 +25,15 @@ beforeEach(() => {
 // Helper: make existsSync return false for everything by default
 function noFiles() {
   fs.existsSync.mockReturnValue(false)
+}
+
+// The parser now calls fs.readdirSync(userSkillsDir, { withFileTypes: true })
+// and inspects entry.isFile() / entry.isDirectory() so it can support BOTH the
+// flat ~/.claude/skills/<name>.md layout AND the subdir <name>/SKILL.md layout.
+// Plain strings are no longer enough — the test mocks must yield Dirent-like
+// objects with both methods present.
+function flatFile(name) {
+  return { name, isFile: () => true, isDirectory: () => false }
 }
 
 describe('getAllSkills()', () => {
@@ -46,7 +61,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['my-skill.md'])
+    fs.readdirSync.mockReturnValue([flatFile('my-skill.md')])
     fs.readFileSync.mockReturnValue(skillContent)
 
     const result = getAllSkills()
@@ -65,7 +80,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['unnamed-skill.md'])
+    fs.readdirSync.mockReturnValue([flatFile('unnamed-skill.md')])
     fs.readFileSync.mockReturnValue(skillContent)
 
     const result = getAllSkills()
@@ -80,7 +95,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['my-skill.md'])
+    fs.readdirSync.mockReturnValue([flatFile('my-skill.md')])
     fs.readFileSync.mockReturnValue(skillContent)
 
     const result = getAllSkills()
@@ -92,7 +107,7 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['README.txt', 'notes.json'])
+    fs.readdirSync.mockReturnValue([flatFile('README.txt'), flatFile('notes.json')])
     // readFileSync should not be called since no .md files
     fs.readFileSync.mockReturnValue('')
 
@@ -106,8 +121,10 @@ describe('getAllSkills()', () => {
       if (p.endsWith('skills')) return true
       return false
     })
-    fs.readdirSync.mockReturnValue(['broken.md'])
-    fs.readFileSync.mockImplementation(() => { throw new Error('cannot read') })
+    fs.readdirSync.mockReturnValue([flatFile('broken.md')])
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error('cannot read')
+    })
 
     const result = getAllSkills()
     expect(result.userSkills).toHaveLength(0)
@@ -120,7 +137,12 @@ describe('getAllSkills()', () => {
         'myplugin@1.0.0': [{ installPath: '/fake/myplugin' }],
       },
     })
-    const pluginJson = JSON.stringify({ name: 'My Plugin', description: 'A plugin', version: '1.0.0', author: 'Author' })
+    const pluginJson = JSON.stringify({
+      name: 'My Plugin',
+      description: 'A plugin',
+      version: '1.0.0',
+      author: 'Author',
+    })
     const skillContent = `---\nname: plugin-skill\ndescription: Plugin skill\n---\nDo it.`
 
     // Dirent mock for skills subdir

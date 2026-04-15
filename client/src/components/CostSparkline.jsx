@@ -22,12 +22,12 @@ export function CostSparkline({ messages, model, width = 200, height = 40, class
     return { x, y, ...point }
   })
 
-  const polyline = points.map(p => `${p.x},${p.y}`).join(' ')
+  const polyline = points.map((p) => `${p.x},${p.y}`).join(' ')
 
   // Area fill path
   const areaPath = [
     `M ${points[0].x},${padding + innerH}`,
-    ...points.map(p => `L ${p.x},${p.y}`),
+    ...points.map((p) => `L ${p.x},${p.y}`),
     `L ${points[points.length - 1].x},${padding + innerH}`,
     'Z',
   ].join(' ')
@@ -77,7 +77,14 @@ export function CostSparkline({ messages, model, width = 200, height = 40, class
 
         {/* Hover dot */}
         {hovered && (
-          <circle cx={hovered.x} cy={hovered.y} r={3} fill="#10b981" stroke="#1f2937" strokeWidth={1.5} />
+          <circle
+            cx={hovered.x}
+            cy={hovered.y}
+            r={3}
+            fill="#10b981"
+            stroke="#1f2937"
+            strokeWidth={1.5}
+          />
         )}
       </svg>
 

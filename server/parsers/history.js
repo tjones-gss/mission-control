@@ -8,15 +8,21 @@ function parseAll() {
   if (!fs.existsSync(HISTORY_FILE)) return []
   const lines = fs.readFileSync(HISTORY_FILE, 'utf-8').trim().split('\n').filter(Boolean)
   return lines
-    .map(l => { try { return JSON.parse(l) } catch { return null } })
+    .map((l) => {
+      try {
+        return JSON.parse(l)
+      } catch {
+        return null
+      }
+    })
     .filter(Boolean)
 }
 
 export function getHistory(limit = 100, offset = 0, { project, from, to } = {}) {
   let entries = parseAll()
-  if (project) entries = entries.filter(e => e.project === project)
-  if (from != null) entries = entries.filter(e => e.timestamp >= from)
-  if (to != null) entries = entries.filter(e => e.timestamp <= to)
+  if (project) entries = entries.filter((e) => e.project === project)
+  if (from != null) entries = entries.filter((e) => e.timestamp >= from)
+  if (to != null) entries = entries.filter((e) => e.timestamp <= to)
   entries = entries.reverse() // newest first
   return entries.slice(offset, offset + limit)
 }
@@ -24,9 +30,14 @@ export function getHistory(limit = 100, offset = 0, { project, from, to } = {}) 
 export function getHistoryStats() {
   const entries = parseAll()
   const empty = {
-    total: 0, topCommand: null, topProject: null, today: 0,
+    total: 0,
+    topCommand: null,
+    topProject: null,
+    today: 0,
     dailyActivity: Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (6 - i))
+      const d = new Date()
+      d.setHours(0, 0, 0, 0)
+      d.setDate(d.getDate() - (6 - i))
       return { date: d.toISOString().slice(0, 10), count: 0 }
     }),
   }
@@ -34,7 +45,8 @@ export function getHistoryStats() {
 
   const commandCounts = {}
   const projectCounts = {}
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
   let today = 0
 
   for (const e of entries) {
@@ -48,9 +60,14 @@ export function getHistoryStats() {
   const topProject = Object.entries(projectCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 
   const dailyActivity = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (6 - i))
-    const next = new Date(d); next.setDate(next.getDate() + 1)
-    const count = entries.filter(e => e.timestamp >= d.getTime() && e.timestamp < next.getTime()).length
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - (6 - i))
+    const next = new Date(d)
+    next.setDate(next.getDate() + 1)
+    const count = entries.filter(
+      (e) => e.timestamp >= d.getTime() && e.timestamp < next.getTime(),
+    ).length
     return { date: d.toISOString().slice(0, 10), count }
   })
 

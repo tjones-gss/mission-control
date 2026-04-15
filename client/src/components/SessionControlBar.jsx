@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { GitFork, Pencil, Check, X } from 'lucide-react'
+import { GitFork, Pencil, Check, X, Trash2 } from 'lucide-react'
 
 const PERMISSION_MODES = ['default', 'plan', 'auto', 'acceptEdits', 'dontAsk', 'bypassPermissions']
 const MODELS = ['', 'sonnet', 'opus', 'haiku']
@@ -11,11 +11,13 @@ function Dropdown({ label, value, options, onChange, labelMap }) {
       {label}
       <select
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         className="bg-gray-900 border border-gray-700 rounded px-1 py-0.5 text-[11px] text-gray-300 focus:outline-none focus:border-indigo-500"
       >
-        {options.map(o => (
-          <option key={o} value={o}>{(labelMap && labelMap[o]) || o || '—'}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {(labelMap && labelMap[o]) || o || '—'}
+          </option>
         ))}
       </select>
     </label>
@@ -52,23 +54,52 @@ export function SessionControlBar({ session, sessionOptions, onOptionsChange }) 
   }, [session?.sessionId, forkPrompt, forkLoading, sessionOptions])
 
   const handleSaveName = useCallback(async () => {
-    if (!nameInput.trim()) { setEditingName(false); return }
+    if (!nameInput.trim()) {
+      setEditingName(false)
+      return
+    }
     try {
       const res = await fetch(`/api/sessions/${session.sessionId}/name`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: nameInput.trim() }),
       })
-      if (!res.ok) throw new Error('Failed to save name')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Failed to save name (HTTP ${res.status})`)
+      }
       setEditingName(false)
     } catch (e) {
       alert(e.message)
     }
   }, [session?.sessionId, nameInput])
 
+  // Clear a custom display name and fall back to the auto-generated slug.
+  // Only meaningful when session.displayName is currently set; the button
+  // is hidden otherwise so it doesn't show up for sessions that have
+  // never been renamed.
+  const handleClearName = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/sessions/${session.sessionId}/name`, {
+        method: 'DELETE',
+      })
+      if (!res.ok && res.status !== 404) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Failed to clear name (HTTP ${res.status})`)
+      }
+      setEditingName(false)
+    } catch (e) {
+      alert(e.message)
+    }
+  }, [session?.sessionId])
+
   if (!session) return null
 
-  const statusColor = session.isActive ? 'bg-green-400' : session.needsInput ? 'bg-amber-400' : 'bg-gray-600'
+  const statusColor = session.isActive
+    ? 'bg-green-400'
+    : session.needsInput
+      ? 'bg-amber-400'
+      : 'bg-gray-600'
   const statusLabel = session.isActive ? 'active' : session.needsInput ? 'needs input' : 'idle'
 
   return (
@@ -76,7 +107,9 @@ export function SessionControlBar({ session, sessionOptions, onOptionsChange }) 
       {/* Row 1: Status + Name + Model badge */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
-          <span className={`w-1.5 h-1.5 rounded-full ${statusColor} ${session.isActive ? 'animate-pulse' : ''}`} />
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${statusColor} ${session.isActive ? 'animate-pulse' : ''}`}
+          />
           {statusLabel}
         </span>
 
@@ -85,22 +118,52 @@ export function SessionControlBar({ session, sessionOptions, onOptionsChange }) 
             <input
               autoFocus
               value={nameInput}
-              onChange={e => setNameInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false) }}
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveName()
+                if (e.key === 'Escape') setEditingName(false)
+              }}
+              maxLength={80}
               className="bg-gray-900 border border-gray-600 rounded px-1.5 py-0.5 text-[11px] text-gray-200 w-32 focus:outline-none focus:border-indigo-500"
               placeholder="Session name..."
             />
-            <button onClick={handleSaveName} className="text-green-500 hover:text-green-400"><Check size={11} /></button>
-            <button onClick={() => setEditingName(false)} className="text-gray-500 hover:text-gray-400"><X size={11} /></button>
+            <button
+              onClick={handleSaveName}
+              className="text-green-500 hover:text-green-400"
+              title="Save"
+            >
+              <Check size={11} />
+            </button>
+            {session.displayName && (
+              <button
+                onClick={handleClearName}
+                className="text-gray-500 hover:text-red-400 transition-colors"
+                title="Clear custom name (use default slug)"
+              >
+                <Trash2 size={11} />
+              </button>
+            )}
+            <button
+              onClick={() => setEditingName(false)}
+              className="text-gray-500 hover:text-gray-400"
+              title="Cancel (Esc)"
+            >
+              <X size={11} />
+            </button>
           </span>
         ) : (
           <button
-            onClick={() => { setNameInput(session.displayName || session.slug || ''); setEditingName(true) }}
+            onClick={() => {
+              setNameInput(session.displayName || session.slug || '')
+              setEditingName(true)
+            }}
             className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-200 transition-colors"
             title="Rename session"
           >
             <Pencil size={9} />
-            <span className="font-mono truncate max-w-[150px]">{session.displayName || session.slug || session.sessionId.slice(0, 8)}</span>
+            <span className="font-mono truncate max-w-[150px]">
+              {session.displayName || session.slug || session.sessionId.slice(0, 8)}
+            </span>
           </button>
         )}
 
@@ -117,19 +180,21 @@ export function SessionControlBar({ session, sessionOptions, onOptionsChange }) 
           label="Mode"
           value={sessionOptions.permissionMode || 'default'}
           options={PERMISSION_MODES}
-          onChange={v => onOptionsChange({ ...sessionOptions, permissionMode: v === 'default' ? '' : v })}
+          onChange={(v) =>
+            onOptionsChange({ ...sessionOptions, permissionMode: v === 'default' ? '' : v })
+          }
         />
         <Dropdown
           label="Model"
           value={sessionOptions.model || ''}
           options={MODELS}
-          onChange={v => onOptionsChange({ ...sessionOptions, model: v })}
+          onChange={(v) => onOptionsChange({ ...sessionOptions, model: v })}
         />
         <Dropdown
           label="Effort"
           value={sessionOptions.effort || ''}
           options={EFFORTS}
-          onChange={v => onOptionsChange({ ...sessionOptions, effort: v })}
+          onChange={(v) => onOptionsChange({ ...sessionOptions, effort: v })}
         />
 
         {forking ? (
@@ -137,8 +202,14 @@ export function SessionControlBar({ session, sessionOptions, onOptionsChange }) 
             <input
               autoFocus
               value={forkPrompt}
-              onChange={e => setForkPrompt(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleFork(); if (e.key === 'Escape') { setForking(false); setForkPrompt('') } }}
+              onChange={(e) => setForkPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleFork()
+                if (e.key === 'Escape') {
+                  setForking(false)
+                  setForkPrompt('')
+                }
+              }}
               placeholder="Fork prompt..."
               className="bg-gray-900 border border-gray-600 rounded px-1.5 py-0.5 text-[11px] text-gray-200 w-48 focus:outline-none focus:border-indigo-500"
               disabled={forkLoading}
@@ -150,7 +221,13 @@ export function SessionControlBar({ session, sessionOptions, onOptionsChange }) 
             >
               {forkLoading ? '...' : 'Fork'}
             </button>
-            <button onClick={() => { setForking(false); setForkPrompt('') }} className="text-gray-500 hover:text-gray-400">
+            <button
+              onClick={() => {
+                setForking(false)
+                setForkPrompt('')
+              }}
+              className="text-gray-500 hover:text-gray-400"
+            >
               <X size={11} />
             </button>
           </span>

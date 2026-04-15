@@ -5,6 +5,7 @@ import path from 'path'
 import os from 'os'
 import { randomUUID } from 'crypto'
 import { validateTeamName, validateMessageId, sanitizeSender } from '../utils/validate.js'
+import { atomicWriteJson } from '../lib/atomic-write.js'
 
 const TEAMS_DIR = path.join(os.homedir(), '.claude', 'teams')
 
@@ -12,7 +13,7 @@ export const router = Router()
 
 router.get('/', (req, res) => res.json(getAllTeams()))
 
-router.post('/:name/inbox', async (req, res) => {
+router.post('/:name/inbox', async (req, res, next) => {
   const { name } = req.params
   if (!validateTeamName(name, res)) return
 
@@ -28,7 +29,7 @@ router.post('/:name/inbox', async (req, res) => {
     await fs.access(teamPath)
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'team not found' })
-    throw err
+    return next(err)
   }
 
   try {
@@ -54,19 +55,14 @@ router.post('/:name/inbox', async (req, res) => {
     }
 
     messages.push(message)
-
-    // Atomic write: write to temp file then rename
-    const tmpFile = dashboardFile + '.tmp.' + randomUUID().slice(0, 8)
-    await fs.writeFile(tmpFile, JSON.stringify(messages, null, 2))
-    await fs.rename(tmpFile, dashboardFile)
-
+    await atomicWriteJson(dashboardFile, messages)
     res.status(201).json(message)
   } catch (err) {
-    throw err
+    next(err)
   }
 })
 
-router.patch('/:name/inbox/:messageId', async (req, res) => {
+router.patch('/:name/inbox/:messageId', async (req, res, next) => {
   const { name, messageId } = req.params
   if (!validateTeamName(name, res)) return
   if (!validateMessageId(messageId, res)) return
@@ -82,7 +78,7 @@ router.patch('/:name/inbox/:messageId', async (req, res) => {
     await fs.access(teamPath)
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'team not found' })
-    throw err
+    return next(err)
   }
 
   try {
@@ -91,34 +87,32 @@ router.patch('/:name/inbox/:messageId', async (req, res) => {
       await fs.access(inboxesPath)
     } catch (err) {
       if (err.code === 'ENOENT') return res.status(404).json({ error: 'message not found' })
-      throw err
+      return next(err)
     }
 
-    const files = (await fs.readdir(inboxesPath)).filter(f => f.endsWith('.json'))
+    const files = (await fs.readdir(inboxesPath)).filter((f) => f.endsWith('.json'))
 
     for (const file of files) {
       const filePath = path.join(inboxesPath, file)
       let messages
       try {
         messages = JSON.parse(await fs.readFile(filePath, 'utf-8'))
-      } catch { continue }
+      } catch {
+        continue
+      }
 
-      const idx = messages.findIndex(m => m.id === messageId)
+      const idx = messages.findIndex((m) => m.id === messageId)
       if (idx === -1) continue
 
       if (typeof updates.read !== 'undefined') messages[idx].read = updates.read
       if (typeof updates.archived !== 'undefined') messages[idx].archived = updates.archived
 
-      // Atomic write
-      const tmpFile = filePath + '.tmp.' + randomUUID().slice(0, 8)
-      await fs.writeFile(tmpFile, JSON.stringify(messages, null, 2))
-      await fs.rename(tmpFile, filePath)
-
+      await atomicWriteJson(filePath, messages)
       return res.json(messages[idx])
     }
 
     res.status(404).json({ error: 'message not found' })
   } catch (err) {
-    throw err
+    next(err)
   }
 })

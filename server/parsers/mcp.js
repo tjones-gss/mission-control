@@ -37,7 +37,7 @@ export function getMcpServersForSession(cwd) {
 
   const projectMcp = projectConfig.mcpServers || {}
   for (const [name, config] of Object.entries(projectMcp)) {
-    const existing = userServers.find(s => s.name === name)
+    const existing = userServers.find((s) => s.name === name)
     if (existing) {
       existing.scope = 'project (overrides user)'
     } else {
@@ -56,7 +56,7 @@ export function getMcpServersForSession(cwd) {
 
   const localMcp = localConfig.mcpServers || {}
   for (const [name, config] of Object.entries(localMcp)) {
-    const existing = userServers.find(s => s.name === name)
+    const existing = userServers.find((s) => s.name === name)
     if (existing) {
       existing.scope = 'local (overrides)'
     } else {

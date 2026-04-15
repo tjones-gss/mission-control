@@ -4,6 +4,7 @@ import path from 'path'
 import os from 'os'
 import { getAllWorkflows } from '../parsers/workflows.js'
 import { validateWorkflowName as validateName } from '../utils/validate.js'
+import { atomicWrite, atomicWriteJson } from '../lib/atomic-write.js'
 
 export const router = Router()
 
@@ -58,7 +59,7 @@ function stepContent(step) {
 
 router.get('/', (req, res) => res.json(getAllWorkflows()))
 
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   const body = req.body ?? {}
   const { name } = body
   if (!name || typeof name !== 'string') return res.status(400).json({ error: 'name is required.' })
@@ -83,14 +84,14 @@ router.post('/', async (req, res) => {
 
   try {
     await fs.mkdir(WORKFLOWS_DIR, { recursive: true })
-    await fs.writeFile(filePath, JSON.stringify(workflow, null, 2), 'utf8')
+    await atomicWriteJson(filePath, workflow)
   } catch (err) {
-    throw err
+    return next(err)
   }
   res.status(201).json(workflow)
 })
 
-router.put('/:name', async (req, res) => {
+router.put('/:name', async (req, res, next) => {
   const { name } = req.params
   if (!validateName(name, res)) return
 
@@ -105,7 +106,7 @@ router.put('/:name', async (req, res) => {
     existing = JSON.parse(await fs.readFile(filePath, 'utf8'))
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Workflow not found.' })
-    throw err
+    return next(err)
   }
 
   const body = req.body ?? {}
@@ -117,14 +118,14 @@ router.put('/:name', async (req, res) => {
   }
 
   try {
-    await fs.writeFile(filePath, JSON.stringify(updated, null, 2), 'utf8')
+    await atomicWriteJson(filePath, updated)
   } catch (err) {
-    throw err
+    return next(err)
   }
   res.json(updated)
 })
 
-router.delete('/:name', async (req, res) => {
+router.delete('/:name', async (req, res, next) => {
   const { name } = req.params
   if (!validateName(name, res)) return
 
@@ -139,11 +140,11 @@ router.delete('/:name', async (req, res) => {
     res.json({ ok: true, name })
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Workflow not found.' })
-    throw err
+    next(err)
   }
 })
 
-router.post('/:name/export', async (req, res) => {
+router.post('/:name/export', async (req, res, next) => {
   const { name } = req.params
   if (!validateName(name, res)) return
 
@@ -153,7 +154,7 @@ router.post('/:name/export', async (req, res) => {
     workflow = JSON.parse(await fs.readFile(workflowPath, 'utf8'))
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Workflow not found.' })
-    throw err
+    return next(err)
   }
 
   const skillPath = path.join(SKILLS_DIR, `${name}.md`)
@@ -171,9 +172,9 @@ router.post('/:name/export', async (req, res) => {
   const content = generateSkillMd(workflow)
   try {
     await fs.mkdir(SKILLS_DIR, { recursive: true })
-    await fs.writeFile(skillPath, content, 'utf8')
+    await atomicWrite(skillPath, content)
   } catch (err) {
-    throw err
+    return next(err)
   }
   res.json({ ok: true, name, skillPath })
 })

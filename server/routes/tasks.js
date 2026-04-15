@@ -4,6 +4,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import { validateSessionId } from '../utils/validate.js'
+import { atomicWriteJson } from '../lib/atomic-write.js'
 
 export const router = Router()
 
@@ -18,9 +19,16 @@ router.get('/:sessionId', (req, res) => {
   res.json(getTasksForSession(req.params.sessionId))
 })
 
-router.post('/:sessionId', async (req, res) => {
+router.post('/:sessionId', async (req, res, next) => {
   const { sessionId } = req.params
   if (!validateSessionId(sessionId, res)) return
+
+  // Reject empty subject — without this, the user could create a task
+  // with no title that's impossible to identify in the board.
+  const subject = typeof req.body.subject === 'string' ? req.body.subject.trim() : ''
+  if (!subject) {
+    return res.status(400).json({ error: 'subject is required' })
+  }
 
   try {
     const sessionDir = path.join(TASKS_DIR, sessionId)
@@ -43,7 +51,7 @@ router.post('/:sessionId', async (req, res) => {
     const newId = String(maxId + 1)
     const task = {
       id: newId,
-      subject: req.body.subject || '',
+      subject,
       description: req.body.description || '',
       activeForm: req.body.activeForm || '',
       status: req.body.status || 'pending',
@@ -53,47 +61,70 @@ router.post('/:sessionId', async (req, res) => {
     }
 
     const filePath = path.join(sessionDir, `${newId}.json`)
-    await fs.writeFile(filePath, JSON.stringify(task, null, 2))
+    await atomicWriteJson(filePath, task)
     res.status(201).json(task)
   } catch (err) {
-    throw err
+    // Express 4 does NOT auto-catch async rejections — must call next(err)
+    // to reach the shared errorHandler. The previous `throw err` here
+    // bubbled to process.unhandledRejection and the client request hung
+    // until the 30s timeout.
+    next(err)
   }
 })
 
-router.put('/:sessionId/:taskId', async (req, res) => {
+router.put('/:sessionId/:taskId', async (req, res, next) => {
   const { sessionId, taskId } = req.params
   if (!VALID_ID.test(sessionId) || !VALID_ID.test(taskId)) {
     return res.status(400).json({ error: 'Invalid sessionId or taskId' })
   }
 
   const filePath = path.join(TASKS_DIR, sessionId, `${taskId}.json`)
+
+  // Read the existing task FIRST so missing fields in the request body
+  // fall back to the existing values instead of getting wiped to ''.
+  // The previous handler always defaulted subject/description/owner/etc.
+  // to '', which meant a partial PUT like { status: 'in_progress' } would
+  // blow away subject + description + owner — silent data loss caught
+  // by Run #29 probe. Read-modify-write isn't safe against concurrent
+  // partial PUTs (last-write-wins is still possible) but at least no
+  // single PUT destroys fields it didn't mention.
+  let existing
   try {
-    await fs.access(filePath)
+    existing = JSON.parse(await fs.readFile(filePath, 'utf8'))
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Task not found' })
-    throw err
+    return next(err)
   }
 
   try {
+    const body = req.body || {}
     const task = {
       id: taskId,
-      subject: req.body.subject || '',
-      description: req.body.description || '',
-      activeForm: req.body.activeForm || '',
-      status: req.body.status || 'pending',
-      owner: req.body.owner || '',
-      blocks: Array.isArray(req.body.blocks) ? req.body.blocks : [],
-      blockedBy: Array.isArray(req.body.blockedBy) ? req.body.blockedBy : [],
+      subject: body.subject !== undefined ? body.subject : existing.subject || '',
+      description: body.description !== undefined ? body.description : existing.description || '',
+      activeForm: body.activeForm !== undefined ? body.activeForm : existing.activeForm || '',
+      status: body.status !== undefined ? body.status : existing.status || 'pending',
+      owner: body.owner !== undefined ? body.owner : existing.owner || '',
+      blocks: Array.isArray(body.blocks)
+        ? body.blocks
+        : Array.isArray(existing.blocks)
+          ? existing.blocks
+          : [],
+      blockedBy: Array.isArray(body.blockedBy)
+        ? body.blockedBy
+        : Array.isArray(existing.blockedBy)
+          ? existing.blockedBy
+          : [],
     }
 
-    await fs.writeFile(filePath, JSON.stringify(task, null, 2))
+    await atomicWriteJson(filePath, task)
     res.json(task)
   } catch (err) {
-    throw err
+    next(err)
   }
 })
 
-router.delete('/:sessionId/:taskId', async (req, res) => {
+router.delete('/:sessionId/:taskId', async (req, res, next) => {
   const { sessionId, taskId } = req.params
   if (!VALID_ID.test(sessionId) || !VALID_ID.test(taskId)) {
     return res.status(400).json({ error: 'Invalid sessionId or taskId' })
@@ -105,6 +136,6 @@ router.delete('/:sessionId/:taskId', async (req, res) => {
     res.json({ ok: true })
   } catch (err) {
     if (err.code === 'ENOENT') return res.status(404).json({ error: 'Task not found' })
-    throw err
+    next(err)
   }
 })

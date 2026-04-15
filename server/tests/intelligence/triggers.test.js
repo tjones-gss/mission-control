@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { onSessionEvent, runAnalysis } from '../../intelligence/triggers.js'
 import { getSessionById } from '../../parsers/sessions.js'
 import { analyzeSession } from '../../intelligence/analyzer.js'
-import { getCached, setCached, getInFlight, setInFlight, clearInFlight } from '../../intelligence/cache.js'
+import {
+  getCached,
+  setCached,
+  getInFlight,
+  setInFlight,
+  clearInFlight,
+} from '../../intelligence/cache.js'
 import { emit } from '../../sse.js'
 
 vi.mock('../../parsers/sessions.js', () => ({ getSessionById: vi.fn() }))

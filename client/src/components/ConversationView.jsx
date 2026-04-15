@@ -45,11 +45,27 @@ function ToolUseBlock({ name, input }) {
   const color = TOOL_COLORS[name] || 'bg-gray-800 text-gray-400'
   const filePath = FILE_TOOLS.has(name) ? input?.file_path : null
 
+  // The header used to be a <button>, but FilePath renders its own
+  // <button> + <a> elements (copy-path, vscode://). Nesting buttons is
+  // invalid HTML and triggered React's validateDOMNesting warning.
+  // Use a div with role=button + keyboard handling instead.
+  const toggle = () => setOpen((o) => !o)
+  const onKey = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      toggle()
+    }
+  }
+
   return (
     <div className="rounded overflow-hidden">
-      <button
-        className={`flex items-center gap-2 px-2 py-1 text-xs font-mono w-full text-left ${color}`}
-        onClick={() => setOpen((o) => !o)}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        className={`flex items-center gap-2 px-2 py-1 text-xs font-mono w-full text-left cursor-pointer ${color}`}
+        onClick={toggle}
+        onKeyDown={onKey}
       >
         <span>{name}</span>
         {filePath && (
@@ -63,7 +79,7 @@ function ToolUseBlock({ name, input }) {
           </span>
         )}
         <span className="opacity-50 text-[10px] ml-auto">{open ? '▲' : '▼'}</span>
-      </button>
+      </div>
       {open && (
         <pre className="bg-gray-900 text-gray-400 text-[11px] font-mono p-2 overflow-x-auto">
           {JSON.stringify(input, null, 2)}
@@ -589,9 +605,78 @@ export function ConversationView({
   const isStreaming = streaming?.isStreaming || false
   const pendingApprovals = streaming?.pendingApprovals || []
   const sdkError = streaming?.sdkError || null
-  const url = active && sessionId ? `/api/sessions/${sessionId}/messages` : null
-  const { data, loading } = useApi(url, [sessionUpdateVersion])
-  const messages = data?.messages || []
+
+  // Pull only the last N messages by default. The server endpoint now
+  // supports `?limit=N` (Run #23 fix) and slices from the end. The active
+  // oversight session has 1,964+ messages = 1.47 MB; fetching the full
+  // history every render was a real perf hit on tab switches and SSE
+  // refreshes. 200 is enough to fill several screens of conversation
+  // before the user has to click "Load older".
+  const PAGE_SIZE = 200
+  const [messageLimit, setMessageLimit] = useState(PAGE_SIZE)
+  const [paused, setPaused] = useState(false)
+  // When the user clicks "Load older messages", capture the current
+  // scrollHeight + scrollTop here so the post-refetch effect can
+  // restore them. Declared up here (above the sessionId reset effect)
+  // so the reset can clear it on session switch.
+  const pendingScrollAnchorRef = useRef(null)
+  // Track the previous data.offset across renders. The anchor can ONLY
+  // be applied when the offset has DECREASED (which is the unambiguous
+  // signature of a Load older refetch landing — the parser slices a
+  // bigger window from the end of the records list, so offset shrinks).
+  // SSE updates can only INCREASE offset (when totalCount grows by one
+  // for a new live message), so this lets the anchor effect ignore
+  // SSE-driven re-renders that arrive between the click and the
+  // load-older fetch completing.
+  const prevOffsetRef = useRef(0)
+  // Reset session-scoped scroll/paging state when switching sessions:
+  //  - messageLimit back to PAGE_SIZE so each session opens with the
+  //    default page size and a fresh "Load older" button
+  //  - pendingScrollAnchorRef cleared so a leftover anchor from
+  //    session A doesn't get applied to session B's render (would
+  //    land the user at scrollTop 0 of the new conversation)
+  //  - paused back to false so the auto-scroll-to-bottom path runs
+  //    on the first render of session B (otherwise scrolling up in
+  //    session A leaves session B stuck at the top forever)
+  //  - prevOffsetRef back to 0 so the next session's first render
+  //    is treated as a clean baseline
+  useEffect(() => {
+    setMessageLimit(PAGE_SIZE)
+    pendingScrollAnchorRef.current = null
+    setPaused(false)
+    prevOffsetRef.current = 0
+  }, [sessionId])
+
+  const url =
+    active && sessionId ? `/api/sessions/${sessionId}/messages?limit=${messageLimit}` : null
+  const { data, loading } = useApi(url, [sessionUpdateVersion, messageLimit])
+  const serverMessages = data?.messages || []
+  const totalMessageCount = data?.totalCount ?? serverMessages.length
+  const hasOlderMessages = data?.hasMore === true
+  const olderRemaining = Math.max(0, totalMessageCount - serverMessages.length)
+
+  // Optimistic user messages — shown immediately on send, cleared once they
+  // appear in the server response (matched by text content).
+  const [pendingUserMsgs, setPendingUserMsgs] = useState([])
+  useEffect(() => {
+    setPendingUserMsgs([])
+  }, [sessionId])
+  const messages = useMemo(() => {
+    // Drop pending messages that now exist in the server data
+    const pending = pendingUserMsgs.filter(
+      (p) =>
+        !serverMessages.some(
+          (m) =>
+            m.type === 'user' &&
+            m.blocks?.some?.((b) => b.type === 'text' && b.text === p.blocks[0].text),
+        ),
+    )
+    if (pending.length !== pendingUserMsgs.length) {
+      // Use queueMicrotask to avoid setState during render
+      queueMicrotask(() => setPendingUserMsgs(pending))
+    }
+    return [...serverMessages, ...pending]
+  }, [serverMessages, pendingUserMsgs])
 
   // Build tool_use_id → tool_name lookup — append-only via ref to avoid re-renders
   const toolNameMapRef = useRef({})
@@ -610,7 +695,6 @@ export function ConversationView({
   }, [messages])
 
   const scrollRef = useRef(null)
-  const [paused, setPaused] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState(null)
 
@@ -629,6 +713,27 @@ export function ConversationView({
       if (!sessionId || isStreaming) return
       setSending(true)
       setSendError(null)
+      // Optimistically show the user message immediately
+      setPendingUserMsgs((prev) => [
+        ...prev,
+        {
+          uuid: `pending-${Date.now()}`,
+          type: 'user',
+          blocks: [{ type: 'text', text }],
+        },
+      ])
+      // Sending is an explicit user action — always bring them back to
+      // the tail of the conversation so they can see their just-sent
+      // message, the generating indicator, and the incoming response.
+      // Without this, a user who was scrolled up reading older context
+      // clicks Send and sees nothing change (paused auto-scroll eats
+      // the update). Unpause + snap to bottom on the next frame so the
+      // new pending-message render has landed in the DOM first.
+      setPaused(false)
+      requestAnimationFrame(() => {
+        const el = scrollRef.current
+        if (el) el.scrollTop = el.scrollHeight
+      })
       try {
         let fetchOpts
         if (imageFile) {
@@ -665,11 +770,38 @@ export function ConversationView({
     [sessionId, cleanOptions, isStreaming, streaming],
   )
 
+  // The pendingScrollAnchorRef is declared above next to messageLimit
+  // so the sessionId reset effect can clear it. After a Load older click
+  // captures { oldScrollHeight, oldScrollTop }, this effect restores
+  // scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight) so
+  // the same content stays visible. Without this, the auto-scroll
+  // effect below would yank the user to the bottom of the conversation
+  // every time they tried to read older context.
+
   useEffect(() => {
-    if (!paused && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const el = scrollRef.current
+    if (!el) return
+
+    const newOffset = data?.offset ?? 0
+    const offsetDecreased = newOffset < prevOffsetRef.current
+    prevOffsetRef.current = newOffset
+
+    // Only consume the anchor when the offset has actually decreased
+    // (== a Load older refetch landed). Without this gate, an SSE
+    // update arriving between the user's click and the load-older
+    // fetch would consume the anchor on the wrong render and produce
+    // a small but visible scroll bounce.
+    if (pendingScrollAnchorRef.current && offsetDecreased) {
+      const { oldScrollHeight, oldScrollTop } = pendingScrollAnchorRef.current
+      pendingScrollAnchorRef.current = null
+      el.scrollTop = oldScrollTop + (el.scrollHeight - oldScrollHeight)
+      return
     }
-  }, [messages.length, sessionUpdateVersion, paused])
+
+    if (!paused) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [messages.length, sessionUpdateVersion, paused, data?.offset])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
@@ -689,6 +821,28 @@ export function ConversationView({
     <div className="h-full flex flex-col overflow-hidden relative">
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 space-y-3">
         {loading && <div className="text-xs text-gray-600 p-4">Loading...</div>}
+        {hasOlderMessages && (
+          <button
+            type="button"
+            onClick={() => {
+              // Capture scroll anchor BEFORE the refetch so the
+              // post-refetch effect can restore it (preserves the
+              // user's reading position when older content loads).
+              const el = scrollRef.current
+              if (el) {
+                pendingScrollAnchorRef.current = {
+                  oldScrollHeight: el.scrollHeight,
+                  oldScrollTop: el.scrollTop,
+                }
+              }
+              setMessageLimit((n) => n + PAGE_SIZE)
+            }}
+            className="w-full py-2 mb-2 rounded border border-gray-800 bg-gray-900/40 text-[11px] text-gray-500 hover:text-gray-300 hover:border-gray-700 transition-colors"
+            title={`Showing the last ${serverMessages.length} of ${totalMessageCount} messages — click to load older`}
+          >
+            Load {Math.min(PAGE_SIZE, olderRemaining)} older messages ({olderRemaining} remaining)
+          </button>
+        )}
         {messages.map((msg) => (
           <div key={msg.uuid}>
             {msg.type === 'user' && <UserMessage blocks={msg.blocks} toolNameMap={toolNameMap} />}

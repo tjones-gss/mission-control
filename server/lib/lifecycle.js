@@ -52,6 +52,7 @@ export function registerShutdown({ server, watcher }) {
 
   process.on('unhandledRejection', (reason) => {
     console.error('Unhandled rejection:', reason)
-    process.exit(1)
+    // Log but don't crash — PTY errors on Windows can trigger unhandled rejections
+    // that are non-fatal to the rest of the server.
   })
 }

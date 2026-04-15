@@ -120,9 +120,7 @@ describe('getAllTeams()', () => {
 
   it('ignores non-directory entries in teams dir', () => {
     fs.existsSync.mockReturnValue(true)
-    fs.readdirSync.mockReturnValue([
-      { name: 'a-file.txt', isDirectory: () => false },
-    ])
+    fs.readdirSync.mockReturnValue([{ name: 'a-file.txt', isDirectory: () => false }])
 
     expect(getAllTeams()).toEqual([])
   })
@@ -152,6 +150,6 @@ describe('getAllTeams()', () => {
 
     const result = getAllTeams()
     expect(result).toHaveLength(2)
-    expect(result.map(t => t.name)).toEqual(['team-a', 'team-b'])
+    expect(result.map((t) => t.name)).toEqual(['team-a', 'team-b'])
   })
 })

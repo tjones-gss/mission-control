@@ -11,17 +11,19 @@ beforeEach(() => {
 
   // Default: query-status returns inactive
   server.use(
-    http.get('/api/sessions/:sessionId/query-status', () =>
-      HttpResponse.json({ active: false })
-    ),
+    http.get('/api/sessions/:sessionId/query-status', () => HttpResponse.json({ active: false })),
     http.post('/api/sessions/:sessionId/tool-approval', async ({ request }) => {
-      capturedRequests.push({ url: request.url, method: request.method, body: await request.json() })
+      capturedRequests.push({
+        url: request.url,
+        method: request.method,
+        body: await request.json(),
+      })
       return HttpResponse.json({ ok: true })
     }),
     http.post('/api/sessions/:sessionId/cancel', ({ request }) => {
       capturedRequests.push({ url: request.url, method: request.method })
       return HttpResponse.json({ ok: true })
-    })
+    }),
   )
 })
 
@@ -113,10 +115,9 @@ describe('useStreamingSession', () => {
   })
 
   it('session change resets all state', async () => {
-    const { result, rerender } = renderHook(
-      ({ id }) => useStreamingSession(id),
-      { initialProps: { id: 'sess-1' } }
-    )
+    const { result, rerender } = renderHook(({ id }) => useStreamingSession(id), {
+      initialProps: { id: 'sess-1' },
+    })
     await act(async () => {})
     act(() => {
       result.current.handleSdkEvent({ type: 'sdk_message', data: { sessionId: 'sess-1' } })
@@ -144,7 +145,7 @@ describe('useStreamingSession', () => {
     await act(async () => {
       await result.current.approve('a1')
     })
-    const req = capturedRequests.find(r => r.url.includes('tool-approval'))
+    const req = capturedRequests.find((r) => r.url.includes('tool-approval'))
     expect(req).toBeDefined()
     expect(req.method).toBe('POST')
     expect(req.body).toEqual({ approvalId: 'a1', decision: 'allow' })
@@ -157,7 +158,7 @@ describe('useStreamingSession', () => {
     await act(async () => {
       await result.current.deny('a1')
     })
-    const req = capturedRequests.find(r => r.url.includes('tool-approval'))
+    const req = capturedRequests.find((r) => r.url.includes('tool-approval'))
     expect(req).toBeDefined()
     expect(req.method).toBe('POST')
     expect(req.body).toEqual({ approvalId: 'a1', decision: 'deny' })
@@ -170,7 +171,7 @@ describe('useStreamingSession', () => {
     await act(async () => {
       await result.current.cancel()
     })
-    const req = capturedRequests.find(r => r.url.includes('cancel'))
+    const req = capturedRequests.find((r) => r.url.includes('cancel'))
     expect(req).toBeDefined()
     expect(req.method).toBe('POST')
     expect(req.url).toContain('/api/sessions/sess-1/cancel')
@@ -179,7 +180,9 @@ describe('useStreamingSession', () => {
   it('markStreaming sets isStreaming=true', async () => {
     const { result } = renderHook(() => useStreamingSession('sess-1'))
     await act(async () => {})
-    act(() => { result.current.markStreaming() })
+    act(() => {
+      result.current.markStreaming()
+    })
     expect(result.current.isStreaming).toBe(true)
   })
 
@@ -193,7 +196,9 @@ describe('useStreamingSession', () => {
       })
     })
     expect(result.current.sdkError).not.toBeNull()
-    act(() => { result.current.clearError() })
+    act(() => {
+      result.current.clearError()
+    })
     expect(result.current.sdkError).toBeNull()
   })
 
@@ -209,8 +214,8 @@ describe('useStreamingSession', () => {
   it('approve removes approval from local state on server 404', async () => {
     server.use(
       http.post('/api/sessions/:sessionId/tool-approval', () =>
-        HttpResponse.json({ error: 'not found' }, { status: 404 })
-      )
+        HttpResponse.json({ error: 'not found' }, { status: 404 }),
+      ),
     )
     const { result } = renderHook(() => useStreamingSession('sess-1'))
     await act(async () => {})
@@ -221,14 +226,14 @@ describe('useStreamingSession', () => {
       })
     })
     expect(result.current.pendingApprovals).toHaveLength(1)
-    await act(async () => { await result.current.approve('a1') })
+    await act(async () => {
+      await result.current.approve('a1')
+    })
     expect(result.current.pendingApprovals).toHaveLength(0)
   })
 
   it('deny removes approval from local state on network error', async () => {
-    server.use(
-      http.post('/api/sessions/:sessionId/tool-approval', () => HttpResponse.error())
-    )
+    server.use(http.post('/api/sessions/:sessionId/tool-approval', () => HttpResponse.error()))
     const { result } = renderHook(() => useStreamingSession('sess-1'))
     await act(async () => {})
     act(() => {
@@ -238,7 +243,9 @@ describe('useStreamingSession', () => {
       })
     })
     expect(result.current.pendingApprovals).toHaveLength(1)
-    await act(async () => { await result.current.deny('a1') })
+    await act(async () => {
+      await result.current.deny('a1')
+    })
     expect(result.current.pendingApprovals).toHaveLength(0)
   })
 
@@ -247,8 +254,8 @@ describe('useStreamingSession', () => {
 
     server.use(
       http.get('/api/sessions/sess-resync/query-status', () =>
-        HttpResponse.json({ active: true, pendingApprovals: [pendingApproval] })
-      )
+        HttpResponse.json({ active: true, pendingApprovals: [pendingApproval] }),
+      ),
     )
 
     const { result } = renderHook(() => useStreamingSession('sess-resync'))

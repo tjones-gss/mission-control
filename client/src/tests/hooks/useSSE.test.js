@@ -18,7 +18,9 @@ describe('useSSE', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
-    act(() => { es.emit('session_update', { id: 'abc' }) })
+    act(() => {
+      es.emit('session_update', { id: 'abc' })
+    })
     expect(onMessage).toHaveBeenCalledWith({ type: 'session_update', data: { id: 'abc' } })
   })
 
@@ -26,7 +28,9 @@ describe('useSSE', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
-    act(() => { es.emit('new_session', { id: 'xyz' }) })
+    act(() => {
+      es.emit('new_session', { id: 'xyz' })
+    })
     expect(onMessage).toHaveBeenCalledWith({ type: 'new_session', data: { id: 'xyz' } })
   })
 
@@ -34,7 +38,9 @@ describe('useSSE', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
-    act(() => { es.emit('task_update', { taskId: 't1' }) })
+    act(() => {
+      es.emit('task_update', { taskId: 't1' })
+    })
     expect(onMessage).toHaveBeenCalledWith({ type: 'task_update', data: { taskId: 't1' } })
   })
 
@@ -42,7 +48,9 @@ describe('useSSE', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
-    act(() => { es.emit('team_update', { team: 'alpha' }) })
+    act(() => {
+      es.emit('team_update', { team: 'alpha' })
+    })
     expect(onMessage).toHaveBeenCalledWith({ type: 'team_update', data: { team: 'alpha' } })
   })
 
@@ -50,7 +58,9 @@ describe('useSSE', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
-    act(() => { es.emit('history_update', { entries: [] }) })
+    act(() => {
+      es.emit('history_update', { entries: [] })
+    })
     expect(onMessage).toHaveBeenCalledWith({ type: 'history_update', data: { entries: [] } })
   })
 
@@ -58,8 +68,13 @@ describe('useSSE', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
-    act(() => { es.emit('intelligence_update', { summary: 'done' }) })
-    expect(onMessage).toHaveBeenCalledWith({ type: 'intelligence_update', data: { summary: 'done' } })
+    act(() => {
+      es.emit('intelligence_update', { summary: 'done' })
+    })
+    expect(onMessage).toHaveBeenCalledWith({
+      type: 'intelligence_update',
+      data: { summary: 'done' },
+    })
   })
 
   it('closes EventSource on unmount', () => {
@@ -87,7 +102,9 @@ describe('useSSE', () => {
     expect(global.EventSource.instance).toBe(esAfterMount)
 
     // The new callback should be called via the ref, not the old one
-    act(() => { global.EventSource.instance.emit('session_update', { id: '1' }) })
+    act(() => {
+      global.EventSource.instance.emit('session_update', { id: '1' })
+    })
     expect(onMessage1).not.toHaveBeenCalled()
     expect(onMessage2).toHaveBeenCalledWith({ type: 'session_update', data: { id: '1' } })
   })
@@ -97,6 +114,9 @@ describe('useSSE', () => {
     renderHook(() => useSSE(onMessage))
     const es = global.EventSource.instance
 
+    // Keep this list in sync with the `events` array in useSSE.js. New
+    // SSE channels were added for live workflow/skill/memory/plan/config/hooks
+    // refreshes — adding them here ensures the test catches future drift.
     const expectedEvents = [
       'session_update',
       'new_session',
@@ -109,9 +129,15 @@ describe('useSSE', () => {
       'sdk_error',
       'tool_approval_request',
       'tool_approval_resolved',
+      'workflows_update',
+      'skills_update',
+      'memory_update',
+      'plan_update',
+      'config_update',
+      'hooks_update',
     ]
 
-    expectedEvents.forEach(eventType => {
+    expectedEvents.forEach((eventType) => {
       expect(es.listeners[eventType]).toBeDefined()
       expect(es.listeners[eventType].length).toBeGreaterThan(0)
     })

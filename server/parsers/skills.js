@@ -13,7 +13,10 @@ function parseFrontmatter(content) {
     const colonIdx = line.indexOf(':')
     if (colonIdx === -1) continue
     const key = line.slice(0, colonIdx).trim()
-    const val = line.slice(colonIdx + 1).trim().replace(/^["']|["']$/g, '')
+    const val = line
+      .slice(colonIdx + 1)
+      .trim()
+      .replace(/^["']|["']$/g, '')
     result[key] = val
   }
   return result
@@ -62,8 +65,9 @@ function getPluginSkills(installPath, pluginKey) {
 
   const skills = []
   try {
-    const subdirs = fs.readdirSync(skillsDir, { withFileTypes: true })
-      .filter(d => d.isDirectory())
+    const subdirs = fs
+      .readdirSync(skillsDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
     for (const subdir of subdirs) {
       const skillFile = path.join(skillsDir, subdir.name, 'SKILL.md')
       if (fs.existsSync(skillFile)) {
@@ -79,17 +83,93 @@ function getPluginSkills(installPath, pluginKey) {
 
 export function getAllSkills() {
   const userSkills = []
+  const userCommands = []
   const plugins = []
 
-  // User skills
+  // User skills — supports BOTH layouts:
+  //   ~/.claude/skills/<name>.md           (flat file — what NewSkillForm
+  //                                          writes; rare in practice)
+  //   ~/.claude/skills/<name>/SKILL.md     (subdirectory, the standard
+  //                                          layout used by every plugin)
+  //
+  // When BOTH exist for the same name, Claude Code itself resolves to the
+  // SUBDIR version (verified empirically against the runtime skill index).
+  // We mirror that to keep loading and CRUD consistent: walk subdirs first,
+  // record their canonical names, then walk flat files but skip any whose
+  // name is already taken by a subdir. Emit a console.warn so the
+  // collision is visible in server logs.
   try {
     const userSkillsDir = path.join(CLAUDE_DIR, 'skills')
     if (fs.existsSync(userSkillsDir)) {
-      const files = fs.readdirSync(userSkillsDir).filter(f => f.endsWith('.md'))
-      for (const file of files) {
-        const skill = parseSkillFile(path.join(userSkillsDir, file), 'user')
+      const entries = fs.readdirSync(userSkillsDir, { withFileTypes: true })
+
+      // Pass 1: subdirectory-style skills
+      const subdirNames = new Set()
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const skillFile = path.join(userSkillsDir, entry.name, 'SKILL.md')
+        if (!fs.existsSync(skillFile)) continue
+        const skill = parseSkillFile(skillFile, 'user')
+        if (!skill) continue
+        // Always pin name + command to the directory name so the URL key
+        // and the displayed name agree, even if the frontmatter says
+        // something else (e.g., "SKILL").
+        skill.name = entry.name
+        skill.command = '/' + entry.name
+        userSkills.push(skill)
+        subdirNames.add(entry.name)
+      }
+
+      // Pass 2: flat-file skills, skipping anything already loaded as subdir
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.md')) continue
+        const flatName = entry.name.replace(/\.md$/, '')
+        if (subdirNames.has(flatName)) {
+          // Collision — Claude Code uses the subdir version, so we drop
+          // the flat one to keep parity. Surface it in the logs so the
+          // user can clean up the dupe.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[skills] collision: ~/.claude/skills/${flatName}.md and ${flatName}/SKILL.md ` +
+              `both exist — using SKILL.md (matches Claude Code behavior).`,
+          )
+          continue
+        }
+        const skill = parseSkillFile(path.join(userSkillsDir, entry.name), 'user')
         if (skill) userSkills.push(skill)
       }
+    }
+  } catch {
+    // ignore
+  }
+
+  // User slash commands — ~/.claude/commands/<name>.md. These are
+  // functionally identical to skills (you invoke them as /<name>) but
+  // live in a different directory and are authored differently. The
+  // dashboard previously didn't show them at all.
+  try {
+    const commandsDir = path.join(CLAUDE_DIR, 'commands')
+    if (fs.existsSync(commandsDir)) {
+      const walk = (dir, prefix = '') => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isFile() && entry.name.endsWith('.md')) {
+            const filePath = path.join(dir, entry.name)
+            const cmd = parseSkillFile(filePath, 'user-command')
+            if (cmd) {
+              // Namespace by relative path so nested commands like
+              // git/commit.md become /git:commit
+              const baseName = entry.name.replace(/\.md$/, '')
+              const fullName = prefix ? `${prefix}:${baseName}` : baseName
+              cmd.name = fullName
+              cmd.command = '/' + fullName
+              userCommands.push(cmd)
+            }
+          } else if (entry.isDirectory()) {
+            walk(path.join(dir, entry.name), prefix ? `${prefix}:${entry.name}` : entry.name)
+          }
+        }
+      }
+      walk(commandsDir)
     }
   } catch {
     // ignore
@@ -101,7 +181,7 @@ export function getAllSkills() {
     const installedPath = path.join(CLAUDE_DIR, 'plugins', 'installed_plugins.json')
 
     if (!fs.existsSync(settingsPath) || !fs.existsSync(installedPath)) {
-      return buildResponse(userSkills, plugins)
+      return buildResponse(userSkills, plugins, userCommands)
     }
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
@@ -134,10 +214,11 @@ export function getAllSkills() {
     // ignore
   }
 
-  return buildResponse(userSkills, plugins)
+  return buildResponse(userSkills, plugins, userCommands)
 }
 
-function buildResponse(userSkills, plugins) {
-  const totalSkillCount = userSkills.length + plugins.reduce((sum, p) => sum + p.skillCount, 0)
-  return { userSkills, plugins, totalSkillCount }
+function buildResponse(userSkills, plugins, userCommands = []) {
+  const totalSkillCount =
+    userSkills.length + userCommands.length + plugins.reduce((sum, p) => sum + p.skillCount, 0)
+  return { userSkills, userCommands, plugins, totalSkillCount }
 }

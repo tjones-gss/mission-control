@@ -4,9 +4,21 @@ describe('buildCostTimeline()', () => {
   it('computes cumulative costs from assistant messages', () => {
     const messages = [
       { type: 'user', uuid: 'u1' },
-      { type: 'assistant', uuid: 'a1', model: 'claude-sonnet-4-6', usage: { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0 }, timestamp: '2024-01-01T00:00:00Z' },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        model: 'claude-sonnet-4-6',
+        usage: { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0 },
+        timestamp: '2024-01-01T00:00:00Z',
+      },
       { type: 'user', uuid: 'u2' },
-      { type: 'assistant', uuid: 'a2', model: 'claude-sonnet-4-6', usage: { input: 2000, output: 1000, cacheRead: 0, cacheWrite: 0 }, timestamp: '2024-01-01T00:01:00Z' },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        model: 'claude-sonnet-4-6',
+        usage: { input: 2000, output: 1000, cacheRead: 0, cacheWrite: 0 },
+        timestamp: '2024-01-01T00:01:00Z',
+      },
     ]
     const result = buildCostTimeline(messages, 'claude-sonnet-4-6')
     expect(result).toHaveLength(2)
@@ -31,15 +43,19 @@ describe('buildCostTimeline()', () => {
   })
 
   it('skips assistant messages without usage', () => {
-    const messages = [
-      { type: 'assistant', uuid: 'a1', model: 'sonnet', blocks: [] },
-    ]
+    const messages = [{ type: 'assistant', uuid: 'a1', model: 'sonnet', blocks: [] }]
     expect(buildCostTimeline(messages, 'sonnet')).toEqual([])
   })
 
   it('includes timestamp in output', () => {
     const messages = [
-      { type: 'assistant', uuid: 'a1', model: 'claude-sonnet-4-6', usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 }, timestamp: '2024-01-01T00:00:00Z' },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        model: 'claude-sonnet-4-6',
+        usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 },
+        timestamp: '2024-01-01T00:00:00Z',
+      },
     ]
     const result = buildCostTimeline(messages, 'claude-sonnet-4-6')
     expect(result[0].timestamp).toBe('2024-01-01T00:00:00Z')

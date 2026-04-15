@@ -28,16 +28,24 @@ test.describe('navigation', () => {
     await page.getByRole('button', { name: 'Workflows' }).click()
     // The Workflows panel has a "Workflows" heading in its left sidebar
     await expect(page.getByRole('button', { name: 'Workflows' })).toHaveClass(/bg-gray-800/)
-    // WorkflowsPanel renders a "Workflows" label and a New button
-    await expect(page.getByRole('button', { name: /New/ })).toBeVisible()
+    // WorkflowsPanel renders a "Workflows" label and a "New" button.
+    // Use exact:true so we don't accidentally match the sidebar's
+    // "New session" button which also contains "New".
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible()
   })
 
   test('can switch to Skills tab', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Skills' }).click()
     await expect(page.getByRole('button', { name: 'Skills' })).toHaveClass(/bg-gray-800/)
-    // SkillsPanel renders a "Skills" heading
-    await expect(page.getByText('Skills', { exact: true })).toBeVisible()
+    // SkillsPanel is identifiable by its unique "New Skill" button —
+    // the panel's own "Skills" heading would collide with the header
+    // tab button (both have the exact text "Skills") and produce a
+    // strict-mode violation once the panel finishes loading on fast
+    // CI runners. Use a longer timeout to match goToSkills() in
+    // skills.spec.js: the panel early-returns "Loading skills..."
+    // until /api/skills resolves, which can take 5-30s under load.
+    await expect(page.getByRole('button', { name: /New Skill/ })).toBeVisible({ timeout: 60_000 })
   })
 
   test('can switch to Tasks tab', async ({ page }) => {

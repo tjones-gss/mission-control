@@ -9,7 +9,7 @@ export function getAllPlans() {
 
   const plans = []
   try {
-    const files = fs.readdirSync(PLANS_DIR).filter(f => f.endsWith('.md'))
+    const files = fs.readdirSync(PLANS_DIR).filter((f) => f.endsWith('.md'))
     for (const file of files) {
       try {
         const filePath = path.join(PLANS_DIR, file)

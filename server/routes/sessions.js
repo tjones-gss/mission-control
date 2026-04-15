@@ -12,10 +12,20 @@ import { getMemoryForSession } from '../parsers/memory.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
-import { startQuery, spawnNewSession, isQueryActive, getQueryStatus, resolveApproval, cancelQuery, VALID_PERMISSION_MODES, VALID_MODEL_SHORTCUTS } from '../pty-session.js'
-import { onEvent } from '../sse.js'
+import {
+  startQuery,
+  spawnNewSession,
+  isQueryActive,
+  getQueryStatus,
+  resolveApproval,
+  cancelQuery,
+  VALID_PERMISSION_MODES,
+  VALID_MODEL_SHORTCUTS,
+} from '../pty-session.js'
+import { onEvent, emit } from '../sse.js'
 import { validateSessionId } from '../utils/validate.js'
 import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
+import { atomicWriteJson } from '../lib/atomic-write.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
@@ -42,7 +52,9 @@ try {
       fs.unlinkSync(filePath)
     }
   }
-} catch { /* ignore cleanup errors */ }
+} catch {
+  /* ignore cleanup errors */
+}
 
 const storage = multer.diskStorage({
   destination: UPLOAD_DIR,
@@ -65,7 +77,12 @@ const upload = multer({
 })
 
 function mimeToExt(mime) {
-  const map = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' }
+  const map = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+  }
   return map[mime] || '.bin'
 }
 
@@ -74,7 +91,11 @@ function cleanupTempFile(filePath, sessionId) {
 
   // Clean up after session_update indicates response complete, or 5-min timeout
   const timeout = setTimeout(() => {
-    try { fs.unlinkSync(filePath) } catch { /* already gone */ }
+    try {
+      fs.unlinkSync(filePath)
+    } catch {
+      /* already gone */
+    }
     if (removeListener) removeListener()
   }, 300_000)
 
@@ -83,7 +104,11 @@ function cleanupTempFile(filePath, sessionId) {
     if (!data?.filePath?.includes(sessionId)) return
     // Response started — wait a bit for completion, then clean up
     setTimeout(() => {
-      try { fs.unlinkSync(filePath) } catch { /* already gone */ }
+      try {
+        fs.unlinkSync(filePath)
+      } catch {
+        /* already gone */
+      }
       clearTimeout(timeout)
       removeListener()
     }, 5000)
@@ -91,7 +116,12 @@ function cleanupTempFile(filePath, sessionId) {
 }
 
 function cleanupUploadedFile(req) {
-  if (req.file) try { fs.unlinkSync(req.file.path) } catch { /* ignore */ }
+  if (req.file)
+    try {
+      fs.unlinkSync(req.file.path)
+    } catch {
+      /* ignore */
+    }
 }
 
 export const router = Router()
@@ -178,21 +208,48 @@ export async function loadSessionNames() {
 async function saveSessionNames(names) {
   sessionNamesCache = names
   await fsp.mkdir(path.dirname(NAMES_FILE), { recursive: true })
-  await fsp.writeFile(NAMES_FILE, JSON.stringify(names, null, 2))
+  await atomicWriteJson(NAMES_FILE, names)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Read endpoints
 // ──────────────────────────────────────────────────────────────────────────────
 
-router.get('/', async (req, res) => {
-  const sessions = getAllSessions()
-  const names = await loadSessionNames()
-  const enriched = sessions.map(s => ({
-    ...s,
-    displayName: names[s.sessionId] || null,
-  }))
-  res.json(enriched)
+// Memoize getAllSessions() with a short TTL. Scanning every project's
+// .jsonl history is fully synchronous and can take 500ms-2s with 60+
+// sessions on disk. The dashboard fires this from useApi on first paint
+// and tab switches; without caching, parallel e2e workers saturate the
+// single-threaded event loop and time out. The watcher emits SSE events
+// on file changes, so a 3s TTL still feels live.
+let sessionsCache = { data: null, expiresAt: 0 }
+const SESSIONS_CACHE_TTL_MS = 3_000
+function getCachedSessions() {
+  const now = Date.now()
+  if (sessionsCache.data && sessionsCache.expiresAt > now) return sessionsCache.data
+  const data = getAllSessions()
+  sessionsCache = { data, expiresAt: now + SESSIONS_CACHE_TTL_MS }
+  return data
+}
+
+// Exported so the unit tests can reset between cases — vi.resetAllMocks()
+// doesn't clear the route's in-memory cache, which would otherwise leak
+// the previous test's mock return value into the next test.
+export function _resetSessionsCache() {
+  sessionsCache = { data: null, expiresAt: 0 }
+}
+
+router.get('/', async (req, res, next) => {
+  try {
+    const sessions = getCachedSessions()
+    const names = await loadSessionNames()
+    const enriched = sessions.map((s) => ({
+      ...s,
+      displayName: names[s.sessionId] || null,
+    }))
+    res.json(enriched)
+  } catch (err) {
+    next(err)
+  }
 })
 
 router.get('/:sessionId', async (req, res) => {
@@ -203,7 +260,27 @@ router.get('/:sessionId', async (req, res) => {
 })
 
 router.get('/:sessionId/messages', (req, res) => {
-  const result = getSessionMessages(req.params.sessionId)
+  // ?limit=N defaults to "last N messages" (slice from the end of the
+  // history, which is what users actually look at first). ?offset=K
+  // pages forward from K. Pass nothing to get the full history (legacy
+  // behavior, kept for backwards compat with older client code).
+  const limitRaw = req.query.limit
+  const offsetRaw = req.query.offset
+  let limit
+  if (limitRaw !== undefined) {
+    limit = parseInt(limitRaw, 10)
+    if (Number.isNaN(limit) || limit < 1) {
+      return res.status(400).json({ error: 'limit must be a positive integer' })
+    }
+  }
+  let offset = 0
+  if (offsetRaw !== undefined) {
+    offset = parseInt(offsetRaw, 10)
+    if (Number.isNaN(offset) || offset < 0) {
+      return res.status(400).json({ error: 'offset must be a non-negative integer' })
+    }
+  }
+  const result = getSessionMessages(req.params.sessionId, { limit, offset })
   if (!result) return res.status(404).json({ error: 'Session not found' })
   res.json(result)
 })
@@ -293,9 +370,7 @@ router.post('/:sessionId/message', upload.single('image'), async (req, res) => {
   const message = req.body.message
   let options
   try {
-    options = typeof req.body.options === 'string'
-      ? JSON.parse(req.body.options)
-      : req.body.options
+    options = typeof req.body.options === 'string' ? JSON.parse(req.body.options) : req.body.options
   } catch {
     cleanupUploadedFile(req)
     return res.status(400).json({ error: 'Invalid options JSON' })
@@ -401,7 +476,11 @@ router.post('/new', async (req, res) => {
     const args = buildCliArgs(baseArgs, options)
     const { stdout, stderr } = await runClaude({ args, cwd, timeoutMs: 300_000 })
     let result
-    try { result = JSON.parse(stdout) } catch { result = { raw: stdout } }
+    try {
+      result = JSON.parse(stdout)
+    } catch {
+      result = { raw: stdout }
+    }
     return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
   } catch (err) {
     return res.status(503).json({
@@ -428,12 +507,10 @@ router.post('/:sessionId/fork', async (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' })
 
   try {
-    const args = buildCliArgs([
-      '--resume', sessionId,
-      '--fork-session',
-      '-p', prompt.trim(),
-      '--output-format', 'json',
-    ], options)
+    const args = buildCliArgs(
+      ['--resume', sessionId, '--fork-session', '-p', prompt.trim(), '--output-format', 'json'],
+      options,
+    )
 
     const { stdout, stderr } = await runClaude({
       args,
@@ -462,6 +539,11 @@ router.post('/:sessionId/fork', async (req, res) => {
 // Name endpoint
 // ──────────────────────────────────────────────────────────────────────────────
 
+// Display names can hold any unicode (we want emoji and punctuation), but
+// long ones break the sidebar layout. 80 chars is enough for any sensible
+// session label and well below the 100-char file-name cap used elsewhere.
+const MAX_DISPLAY_NAME_LENGTH = 80
+
 router.post('/:sessionId/name', async (req, res) => {
   const { sessionId } = req.params
   const { name } = req.body
@@ -469,12 +551,38 @@ router.post('/:sessionId/name', async (req, res) => {
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'name is required' })
   }
+  const trimmed = name.trim()
+  if (trimmed.length > MAX_DISPLAY_NAME_LENGTH) {
+    return res.status(400).json({
+      error: `name too long (max ${MAX_DISPLAY_NAME_LENGTH} characters)`,
+    })
+  }
 
   const names = await loadSessionNames()
-  names[sessionId] = name.trim()
+  names[sessionId] = trimmed
   await saveSessionNames(names)
 
-  res.json({ ok: true, sessionId, displayName: name.trim() })
+  // Tell the dashboard to refresh its session list so the new name
+  // shows up immediately. The session_update event is the existing
+  // signal the client uses to bump sessionsVersion + refetch.
+  emit('session_update', { sessionId, ts: Date.now(), reason: 'name_changed' })
+
+  res.json({ ok: true, sessionId, displayName: trimmed })
+})
+
+// Clear a custom display name and fall back to the auto-generated slug.
+// Without this endpoint there was no way to undo a rename through the
+// dashboard — once set, the custom name was permanent.
+router.delete('/:sessionId/name', async (req, res) => {
+  const { sessionId } = req.params
+  const names = await loadSessionNames()
+  if (names[sessionId] === undefined) {
+    return res.status(404).json({ error: 'no custom display name set' })
+  }
+  delete names[sessionId]
+  await saveSessionNames(names)
+  emit('session_update', { sessionId, ts: Date.now(), reason: 'name_cleared' })
+  res.json({ ok: true, sessionId, displayName: null })
 })
 
 // ──────────────────────────────────────────────────────────────────────────────

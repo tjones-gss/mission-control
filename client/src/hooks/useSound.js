@@ -10,15 +10,15 @@ const SOUND_NAME_RE = /^[a-zA-Z0-9_-]+$/
 const DEFAULT_PREFS = {
   masterVolume: 0.7,
   events: {
-    needsInput:        { sound: 'chime',   voice: true },
-    sessionError:      { sound: 'fail',    voice: true },
-    sessionComplete:   { sound: 'success', voice: true },
-    sessionUpdate:     { sound: 'gentle',  voice: false },
-    newSession:        { sound: 'ping',    voice: false },
-    taskUpdate:        { sound: 'gentle',  voice: false },
-    intelligenceReady: { sound: 'ping',    voice: false },
-    teamUpdate:        { sound: 'none',    voice: false },
-    historyUpdate:     { sound: 'none',    voice: false },
+    needsInput: { sound: 'chime', voice: true },
+    sessionError: { sound: 'fail', voice: true },
+    sessionComplete: { sound: 'success', voice: true },
+    sessionUpdate: { sound: 'gentle', voice: false },
+    newSession: { sound: 'ping', voice: false },
+    taskUpdate: { sound: 'gentle', voice: false },
+    intelligenceReady: { sound: 'ping', voice: false },
+    teamUpdate: { sound: 'none', voice: false },
+    historyUpdate: { sound: 'none', voice: false },
   },
   ttsVoice: null,
   customSounds: {},
@@ -31,7 +31,9 @@ export function getSoundPrefs() {
       const parsed = JSON.parse(raw)
       return { ...DEFAULT_PREFS, ...parsed, events: { ...DEFAULT_PREFS.events, ...parsed.events } }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { ...DEFAULT_PREFS }
 }
 
@@ -80,67 +82,76 @@ export function useSound() {
     return ctx
   }, [])
 
-  const playCustomSound = useCallback(async (name) => {
-    const ctx = ensureContext()
-    if (!ctx) return
-    const prefs = prefsRef.current
-    const base64 = prefs.customSounds[name]
-    if (!base64) return
+  const playCustomSound = useCallback(
+    async (name) => {
+      const ctx = ensureContext()
+      if (!ctx) return
+      const prefs = prefsRef.current
+      const base64 = prefs.customSounds[name]
+      if (!base64) return
 
-    try {
-      let buffer = decodedCacheRef.current.get(name)
-      if (!buffer) {
-        const binary = atob(base64)
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-        buffer = await ctx.decodeAudioData(bytes.buffer.slice(0))
-        decodedCacheRef.current.set(name, buffer)
+      try {
+        let buffer = decodedCacheRef.current.get(name)
+        if (!buffer) {
+          const binary = atob(base64)
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+          buffer = await ctx.decodeAudioData(bytes.buffer.slice(0))
+          decodedCacheRef.current.set(name, buffer)
+        }
+
+        const source = ctx.createBufferSource()
+        source.buffer = buffer
+        source.connect(masterGainRef.current)
+        source.start()
+      } catch (err) {
+        console.warn(`Failed to play custom sound "${name}":`, err.message)
+        decodedCacheRef.current.delete(name)
+      }
+    },
+    [ensureContext],
+  )
+
+  const playPreset = useCallback(
+    (presetName) => {
+      if (presetName?.startsWith('custom:')) {
+        playCustomSound(presetName.slice(7))
+        return
+      }
+      const ctx = ensureContext()
+      if (!ctx || !PRESETS[presetName]) return
+      masterGainRef.current.gain.value = prefsRef.current.masterVolume
+      PRESETS[presetName](ctx, masterGainRef.current)
+    },
+    [ensureContext, playCustomSound],
+  )
+
+  const play = useCallback(
+    (eventName, sessionContext) => {
+      const prefs = prefsRef.current
+      const eventConfig = prefs.events[eventName]
+      if (!eventConfig) return
+
+      const soundName = eventConfig.sound
+      if (soundName === 'none') {
+        // still do TTS if enabled
+      } else if (soundName?.startsWith('custom:')) {
+        playCustomSound(soundName.slice(7))
+      } else if (PRESETS[soundName]) {
+        playPreset(soundName)
       }
 
-      const source = ctx.createBufferSource()
-      source.buffer = buffer
-      source.connect(masterGainRef.current)
-      source.start()
-    } catch (err) {
-      console.warn(`Failed to play custom sound "${name}":`, err.message)
-      decodedCacheRef.current.delete(name)
-    }
-  }, [ensureContext])
-
-  const playPreset = useCallback((presetName) => {
-    if (presetName?.startsWith('custom:')) {
-      playCustomSound(presetName.slice(7))
-      return
-    }
-    const ctx = ensureContext()
-    if (!ctx || !PRESETS[presetName]) return
-    masterGainRef.current.gain.value = prefsRef.current.masterVolume
-    PRESETS[presetName](ctx, masterGainRef.current)
-  }, [ensureContext, playCustomSound])
-
-  const play = useCallback((eventName, sessionContext) => {
-    const prefs = prefsRef.current
-    const eventConfig = prefs.events[eventName]
-    if (!eventConfig) return
-
-    const soundName = eventConfig.sound
-    if (soundName === 'none') {
-      // still do TTS if enabled
-    } else if (soundName?.startsWith('custom:')) {
-      playCustomSound(soundName.slice(7))
-    } else if (PRESETS[soundName]) {
-      playPreset(soundName)
-    }
-
-    // TTS — cancel previous to prevent queue pile-up
-    if (eventConfig.voice && sessionContext) {
-      const template = TTS_TEMPLATES[eventName]
-      if (template) {
-        const text = template(sessionContext)
-        if (text) speak(text, prefs.ttsVoice, prefs.masterVolume)
+      // TTS — cancel previous to prevent queue pile-up
+      if (eventConfig.voice && sessionContext) {
+        const template = TTS_TEMPLATES[eventName]
+        if (template) {
+          const text = template(sessionContext)
+          if (text) speak(text, prefs.ttsVoice, prefs.masterVolume)
+        }
       }
-    }
-  }, [playPreset, playCustomSound])
+    },
+    [playPreset, playCustomSound],
+  )
 
   const speakText = useCallback((text) => {
     const prefs = prefsRef.current
@@ -192,7 +203,15 @@ export function useSound() {
   }, [])
 
   return useMemo(
-    () => ({ play, playPreset, speakText, getPrefs, updatePrefs, addCustomSound, removeCustomSound }),
-    [play, playPreset, speakText, getPrefs, updatePrefs, addCustomSound, removeCustomSound]
+    () => ({
+      play,
+      playPreset,
+      speakText,
+      getPrefs,
+      updatePrefs,
+      addCustomSound,
+      removeCustomSound,
+    }),
+    [play, playPreset, speakText, getPrefs, updatePrefs, addCustomSound, removeCustomSound],
   )
 }

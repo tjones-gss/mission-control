@@ -4,10 +4,18 @@ import userEvent from '@testing-library/user-event'
 import { server } from '../mocks/server.js'
 import { http, HttpResponse } from 'msw'
 
-vi.mock('../../components/ConversationView.jsx', () => ({ ConversationView: () => <div data-testid="conversation-view" /> }))
-vi.mock('../../components/TimelineView.jsx', () => ({ TimelineView: () => <div data-testid="timeline-view" /> }))
-vi.mock('../../components/IntelView.jsx', () => ({ IntelView: () => <div data-testid="intel-view" /> }))
-vi.mock('../../components/SessionControlBar.jsx', () => ({ SessionControlBar: () => <div data-testid="session-control-bar" /> }))
+vi.mock('../../components/ConversationView.jsx', () => ({
+  ConversationView: () => <div data-testid="conversation-view" />,
+}))
+vi.mock('../../components/TimelineView.jsx', () => ({
+  TimelineView: () => <div data-testid="timeline-view" />,
+}))
+vi.mock('../../components/IntelView.jsx', () => ({
+  IntelView: () => <div data-testid="intel-view" />,
+}))
+vi.mock('../../components/SessionControlBar.jsx', () => ({
+  SessionControlBar: () => <div data-testid="session-control-bar" />,
+}))
 
 import { AgentTree } from '../../components/AgentTree.jsx'
 
@@ -25,7 +33,14 @@ const SESSION = {
   agentTree: {
     mainMessageCount: 10,
     subagents: [
-      { toolUseId: 'sub1', description: 'Research agent', messageCount: 5, startTime: '2025-01-01T00:00:00Z', endTime: '2025-01-01T00:05:00Z', model: 'claude-haiku-4-5-20251001' }
+      {
+        toolUseId: 'sub1',
+        description: 'Research agent',
+        messageCount: 5,
+        startTime: '2025-01-01T00:00:00Z',
+        endTime: '2025-01-01T00:05:00Z',
+        model: 'claude-haiku-4-5-20251001',
+      },
     ],
   },
 }
