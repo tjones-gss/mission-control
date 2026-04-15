@@ -61,8 +61,16 @@ function keyMatchesBinding(e, binding) {
   const needAlt = parts.includes('Alt')
 
   if (needCtrl !== e.ctrlKey) return false
-  if (needShift !== e.shiftKey) return false
   if (needAlt !== e.altKey) return false
+
+  // For printable characters that require Shift to type (e.g. '?', '!', '+'),
+  // the browser sets e.shiftKey=true automatically. Only enforce the Shift
+  // check when the binding explicitly includes 'Shift+' or the key is a
+  // simple letter/number where Shift would change the meaning.
+  const isPlainKey = /^[a-zA-Z0-9]$/.test(key)
+  if (isPlainKey || needShift) {
+    if (needShift !== e.shiftKey) return false
+  }
 
   return e.key === key
 }
