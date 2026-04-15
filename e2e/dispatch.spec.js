@@ -87,6 +87,13 @@ test.describe('dispatch drawer', () => {
 
   test('dispatch handle does not overlap the conversation input', async ({ page }) => {
     await page.goto('/')
+    await page.waitForTimeout(2000)
+    // This test requires at least one session so the Detail view renders
+    // a ConversationView with a message input. Skip on CI where no
+    // sessions exist (same pattern as layout.spec.js).
+    const sessionCount = await page.locator('[data-session-card-id]').count()
+    test.skip(sessionCount === 0, 'no sessions on this runner')
+
     // Switch to Detail view to see the ConversationView input
     await page
       .getByRole('button', { name: /^Detail$/ })
