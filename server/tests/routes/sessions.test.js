@@ -70,6 +70,9 @@ vi.mock('../../pty-session.js', () => ({
   ]),
   VALID_MODEL_SHORTCUTS: new Set(['sonnet', 'opus', 'haiku']),
 }))
+vi.mock('../../lib/logger.js', () => ({
+  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}))
 
 import express from 'express'
 import request from 'supertest'
@@ -379,6 +382,41 @@ describe('POST /new', () => {
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
     expect(res.status).toBe(503)
     expect(res.body.error).toBe('session_create_failed')
+  })
+
+  it('does NOT forward --effort to the claude CLI (SDK-only option)', async () => {
+    runClaude.mockResolvedValue({ stdout: '{"session_id":"new-789"}', stderr: '', exitCode: 0 })
+    const res = await request(app)
+      .post('/new')
+      .send({ cwd: '/tmp', prompt: 'hello', options: { effort: 'low' } })
+    expect(res.status).toBe(201)
+    const argv = runClaude.mock.calls.at(-1)[0].args
+    expect(argv).not.toContain('--effort')
+    expect(argv).not.toContain('low')
+  })
+
+  it('503 error response includes stderr captured from the CLI', async () => {
+    const err = new Error('claude CLI exited with code=1 signal=null')
+    err.stderrOutput = 'error: unknown option --effort\n'
+    runClaude.mockRejectedValueOnce(err)
+    const res = await request(app)
+      .post('/new')
+      .send({ cwd: '/tmp', prompt: 'hello', options: { effort: 'low' } })
+    expect(res.status).toBe(503)
+    expect(res.body.error).toBe('session_create_failed')
+    expect(res.body.detail).toMatch(/code=1/)
+    expect(res.body.stderr).toBe('error: unknown option --effort\n')
+  })
+
+  it('503 error response also includes stdout (for quota-style JSON errors)', async () => {
+    const err = new Error('claude CLI exited with code=1 signal=null')
+    err.stderrOutput = ''
+    err.stdoutOutput = '{"is_error":true,"api_error_status":429,"result":"You\'ve hit your limit"}'
+    runClaude.mockRejectedValueOnce(err)
+    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hi' })
+    expect(res.status).toBe(503)
+    expect(res.body.stdout).toContain('api_error_status')
+    expect(res.body.stdout).toContain("You've hit your limit")
   })
 })
 

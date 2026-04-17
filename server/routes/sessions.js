@@ -12,6 +12,7 @@ import { getMemoryForSession } from '../parsers/memory.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
 import { runClaude } from '../claude-cli.js'
+import { logger } from '../lib/logger.js'
 import {
   startQuery,
   spawnNewSession,
@@ -150,8 +151,6 @@ router.param('sessionId', (req, res, next, id) => {
 // CLI options helper
 // ──────────────────────────────────────────────────────────────────────────────
 
-const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'max'])
-
 function buildCliArgs(baseArgs, options) {
   const args = [...baseArgs]
   if (!options || typeof options !== 'object') return args
@@ -165,9 +164,8 @@ function buildCliArgs(baseArgs, options) {
       args.push('--model', options.model)
     }
   }
-  if (options.effort && VALID_EFFORTS.has(options.effort)) {
-    args.push('--effort', options.effort)
-  }
+  // Note: options.effort is intentionally not forwarded. The claude CLI in -p
+  // print mode rejects "--effort" with exit 1; effort is only an SDK option.
 
   return args
 }
@@ -483,10 +481,19 @@ router.post('/new', async (req, res) => {
     }
     return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
   } catch (err) {
+    logger.warn(
+      {
+        detail: err.message,
+        stderr: err.stderrOutput || null,
+        stdout: err.stdoutOutput || null,
+      },
+      'session_create_failed',
+    )
     return res.status(503).json({
       error: 'session_create_failed',
       detail: err.message,
       stderr: err.stderrOutput || null,
+      stdout: err.stdoutOutput || null,
     })
   }
 })
@@ -527,10 +534,19 @@ router.post('/:sessionId/fork', async (req, res) => {
 
     res.status(201).json({ ok: true, result, stderr: stderr || undefined })
   } catch (err) {
+    logger.warn(
+      {
+        detail: err.message,
+        stderr: err.stderrOutput || null,
+        stdout: err.stdoutOutput || null,
+      },
+      'fork_failed',
+    )
     res.status(503).json({
       error: 'fork_failed',
       detail: err.message,
       stderr: err.stderrOutput || null,
+      stdout: err.stdoutOutput || null,
     })
   }
 })

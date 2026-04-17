@@ -1,7 +1,5 @@
 import { spawn } from 'child_process'
-
-// On Windows, npm shims are .cmd files — child_process.spawn needs shell:true or the full name
-const CLAUDE_CMD = process.platform === 'win32' ? 'claude.cmd' : 'claude'
+import { CLAUDE_BIN, isShellScript } from './lib/claude-bin.js'
 
 /**
  * Spawn the claude CLI as a subprocess with proper environment isolation.
@@ -21,8 +19,11 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
   return new Promise((resolve, reject) => {
     const spawnOpts = { env, stdio: ['pipe', 'pipe', 'pipe'] }
     if (cwd) spawnOpts.cwd = cwd
+    // Node >=20.12 refuses to spawn .cmd/.bat without shell:true (CVE-2024-27980).
+    // For a resolved .exe absolute path, shell:false is correct and safer.
+    if (isShellScript(CLAUDE_BIN)) spawnOpts.shell = true
 
-    const child = spawn(CLAUDE_CMD, args, spawnOpts)
+    const child = spawn(CLAUDE_BIN, args, spawnOpts)
 
     // Close stdin immediately — claude CLI waits for EOF on stdin when it is a pipe
     child.stdin.end()
@@ -40,12 +41,14 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
       child.kill()
       const err = new Error(`claude CLI timed out after ${timeoutMs / 1000}s`)
       err.stderrOutput = stderr
+      err.stdoutOutput = stdout
       reject(err)
     }, timeoutMs)
 
     child.on('error', (err) => {
       clearTimeout(timer)
       err.stderrOutput = stderr
+      err.stdoutOutput = stdout
       reject(err)
     })
 
@@ -55,6 +58,9 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
         const err = new Error(`claude CLI exited with code=${code} signal=${signal}`)
         err.code = code
         err.stderrOutput = stderr
+        // On non-zero exit, the CLI often still emits structured JSON (e.g. quota
+        // errors) on stdout. Preserve it so callers can surface a useful message.
+        err.stdoutOutput = stdout
         return reject(err)
       }
       resolve({ stdout, stderr, exitCode: code })

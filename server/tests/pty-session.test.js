@@ -38,6 +38,13 @@ vi.mock('node-pty', () => ({
   spawn: vi.fn(),
 }))
 
+// Pin CLAUDE_BIN so tests don't depend on the runner's actual PATH.
+vi.mock('../lib/claude-bin.js', () => ({
+  CLAUDE_BIN: '/mock/bin/claude',
+  isShellScript: () => false,
+  resolveClaudeBin: () => '/mock/bin/claude',
+}))
+
 vi.mock('../sse.js', () => ({ emit: vi.fn(), onEvent: vi.fn(() => vi.fn()) }))
 
 // Mock Node's crypto so randomUUID returns a predictable value.
@@ -209,9 +216,8 @@ describe('startQuery()', () => {
   it('spawns PTY with --resume and sessionId', async () => {
     const sid = uniqueSession()
     await bootSession(sid)
-    const expectedCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude'
     expect(pty.spawn).toHaveBeenCalledWith(
-      expectedCmd,
+      '/mock/bin/claude',
       expect.arrayContaining(['--resume', sid]),
       expect.objectContaining({ cols: 200, rows: 50 }),
     )
@@ -220,9 +226,8 @@ describe('startQuery()', () => {
   it('passes cwd to pty.spawn', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { cwd: '/my/project' })
-    const expectedCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude'
     expect(pty.spawn).toHaveBeenCalledWith(
-      expectedCmd,
+      '/mock/bin/claude',
       expect.any(Array),
       expect.objectContaining({ cwd: '/my/project' }),
     )

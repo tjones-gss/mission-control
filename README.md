@@ -115,7 +115,9 @@ Click the **+** button in the sidebar to spawn a new Claude Code session. Fill i
 
 ![New session form](docs/screenshots/new-session.png)
 
-Sessions are created via an interactive PTY (subscription auth) — no API credits consumed. Worktree sessions use the CLI subprocess path with `--worktree`.
+New sessions are created via a one-shot CLI subprocess (`claude -p ... --output-format json`). Interactive messaging after creation runs through a PTY on your Claude subscription — no API credits consumed.
+
+> The `effort` dropdown is forwarded only to SDK-backed paths (tool approvals, skill runs). It is not a valid flag for the one-shot CLI used by new-session creation and is silently dropped there.
 
 ---
 
@@ -208,15 +210,14 @@ The right sidebar shows a real-time stream of all SSE events: session updates, n
 ▼                         ▼                          ▼
 PTY sessions          CLI subprocess           claude CLI
 (pty-session.js)      (claude-cli.js)         (Intel tab)
-- send messages       - fork sessions
-- new sessions        - worktree sessions
-- tool approval
-- subscription auth
+- send messages       - new sessions
+- tool approval       - fork sessions
+- subscription auth   - worktree sessions
 ```
 
 The server watches `~/.claude/` with chokidar. When files change, it parses the relevant JSONL or JSON, then pushes Server-Sent Events to all connected browser tabs.
 
-For **interactive messaging**, Oversight spawns `claude --resume <sessionId>` in a PTY so it runs on your Claude subscription. For **one-shot operations** (fork, worktree), it uses the CLI subprocess. Either way, the CLI writes to the session's JSONL file, chokidar picks up the change, and SSE pushes the update.
+For **interactive messaging**, Oversight spawns `claude --resume <sessionId>` in a PTY so it runs on your Claude subscription. For **one-shot operations** (new sessions, fork, worktree), it uses the CLI subprocess. Either way, the CLI writes to the session's JSONL file, chokidar picks up the change, and SSE pushes the update.
 
 ### Data Sources
 

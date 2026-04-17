@@ -18,6 +18,7 @@ import { router as configRouter } from './routes/config.js'
 import { router as hooksRouter } from './routes/hooks.js'
 import { router as mcpRouter } from './routes/mcp.js'
 import { router as managersRouter } from './routes/managers.js'
+import { router as fsRouter } from './routes/fs.js'
 import { router as healthRouter, setHealthReady } from './routes/health.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
@@ -45,6 +46,7 @@ app.use('/api/config', configRouter)
 app.use('/api/hooks', hooksRouter)
 app.use('/api/mcp-servers', mcpRouter)
 app.use('/api/managers', managersRouter)
+app.use('/api/fs', fsRouter)
 app.use('/api/health', healthRouter)
 
 // JSON 404 for any unmatched /api/* request — without this, Express

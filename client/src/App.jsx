@@ -36,6 +36,7 @@ import { SettingsModal } from './components/SettingsModal.jsx'
 import { ShortcutHelpOverlay } from './components/ShortcutHelpOverlay.jsx'
 import { DispatchDrawer, DispatchDrawerHandle } from './components/DispatchDrawer.jsx'
 import { DispatchSignal } from './components/DispatchSignal.jsx'
+import { NewSessionForm } from './components/NewSessionForm.jsx'
 import { projectLabel } from './utils/session.js'
 
 const TABS = [
@@ -282,60 +283,6 @@ export default function App() {
   } = useKeyboardShortcuts(shortcutHandlers)
 
   const [showNewSession, setShowNewSession] = useState(false)
-  const [newSessionCwd, setNewSessionCwd] = useState('')
-  const [newSessionPrompt, setNewSessionPrompt] = useState('')
-  const [newSessionName, setNewSessionName] = useState('')
-  const [newSessionModel, setNewSessionModel] = useState('')
-  const [newSessionMode, setNewSessionMode] = useState('')
-  const [newSessionEffort, setNewSessionEffort] = useState('')
-  const [newSessionWorktree, setNewSessionWorktree] = useState(false)
-  const [newSessionCreating, setNewSessionCreating] = useState(false)
-
-  const handleNewSession = useCallback(async () => {
-    if (!newSessionCwd.trim() || !newSessionPrompt.trim() || newSessionCreating) return
-    setNewSessionCreating(true)
-    try {
-      const body = { cwd: newSessionCwd.trim(), prompt: newSessionPrompt.trim() }
-      if (newSessionName.trim()) body.name = newSessionName.trim()
-      if (newSessionWorktree) body.worktree = true
-      const options = {}
-      if (newSessionModel) options.model = newSessionModel
-      if (newSessionMode) options.permissionMode = newSessionMode
-      if (newSessionEffort) options.effort = newSessionEffort
-      if (Object.keys(options).length > 0) body.options = options
-
-      const res = await fetch('/api/sessions/new', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.detail || data.error || `HTTP ${res.status}`)
-      }
-      setShowNewSession(false)
-      setNewSessionCwd('')
-      setNewSessionPrompt('')
-      setNewSessionName('')
-      setNewSessionModel('')
-      setNewSessionMode('')
-      setNewSessionEffort('')
-      setNewSessionWorktree(false)
-    } catch (e) {
-      alert(`Failed to create session: ${e.message}`)
-    } finally {
-      setNewSessionCreating(false)
-    }
-  }, [
-    newSessionCwd,
-    newSessionPrompt,
-    newSessionName,
-    newSessionModel,
-    newSessionMode,
-    newSessionEffort,
-    newSessionWorktree,
-    newSessionCreating,
-  ])
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
@@ -419,9 +366,9 @@ export default function App() {
           handle sits directly on top of the ConversationView's message
           input + send button, intercepting clicks and making the input
           effectively unusable. */}
-      <div className="flex-1 flex overflow-hidden pb-9">
+      <div className="flex-1 flex overflow-hidden pb-9 bg-gray-950 isolate">
         {/* Left: Sessions list */}
-        <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col">
+        <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col relative z-10 bg-gray-950">
           <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
               Sessions
@@ -436,84 +383,7 @@ export default function App() {
             </button>
           </div>
           {showNewSession && (
-            <div className="px-3 py-2 border-b border-gray-800 space-y-1.5 bg-gray-900/50">
-              <input
-                type="text"
-                value={newSessionName}
-                onChange={(e) => setNewSessionName(e.target.value)}
-                placeholder="Session name (optional)..."
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
-              />
-              <input
-                type="text"
-                value={newSessionCwd}
-                onChange={(e) => setNewSessionCwd(e.target.value)}
-                placeholder="Working directory..."
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
-              />
-              <input
-                type="text"
-                value={newSessionPrompt}
-                onChange={(e) => setNewSessionPrompt(e.target.value)}
-                placeholder="Prompt..."
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleNewSession()
-                }}
-              />
-              <div className="flex gap-1.5">
-                <select
-                  value={newSessionModel}
-                  onChange={(e) => setNewSessionModel(e.target.value)}
-                  className="flex-1 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[11px] text-gray-400 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="">Model...</option>
-                  <option value="sonnet">sonnet</option>
-                  <option value="opus">opus</option>
-                  <option value="haiku">haiku</option>
-                </select>
-                <select
-                  value={newSessionMode}
-                  onChange={(e) => setNewSessionMode(e.target.value)}
-                  className="flex-1 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[11px] text-gray-400 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="">Mode...</option>
-                  <option value="plan">plan</option>
-                  <option value="auto">auto</option>
-                  <option value="default">default</option>
-                  <option value="acceptEdits">acceptEdits</option>
-                  <option value="dontAsk">dontAsk</option>
-                  <option value="bypassPermissions">bypassPermissions</option>
-                </select>
-                <select
-                  value={newSessionEffort}
-                  onChange={(e) => setNewSessionEffort(e.target.value)}
-                  className="flex-1 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[11px] text-gray-400 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="">Effort...</option>
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                  <option value="max">max</option>
-                </select>
-              </div>
-              <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newSessionWorktree}
-                  onChange={(e) => setNewSessionWorktree(e.target.checked)}
-                  className="rounded border-gray-700 bg-gray-900 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-0"
-                />
-                Worktree (isolated copy)
-              </label>
-              <button
-                onClick={handleNewSession}
-                disabled={!newSessionCwd.trim() || !newSessionPrompt.trim() || newSessionCreating}
-                className="w-full px-2 py-1 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                {newSessionCreating ? 'Creating...' : 'Create Session'}
-              </button>
-            </div>
+            <NewSessionForm sessions={sessions} onCreated={() => setShowNewSession(false)} />
           )}
           <SessionsList
             sessions={sessions}
@@ -528,7 +398,7 @@ export default function App() {
         </aside>
 
         {/* Center: Main panel */}
-        <main className="flex-1 overflow-hidden flex flex-col">
+        <main className="flex-1 min-w-0 overflow-hidden flex flex-col relative z-0 bg-gray-950">
           {activeTab === 'agents' && (
             <>
               {/* Board / Detail toggle bar */}
