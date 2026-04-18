@@ -18,18 +18,21 @@ describe('NewSessionForm — layout', () => {
     expect(screen.getByPlaceholderText(/^prompt/i)).toBeInTheDocument()
   })
 
-  it('renders Model, Mode, and Effort selects each on its own line (stacked, not in a row)', () => {
+  it('renders Model and Mode selects stacked (not in a row)', () => {
     const { container } = render(<NewSessionForm onCreated={vi.fn()} />)
     const modelSelect = screen.getByRole('combobox', { name: /^model$/i })
     const modeSelect = screen.getByRole('combobox', { name: /^mode$/i })
-    const effortSelect = screen.getByRole('combobox', { name: /^effort$/i })
     expect(modelSelect).toBeInTheDocument()
     expect(modeSelect).toBeInTheDocument()
-    expect(effortSelect).toBeInTheDocument()
     const selectsWrapper = container.querySelector('[data-testid="new-session-selects"]')
     expect(selectsWrapper).toBeTruthy()
     expect(selectsWrapper.className).toMatch(/flex-col/)
     expect(selectsWrapper.className).not.toMatch(/\bflex-row\b/)
+  })
+
+  it('does not render an Effort select on the new-session form (SDK-only option; CLI-created sessions ignore it)', () => {
+    render(<NewSessionForm onCreated={vi.fn()} />)
+    expect(screen.queryByRole('combobox', { name: /^effort$/i })).not.toBeInTheDocument()
   })
 
   it('renders a folder-picker icon button next to the working directory input', () => {
@@ -80,9 +83,6 @@ describe('NewSessionForm — submit', () => {
     fireEvent.change(screen.getByRole('combobox', { name: /^mode$/i }), {
       target: { value: 'plan' },
     })
-    fireEvent.change(screen.getByRole('combobox', { name: /^effort$/i }), {
-      target: { value: 'high' },
-    })
     fireEvent.click(screen.getByLabelText(/worktree/i))
     fireEvent.click(screen.getByRole('button', { name: /create session/i }))
 
@@ -92,7 +92,7 @@ describe('NewSessionForm — submit', () => {
       prompt: 'analyze this',
       name: 'my-sess',
       worktree: true,
-      options: { model: 'sonnet', permissionMode: 'plan', effort: 'high' },
+      options: { model: 'sonnet', permissionMode: 'plan' },
     })
     await waitFor(() => expect(onCreated).toHaveBeenCalled())
   })

@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { CLAUDE_BIN, isShellScript } from './lib/claude-bin.js'
+import { getClaudeBin, isShellScript } from './lib/claude-bin.js'
 
 /**
  * Spawn the claude CLI as a subprocess with proper environment isolation.
@@ -17,13 +17,19 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
   }
 
   return new Promise((resolve, reject) => {
+    let bin
+    try {
+      bin = getClaudeBin()
+    } catch (err) {
+      return reject(err)
+    }
     const spawnOpts = { env, stdio: ['pipe', 'pipe', 'pipe'] }
     if (cwd) spawnOpts.cwd = cwd
     // Node >=20.12 refuses to spawn .cmd/.bat without shell:true (CVE-2024-27980).
     // For a resolved .exe absolute path, shell:false is correct and safer.
-    if (isShellScript(CLAUDE_BIN)) spawnOpts.shell = true
+    if (isShellScript(bin)) spawnOpts.shell = true
 
-    const child = spawn(CLAUDE_BIN, args, spawnOpts)
+    const child = spawn(bin, args, spawnOpts)
 
     // Close stdin immediately — claude CLI waits for EOF on stdin when it is a pipe
     child.stdin.end()

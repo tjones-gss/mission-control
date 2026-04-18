@@ -38,9 +38,9 @@ vi.mock('node-pty', () => ({
   spawn: vi.fn(),
 }))
 
-// Pin CLAUDE_BIN so tests don't depend on the runner's actual PATH.
+// Pin the resolved binary so tests don't depend on the runner's actual PATH.
 vi.mock('../lib/claude-bin.js', () => ({
-  CLAUDE_BIN: '/mock/bin/claude',
+  getClaudeBin: () => '/mock/bin/claude',
   isShellScript: () => false,
   resolveClaudeBin: () => '/mock/bin/claude',
 }))

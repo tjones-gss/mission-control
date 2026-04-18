@@ -25,6 +25,12 @@ router.get('/list', async (req, res) => {
   if (!path.isAbsolute(requested)) {
     return res.status(400).json({ error: 'path must be absolute' })
   }
+  // Reject UNC / remote share paths on Windows. path.isAbsolute accepts
+  // them, but "local-only dashboard" means local disks only — don't let
+  // the browse UI enumerate arbitrary network shares the host can reach.
+  if (process.platform === 'win32' && /^[\\/]{2}/.test(requested)) {
+    return res.status(400).json({ error: 'UNC paths are not allowed' })
+  }
 
   const abs = path.normalize(requested)
 

@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process'
 import fs from 'fs'
 
-// Resolve the absolute path of the Claude CLI binary once at module load.
+// Resolve the absolute path of the Claude CLI binary.
 // Order matters: native-installer users get `claude.exe`, npm-shim users get
 // `claude.cmd`. Passing the absolute path to spawn/pty.spawn avoids two
 // Windows traps at once: Node's CVE-2024-27980 EINVAL for bare .cmd spawns,
@@ -33,7 +33,21 @@ export function resolveClaudeBin() {
   )
 }
 
-export const CLAUDE_BIN = resolveClaudeBin()
+// Resolve lazily and memoize. Module import must not crash the server when
+// the claude CLI is missing — routes fail with a 503 at call time instead,
+// which surfaces a clean install-guidance error in the dashboard.
+let cachedBin = null
+
+export function getClaudeBin() {
+  if (cachedBin) return cachedBin
+  cachedBin = resolveClaudeBin()
+  return cachedBin
+}
+
+// Test-only: reset the memoized binary so tests can re-exercise resolution.
+export function _resetClaudeBinCache() {
+  cachedBin = null
+}
 
 export function isShellScript(binPath) {
   const p = binPath.toLowerCase()

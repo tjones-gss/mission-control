@@ -5,7 +5,7 @@ import fs from 'fs'
 import os from 'os'
 import { emit, onEvent } from './sse.js'
 import { classify as classifyCommand } from './utils/commandClassifier.js'
-import { CLAUDE_BIN } from './lib/claude-bin.js'
+import { getClaudeBin } from './lib/claude-bin.js'
 
 // Validation whitelists (shared with routes/sessions.js)
 export const VALID_PERMISSION_MODES = new Set([
@@ -240,16 +240,17 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
     args.push('--dangerously-skip-permissions')
   }
 
+  const bin = getClaudeBin()
   let term
   try {
-    term = pty.spawn(CLAUDE_BIN, args, {
+    term = pty.spawn(bin, args, {
       cwd: cwd || undefined,
       env: cleanEnv(),
       cols: 200,
       rows: 50,
     })
   } catch (spawnErr) {
-    throw new Error(`Failed to spawn PTY (${CLAUDE_BIN}): ${spawnErr.message}`)
+    throw new Error(`Failed to spawn PTY (${bin}): ${spawnErr.message}`)
   }
 
   // Use a temporary key until we discover the real session ID
@@ -375,16 +376,17 @@ export async function startQuery({ sessionId, prompt, cwd, sdkOptions = {} }) {
       args.push('--model', sdkOptions.model)
     }
 
+    const bin = getClaudeBin()
     let term
     try {
-      term = pty.spawn(CLAUDE_BIN, args, {
+      term = pty.spawn(bin, args, {
         cwd: cwd || undefined,
         env: cleanEnv(),
         cols: 200,
         rows: 50,
       })
     } catch (spawnErr) {
-      throw new Error(`Failed to spawn PTY (${CLAUDE_BIN}): ${spawnErr.message}`)
+      throw new Error(`Failed to spawn PTY (${bin}): ${spawnErr.message}`)
     }
 
     s = {

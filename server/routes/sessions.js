@@ -148,6 +148,23 @@ router.param('sessionId', (req, res, next, id) => {
 })
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Log helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+// CLI stdout/stderr can be multi-KB for long sessions. Cap what we hand to
+// the structured logger so we don't flood pino or the log aggregator with
+// output that's already streamed to the client. The full payload is still
+// sent in the HTTP error body for the dashboard to render.
+const LOG_OUTPUT_CAP = 2048
+
+export function truncateForLog(text) {
+  if (typeof text !== 'string' || text.length === 0) return text || null
+  if (text.length <= LOG_OUTPUT_CAP) return text
+  const kept = text.slice(0, LOG_OUTPUT_CAP)
+  return `${kept}…[truncated ${text.length - LOG_OUTPUT_CAP} bytes]`
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // CLI options helper
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -484,8 +501,8 @@ router.post('/new', async (req, res) => {
     logger.warn(
       {
         detail: err.message,
-        stderr: err.stderrOutput || null,
-        stdout: err.stdoutOutput || null,
+        stderr: truncateForLog(err.stderrOutput),
+        stdout: truncateForLog(err.stdoutOutput),
       },
       'session_create_failed',
     )
@@ -537,8 +554,8 @@ router.post('/:sessionId/fork', async (req, res) => {
     logger.warn(
       {
         detail: err.message,
-        stderr: err.stderrOutput || null,
-        stdout: err.stdoutOutput || null,
+        stderr: truncateForLog(err.stderrOutput),
+        stdout: truncateForLog(err.stdoutOutput),
       },
       'fork_failed',
     )

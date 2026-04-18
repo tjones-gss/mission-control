@@ -89,7 +89,8 @@ import {
   cancelQuery,
 } from '../../pty-session.js'
 import { onEvent } from '../../sse.js'
-import { router, _resetSessionsCache } from '../../routes/sessions.js'
+import { logger } from '../../lib/logger.js'
+import { router, _resetSessionsCache, truncateForLog } from '../../routes/sessions.js'
 
 const app = express()
 app.use(express.json())
@@ -417,6 +418,48 @@ describe('POST /new', () => {
     expect(res.status).toBe(503)
     expect(res.body.stdout).toContain('api_error_status')
     expect(res.body.stdout).toContain("You've hit your limit")
+  })
+
+  it('truncates oversized stdout/stderr before handing them to the logger but not in the HTTP body', async () => {
+    const big = 'x'.repeat(10_000)
+    const err = new Error('claude CLI exited with code=1 signal=null')
+    err.stderrOutput = big
+    err.stdoutOutput = big
+    runClaude.mockRejectedValueOnce(err)
+    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hi' })
+    expect(res.status).toBe(503)
+    // Dashboard still gets the full payload so users can inspect the whole error.
+    expect(res.body.stderr).toBe(big)
+    expect(res.body.stdout).toBe(big)
+    // Logger must not receive the full 10KB payload — it should be truncated
+    // with a clear marker so pino/logaggregator don't get flooded.
+    expect(logger.warn).toHaveBeenCalled()
+    const [logPayload] = logger.warn.mock.calls.at(-1)
+    expect(logPayload.stderr.length).toBeLessThan(big.length)
+    expect(logPayload.stderr).toMatch(/\[truncated \d+ bytes\]/)
+    expect(logPayload.stdout).toMatch(/\[truncated \d+ bytes\]/)
+  })
+})
+
+// ─── truncateForLog helper ──────────────────────────────────────────────────
+
+describe('truncateForLog', () => {
+  it('returns null for null/undefined/empty', () => {
+    expect(truncateForLog(null)).toBe(null)
+    expect(truncateForLog(undefined)).toBe(null)
+    expect(truncateForLog('')).toBe(null)
+  })
+
+  it('returns the original string when below the cap', () => {
+    expect(truncateForLog('short')).toBe('short')
+  })
+
+  it('truncates and appends the byte-count marker when above the cap', () => {
+    const big = 'y'.repeat(5000)
+    const out = truncateForLog(big)
+    expect(out).not.toBe(big)
+    expect(out.length).toBeLessThan(big.length)
+    expect(out).toMatch(/\[truncated 2952 bytes\]/) // 5000 - 2048 = 2952
   })
 })
 

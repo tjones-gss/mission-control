@@ -8,7 +8,6 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState('')
   const [mode, setMode] = useState('')
-  const [effort, setEffort] = useState('')
   const [worktree, setWorktree] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState(null)
@@ -35,7 +34,6 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
     setPrompt('')
     setModel('')
     setMode('')
-    setEffort('')
     setWorktree(false)
     setError(null)
   }
@@ -51,7 +49,6 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
       const options = {}
       if (model) options.model = model
       if (mode) options.permissionMode = mode
-      if (effort) options.effort = effort
       if (Object.keys(options).length > 0) body.options = options
 
       const res = await fetch('/api/sessions/new', {
@@ -75,7 +72,7 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
     } finally {
       setCreating(false)
     }
-  }, [canSubmit, cwd, prompt, name, worktree, model, mode, effort, onCreated])
+  }, [canSubmit, cwd, prompt, name, worktree, model, mode, onCreated])
 
   return (
     <div className="px-3 py-2 border-b border-gray-800 space-y-1.5 bg-gray-900/50">
@@ -139,18 +136,6 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
           <option value="acceptEdits">acceptEdits</option>
           <option value="dontAsk">dontAsk</option>
           <option value="bypassPermissions">bypassPermissions</option>
-        </select>
-        <select
-          aria-label="Effort"
-          value={effort}
-          onChange={(e) => setEffort(e.target.value)}
-          className="w-full bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-[11px] text-gray-400 focus:outline-none focus:border-indigo-500"
-        >
-          <option value="">Effort...</option>
-          <option value="low">low</option>
-          <option value="medium">medium</option>
-          <option value="high">high</option>
-          <option value="max">max</option>
         </select>
       </div>
       <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">

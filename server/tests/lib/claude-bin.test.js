@@ -11,9 +11,9 @@ vi.mock('fs', () => ({
   existsSync: vi.fn(() => true),
 }))
 
-// Import AFTER mocks so CLAUDE_BIN (evaluated at module load) doesn't short-circuit
-// the mocks on first import. We re-import after resetModules in each test to get
-// fresh module state.
+// Import AFTER mocks so module-load side effects don't short-circuit the mocks
+// on first import. We re-import after resetModules in each test to get fresh
+// module state (and a reset of the lazy getClaudeBin cache).
 const origPlatform = process.platform
 
 function setPlatform(p) {
@@ -79,8 +79,32 @@ describe('resolveClaudeBin', () => {
     cp.execFileSync.mockImplementation(() => {
       throw new Error('not found')
     })
-    // Module load evaluates the top-level CLAUDE_BIN, so import itself rejects.
-    await expect(loadFreshModule()).rejects.toThrow(/Claude CLI not found on PATH/)
+    // Module load no longer throws (lazy resolution). The error surfaces the
+    // first time a caller actually needs the binary, so routes can fail with
+    // a clean 503 instead of crashing server startup.
+    const mod = await loadFreshModule()
+    expect(() => mod.resolveClaudeBin()).toThrow(/Claude CLI not found on PATH/)
+    expect(() => mod.getClaudeBin()).toThrow(/Claude CLI not found on PATH/)
+  })
+
+  test('getClaudeBin memoizes the resolved path across calls', async () => {
+    setPlatform('linux')
+    const cp = await import('child_process')
+    cp.execFileSync.mockReturnValue('/usr/local/bin/claude\n')
+    const { getClaudeBin } = await loadFreshModule()
+    expect(getClaudeBin()).toBe('/usr/local/bin/claude')
+    expect(getClaudeBin()).toBe('/usr/local/bin/claude')
+    // Second call hits the cache — no second `which` invocation.
+    expect(cp.execFileSync).toHaveBeenCalledTimes(1)
+  })
+
+  test('module import does not throw when the CLI is missing (server boot stays alive)', async () => {
+    setPlatform('linux')
+    const cp = await import('child_process')
+    cp.execFileSync.mockImplementation(() => {
+      throw new Error('not found')
+    })
+    await expect(loadFreshModule()).resolves.toBeDefined()
   })
 
   test('skips a candidate whose resolved path fails existsSync', async () => {
