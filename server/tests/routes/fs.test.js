@@ -64,36 +64,29 @@ describe('GET /api/fs/list — validation', () => {
     expect(res.status).toBe(400)
   })
 
-  test('400 when path is a UNC share on Windows', async () => {
-    // Spoof the platform for this case only — the guard short-circuits before
-    // any fs mocks run, so this is safe and deterministic across CI platforms.
-    const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
-    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
-    try {
-      const res = await request(createApp())
-        .get('/api/fs/list')
-        .query({ path: '\\\\evil-server\\share' })
-      expect(res.status).toBe(400)
-      expect(res.body.error).toMatch(/UNC/i)
-      expect(statMock).not.toHaveBeenCalled()
-      expect(readdirMock).not.toHaveBeenCalled()
-    } finally {
-      if (origPlatform) Object.defineProperty(process, 'platform', origPlatform)
-    }
+  test('400 when path is a UNC share (backslash form) — platform-independent', async () => {
+    // The UNC guard is a pure string-prefix check so the dashboard stays
+    // local-only on every OS. Prior revision gated this on process.platform
+    // === 'win32', which was wrong: path.isAbsolute on Linux returns false
+    // for `\\\\server\\share` and the test tripped the "must be absolute"
+    // branch before reaching the UNC guard, breaking CI on Linux runners.
+    const res = await request(createApp())
+      .get('/api/fs/list')
+      .query({ path: '\\\\evil-server\\share' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/UNC/i)
+    expect(statMock).not.toHaveBeenCalled()
+    expect(readdirMock).not.toHaveBeenCalled()
   })
 
-  test('400 when path uses forward-slash UNC form on Windows', async () => {
-    const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
-    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
-    try {
-      const res = await request(createApp())
-        .get('/api/fs/list')
-        .query({ path: '//evil-server/share' })
-      expect(res.status).toBe(400)
-      expect(res.body.error).toMatch(/UNC/i)
-    } finally {
-      if (origPlatform) Object.defineProperty(process, 'platform', origPlatform)
-    }
+  test('400 when path uses forward-slash UNC form — platform-independent', async () => {
+    const res = await request(createApp())
+      .get('/api/fs/list')
+      .query({ path: '//evil-server/share' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/UNC/i)
+    expect(statMock).not.toHaveBeenCalled()
+    expect(readdirMock).not.toHaveBeenCalled()
   })
 })
 

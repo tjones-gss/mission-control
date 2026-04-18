@@ -22,14 +22,17 @@ router.get('/list', async (req, res) => {
   if (requested.includes('\u0000')) {
     return res.status(400).json({ error: 'path contains NUL byte' })
   }
+  // Reject UNC / remote share paths before path.isAbsolute runs. The check
+  // lives here (rather than under a `process.platform === 'win32'` gate)
+  // because it's a pure string-prefix test and the dashboard is local-only
+  // on every OS — we don't want anyone enumerating network shares from
+  // here. On Windows, path.isAbsolute('\\\\server\\share') also returns
+  // true, so without this gate the UNC path would fall through to stat().
+  if (/^[\\/]{2}/.test(requested)) {
+    return res.status(400).json({ error: 'UNC paths are not allowed' })
+  }
   if (!path.isAbsolute(requested)) {
     return res.status(400).json({ error: 'path must be absolute' })
-  }
-  // Reject UNC / remote share paths on Windows. path.isAbsolute accepts
-  // them, but "local-only dashboard" means local disks only — don't let
-  // the browse UI enumerate arbitrary network shares the host can reach.
-  if (process.platform === 'win32' && /^[\\/]{2}/.test(requested)) {
-    return res.status(400).json({ error: 'UNC paths are not allowed' })
   }
 
   const abs = path.normalize(requested)
