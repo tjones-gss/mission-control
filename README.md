@@ -4,6 +4,10 @@
 
 If you've ever spawned a long-running Claude Code session and wondered "what is it actually doing right now?", this is for you.
 
+![Oversight dashboard overview](docs/screenshots/overview.png)
+
+A three-pane layout: sessions sidebar on the left, board / detail in the middle, live SSE feed on the right, with the Dispatch launcher docked at the bottom. Everything updates in real time as `~/.claude/` changes on disk.
+
 ---
 
 ## Board View
@@ -111,13 +115,42 @@ Browse your Claude Code command history with search, project filtering, and grou
 
 ## New Sessions
 
-Click the **+** button in the sidebar to spawn a new Claude Code session. Fill in a working directory, prompt, and optionally: session name, model (sonnet/opus/haiku), permission mode, effort level, and worktree isolation.
+Click the **+** button at the top of the sidebar to open the inline new-session form. Everything you need lives in the sidebar itself — no modal, no context switch.
 
-![New session form](docs/screenshots/new-session.png)
+![New session form in the sidebar](docs/screenshots/new-session.png)
 
-New sessions are created via a one-shot CLI subprocess (`claude -p ... --output-format json`). Interactive messaging after creation runs through a PTY on your Claude subscription — no API credits consumed.
+Fill in a working directory and prompt (required), plus optional session name, model (`sonnet` / `opus` / `haiku`), permission mode, and worktree isolation. The **folder icon** next to the working-directory input opens a lightweight folder picker.
 
-> The `effort` dropdown is forwarded only to SDK-backed paths (tool approvals, skill runs). It is not a valid flag for the one-shot CLI used by new-session creation and is silently dropped there.
+### Folder Picker
+
+![New session form close-up](docs/screenshots/new-session-tight.png)
+
+- Breadcrumb path with **Home** and **Up** buttons
+- **Recent** chips populated from the working directories of existing sessions
+- **Show hidden** toggle for dotfiles
+- Platform-aware: backed by `/api/fs/home` and `/api/fs/list`, which return the host's path separator so the picker works on macOS, Linux, and Windows
+- Rejects UNC / remote-share paths on Windows by design — Oversight is a local dashboard and shouldn't enumerate network shares
+
+### How a session is spawned
+
+New sessions are created via a one-shot CLI subprocess (`claude -p … --output-format json`). Interactive messaging after creation runs through a PTY on your Claude subscription — **no API credits consumed**. If the CLI exits non-zero (e.g. a 429 quota response), the error panel renders the captured `stderr` and `stdout` in scrollable monospace blocks so you see the real cause instead of an opaque "exited with code=1".
+
+> The `effort` option is SDK-only and is not valid for the one-shot `-p` CLI used here. It's exposed on the per-message **Session Control Bar** inside each conversation (SDK path), where it actually takes effect.
+
+---
+
+## Dispatch Manager
+
+A single "one message, many sessions" launcher. Click the **Dispatch** button at the bottom of the screen (or press `d`) to open the manager:
+
+![Dispatch Manager modal](docs/screenshots/dispatch.png)
+
+- Sessions are grouped by project (and any configured teams) so you can fan out to everything relevant in one click
+- Per-row status, cost, and last-message preview mean you can pick the right targets without leaving the launcher
+- Guards against sending an empty message, no-selected-sessions, or a session that already has an in-flight query (HTTP 409)
+- The message is routed through the same PTY path as the conversation view, so each recipient's JSONL is updated live and every dashboard tab sees it
+
+Typical uses: broadcasting a status-check ping, telling every active agent to commit, or running the same `/review-pr` skill across a fleet of worktrees.
 
 ---
 
@@ -169,6 +202,7 @@ All shortcuts are rebindable in Settings. Support for modifier combos (`Ctrl+k`,
 | `c` | Continue — send "continue" to waiting session |
 | `/` | Focus message input |
 | `m` | Mute selected session's notifications |
+| `d` | Open Dispatch Manager |
 | `,` | Open settings |
 | `?` | Toggle shortcut overlay |
 

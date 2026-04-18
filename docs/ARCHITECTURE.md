@@ -101,6 +101,8 @@ Oversight is a local web dashboard that monitors Claude Code agent activity in r
 | `server/lib/logger.js` | Pino structured logger, configurable via LOG_LEVEL env var |
 | `server/lib/lifecycle.js` | Graceful shutdown (SIGTERM/SIGINT), readiness state, process error handlers |
 | `server/lib/apiError.js` | Standardized `ApiError` class + factory helpers (badRequest, notFound, conflict, unauthorized) |
+| `server/lib/claude-bin.js` | Locates the `claude` CLI on PATH (`claude.exe` → `claude.cmd` → `claude.ps1` on Windows, `claude` elsewhere). Exposes a lazy, memoized `getClaudeBin()` so the server boots even if the CLI is missing — routes fail with a clean 503 at call time instead of crashing at import. |
+| `server/lib/atomic-write.js` | Atomic JSON writer (write-temp + rename) used by any state file that must never be half-written |
 | `server/middleware/security.js` | Helmet security headers, express-rate-limit, optional API key auth |
 | `server/middleware/requestLogger.js` | pino-http request logging with correlation IDs (X-Request-Id) |
 | `server/middleware/performance.js` | Response compression, cache headers, connection timeouts |
@@ -132,6 +134,8 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 | `routes/workflows.js` | `GET /`, workflow listing |
 | `routes/history.js` | `GET /`, `GET /stats` |
 | `routes/stream.js` | `GET /stream` — SSE endpoint |
+| `routes/fs.js` | `GET /api/fs/home`, `GET /api/fs/list?path=…` — host filesystem enumeration used by the sidebar folder picker. Returns `sep` so the client stays platform-agnostic. Absolute-only, NUL-reject, UNC-reject on Windows. Unrestricted directory listing is intentional for a local-only dashboard; documented inline. |
+| `routes/managers.js` | `GET /api/managers` — manager/team/standalone session groupings surfaced by the Dispatch Manager. |
 
 ### Intelligence
 
@@ -156,7 +160,7 @@ AI-powered session analysis using the `claude` CLI.
 
 | File | Purpose |
 |------|---------|
-| `claude-cli.js` | Spawns `claude` CLI as subprocess for message replies, skill invocation, new sessions, and intel analysis. Concurrent writes to the same session are blocked (409 Conflict). |
+| `claude-cli.js` | Spawns `claude` CLI as subprocess for new sessions, fork, worktree creation, and intel analysis. Resolves the binary via `lib/claude-bin.js` (lazy + memoized). On non-zero exit the rejected error carries both `stderrOutput` and `stdoutOutput` so callers can surface structured failures (e.g. the 429 quota JSON the CLI writes to stdout). Concurrent writes to the same session are blocked at the route layer (409 Conflict). |
 
 ### PTY Session Control
 
@@ -222,6 +226,9 @@ AI-powered session analysis using the `claude` CLI.
 | Component | Purpose |
 |-----------|---------|
 | `SessionsList.jsx` | Left sidebar — sessions grouped by Active/Recent/Older |
+| `NewSessionForm.jsx` | Inline new-session form at the top of the sidebar — name, cwd + folder picker trigger, prompt, model, mode, worktree. Surfaces CLI `stderr` / `stdout` in scrollable monospace blocks on failure. |
+| `FolderPicker.jsx` | Modal folder picker used by `NewSessionForm` — breadcrumb + Home/Up/Show-hidden, recent-cwd chips, driven by `/api/fs/*`. Uses the server-reported path separator so it works identically on POSIX and Windows. |
+| `DispatchDrawer.jsx` + `DispatchSignal.jsx` | Dispatch Manager — select many sessions grouped by project / team and send one message (or skill) to all of them through the existing PTY path. `DispatchSignal` is the bottom-docked launcher badge. |
 | `KanbanBoard.jsx` | Board view — sessions as cards in status columns |
 | `AgentTree.jsx` | Detail view shell — sub-tab bar (Conversation/Timeline/Summary/Intel), session control bar |
 | `ConversationView.jsx` | Message thread with send input, slash-command autocomplete, option pills |
@@ -280,21 +287,22 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 
 ## Testing
 
-**~748 total tests** (390 server + 358 client) — all must pass before pushing.
+**1,108 total tests** — 670 server (44 files) + 438 client (39 files). All must pass before pushing.
 
 | Suite | Runner | Count | Location |
 |-------|--------|-------|----------|
-| Server parsers | Vitest | ~99 | `server/tests/parsers/` (7 files) |
-| Server routes | Vitest | ~97 | `server/tests/routes/` (8 files incl. stream, health) |
+| Server parsers | Vitest | ~170 | `server/tests/parsers/` |
+| Server routes | Vitest | ~200 | `server/tests/routes/` (incl. sessions, fs, stream, health, tasks, teams, workflows, skills, managers, plans, history) |
 | Server intelligence | Vitest | ~37 | `server/tests/intelligence/` (cache, analyzer, triggers) |
 | Server infrastructure | Vitest | ~22 | `server/tests/` (sse, watcher) |
-| Server PTY | Vitest | 59 | `server/tests/` |
-| Server middleware | Vitest | ~20 | `server/tests/middleware/` (security, requestLogger, performance, errorHandler) |
-| Server lib | Vitest | ~20 | `server/tests/lib/` (config, apiError, lifecycle, logger) |
+| Server PTY | Vitest | 59 | `server/tests/pty-session.test.js` |
+| Server middleware | Vitest | ~27 | `server/tests/middleware/` (security, requestLogger, performance, errorHandler) |
+| Server lib | Vitest | ~36 | `server/tests/lib/` (config, apiError, lifecycle, logger, claude-bin) |
+| Server utils | Vitest | ~60 | `server/tests/utils/` (cost, costEnhanced, export, commandClassifier, secretScanner) |
 | Client hooks | Vitest + RTL | ~100 | `client/src/tests/hooks/` |
 | Client audio | Vitest | 25 | `client/src/tests/audio/` |
-| Client components | Vitest + RTL | ~233 | `client/src/tests/components/` (17 files) |
-| E2E | Playwright | — | `e2e/` (5 spec files) |
+| Client components | Vitest + RTL | ~300 | `client/src/tests/components/` (incl. NewSessionForm, FolderPicker, DispatchSignal) |
+| E2E | Playwright | — | `e2e/` (incl. `api-dispatch.spec.js`, split out so shape/validation tests don't contend with UI tests for worker slots) |
 
 **Test infrastructure:**
 - MSW (Mock Service Worker) for API mocking in client tests
@@ -327,12 +335,16 @@ oversight/
 │   │   │   │   └── ShortcutsTab.jsx
 │   │   │   ├── AgentTree.jsx
 │   │   │   ├── ConversationView.jsx
+│   │   │   ├── DispatchDrawer.jsx        # Dispatch Manager modal
+│   │   │   ├── DispatchSignal.jsx        # Bottom-docked dispatch launcher
+│   │   │   ├── FolderPicker.jsx          # /api/fs-backed folder picker
 │   │   │   ├── Markdown.jsx
 │   │   │   ├── ToolApprovalBanner.jsx
 │   │   │   ├── IntelView.jsx
 │   │   │   ├── KanbanBoard.jsx
 │   │   │   ├── LegendModal.jsx
 │   │   │   ├── LiveFeed.jsx
+│   │   │   ├── NewSessionForm.jsx        # Inline sidebar new-session form
 │   │   │   ├── QuickActions.jsx
 │   │   │   ├── SessionControlBar.jsx
 │   │   │   ├── SessionsList.jsx
@@ -369,13 +381,15 @@ oversight/
 │   │   ├── analyzer.js
 │   │   ├── cache.js
 │   │   └── triggers.js
-│   ├── parsers/                  # 7 parser modules
-│   ├── routes/                   # 7 route modules
+│   ├── parsers/                  # 13+ parser modules (sessions, messages, tasks, teams, skills, workflows, history, managers, plans, mcp, hooks, config, memory)
+│   ├── routes/                   # 11+ route modules (sessions, fs, tasks, skills, teams, workflows, history, managers, plans, stream, health)
 │   ├── lib/
 │   │   ├── config.js             # Centralized env var config
 │   │   ├── logger.js             # Pino structured logger
 │   │   ├── lifecycle.js          # Graceful shutdown + readiness
-│   │   └── apiError.js           # Standardized error class
+│   │   ├── apiError.js           # Standardized error class
+│   │   ├── claude-bin.js         # Lazy, memoized `claude` CLI resolver (Windows .exe/.cmd/.ps1 aware)
+│   │   └── atomic-write.js       # write-temp + rename JSON writer
 │   ├── middleware/
 │   │   ├── security.js           # Helmet, rate limiting, API key auth
 │   │   ├── requestLogger.js      # pino-http + correlation IDs
@@ -384,8 +398,8 @@ oversight/
 │   ├── utils/
 │   │   └── validate.js           # Shared input validation helpers
 │   ├── tests/
-│   │   ├── parsers/              # 7 parser test files
-│   │   ├── routes/               # 8 route test files (incl. stream, health)
+│   │   ├── parsers/              # Parser test files (sessions, messages, tasks, teams, skills, workflows, history, managers, plans, mcp, hooks, config, memory)
+│   │   ├── routes/               # Route test files (sessions, fs, stream, health, tasks, teams, workflows, skills, managers, plans, history)
 │   │   ├── intelligence/         # Cache, analyzer, triggers tests
 │   │   ├── middleware/           # Security, logging, perf, error tests
 │   │   ├── lib/                  # Config, apiError, lifecycle, logger tests
@@ -403,7 +417,7 @@ oversight/
 │   └── pre-commit                # Runs lint-staged on commit
 ├── docs/
 │   ├── ARCHITECTURE.md           # ← this file
-│   ├── screenshots/              # 5 PNG screenshots
+│   ├── screenshots/              # 15 PNG screenshots (overview, dispatch, new-session, board, conversation, timeline, tasks, etc.)
 │   └── superpowers/
 │       ├── plans/                # Implementation plans
 │       └── specs/                # Design specifications
