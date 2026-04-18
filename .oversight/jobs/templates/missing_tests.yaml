@@ -1,0 +1,34 @@
+id: missing-tests-TEMPLATE
+title: 'Add tests for <area>'
+domain: backend
+priority: medium
+
+editable_paths:
+  - server/tests/** # test files only
+  # If the implementation also needs tweaking for testability, widen scope
+  # with a separate follow-up job. Don't combine refactor + test-add.
+
+evaluators:
+  targeted: 'cd server && npx vitest run tests/<new-test>.test.js'
+  suite: 'npm run test:server'
+
+parallelizable: true
+
+goal: |
+  Add tests that cover the untested behavior in <area>. New tests must
+  actually exercise the module under test (not mock everything).
+
+rationale: |
+  Without tests, future changes in <area> regress silently.
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 25
+
+success_criteria:
+  - 'Suite still passes.'
+  - 'New test(s) exist and run (non-zero assertion count).'
+  - 'Tests fail if you intentionally break the code (verify by mutation).'
+
+rollback_policy: |
+  Auto-revert on suite regression or if coverage signals look faked.

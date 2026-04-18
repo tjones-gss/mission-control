@@ -1,0 +1,37 @@
+name: infra
+purpose: Dockerfile, docker-compose, GitHub Actions CI, husky pre-commit wiring.
+
+editable_paths:
+  - Dockerfile
+  - docker-compose.yml
+  - .dockerignore
+  - .github/workflows/**
+  - .husky/**
+
+protected_paths:
+  - .git/**
+
+local_evaluators:
+  # No container engine required: validate YAML/Dockerfile parse only.
+  yaml_parse: 'python .oversight/scripts/check_yaml_parse.py .github/workflows/ci.yml docker-compose.yml'
+  # Security has a hard env-leak gate that matters most to infra edits.
+  security: 'python .oversight/scripts/eval_security.py'
+
+cross_checks:
+  lint: 'npm run lint' # covers docker-compose.yml formatting (prettier supports yaml)
+
+success_criteria:
+  yaml_parse_exit_code: '==0'
+  lint_new_failures: '==0'
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 10
+  max_files: 4
+
+risk: medium
+
+notes:
+  - CI matrix currently tests on Node 20 + 22. Don't silently drop either.
+  - Any Dockerfile change should be followed up with a manual `docker build` by a human.
+  - Husky scripts live in .husky/ and are shell scripts — keep them POSIX-safe.

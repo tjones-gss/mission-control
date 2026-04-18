@@ -1,0 +1,42 @@
+# Template: bugfix
+# Copy to .oversight/jobs/active/<id>.yaml and fill in the blanks.
+
+id: bugfix-TEMPLATE
+title: 'Fix <specific bug in specific place>'
+domain: backend # or frontend, e2e, scripts, docs, infra, dependencies
+priority: medium # low | medium | high
+
+# Narrow the scope. If omitted, the domain's editable_paths are used.
+editable_paths:
+  - server/routes/<file>.js
+
+# Optional: extra evaluators to run alongside the domain defaults.
+# evaluators:
+#   targeted_test: "cd server && npx vitest run tests/routes/<file>.test.js"
+
+# Shell command that the loop runs to produce a candidate change.
+# Omit (or null) if a human/agent is making edits manually before each iteration.
+# change_command: 'python scripts/fix-specific-bug.py'
+
+# Set to false for jobs that touch shared state (lockfiles, generated caches)
+# so the parallel runner will NOT put them in their own worktree.
+parallelizable: true
+
+goal: |
+  Describe the observed failure (stack trace, URL, test name) and the expected behavior.
+
+rationale: |
+  Why this bug matters — user impact, frequency, whether it blocks other work.
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 15
+
+success_criteria:
+  - 'The targeted failing test now passes.'
+  - 'No previously passing test starts failing.'
+  - 'No forbidden-path changes (enforced automatically).'
+
+rollback_policy: |
+  Revert working tree with `git checkout -- . && git clean -fd`.
+  If a commit was already made via promote_candidate.py, drop the branch.

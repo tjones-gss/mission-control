@@ -1,0 +1,67 @@
+id: '001-format-drift'
+title: 'Eliminate Prettier formatting drift across server, client, e2e, scripts, infra'
+domain: infra # crosses boundaries; infra is the broadest lint-scoped domain
+priority: high
+
+# This job is unusual: it touches many domains at once because formatting
+# is repo-global. That's why we keep the command to a single deterministic
+# tool (`npm run lint:fix`) and gate it on test+build evaluators.
+editable_paths:
+  - client/**/*.js
+  - client/**/*.jsx
+  - client/**/*.json
+  - client/*.css
+  - server/**/*.js
+  - server/**/*.json
+  - e2e/**/*.js
+  - scripts/**/*.mjs
+  - docker-compose.yml
+  - .github/workflows/*.yml
+  - playwright.config.js
+  - .prettierrc
+
+# Even though the file list above overlaps the normally-protected client/*.png,
+# lint:fix never touches binaries, so this is fine.
+
+evaluators:
+  lint: 'npm run lint'
+  test_server: 'npm run test:server'
+  test_client: 'npm run test:client'
+  build_client: 'cd client && npx vite build'
+
+goal: |
+  Reduce the number of files flagged by `prettier --check` to zero, without
+  introducing any test failures or build errors.
+
+rationale: |
+  The repo has 216 files with Prettier drift. This is CI-visible noise and
+  masks real code-quality issues in PRs. Fixing it is purely mechanical
+  (whitespace, quotes, trailing commas) and reversible.
+
+  Safe because:
+    - `npm run lint:fix` is a deterministic tool.
+    - It never touches .md (they're in .prettierignore).
+    - It never touches lockfiles (same reason).
+    - All test/build evaluators must still succeed.
+
+budget:
+  attempts: 2
+  wall_clock_minutes: 15
+  max_files: 300 # raised: formatting touches ~200 files
+
+success_criteria:
+  - 'prettier_failures_total == 0'
+  - 'vitest_failures_total delta <= 0'
+  - 'build_client exit_code == 0'
+  - 'no changes to .md / package-lock.json / .env / docs/screenshots/'
+
+rollback_policy: |
+  If tests or build regress, `git checkout -- . && git clean -fd` reverts
+  the format pass entirely. The candidate is only committed (via
+  promote_candidate.py) if every evaluator passes.
+
+notes: |
+  Run via:
+    python .oversight/scripts/run_job_loop.py \
+      --job .oversight/jobs/backlog/001-format-drift.yaml \
+      --command "npm run lint:fix"

@@ -12,3 +12,15 @@ qa-*.png
 snapshot-*.md
 test-upload.png
 *.output
+
+# Dev screenshots (pair-loop / QA) dropped at the client/ root.
+# Subfolder assets (e.g. client/public/, client/src/) are not affected.
+client/*.png
+
+# Python
+__pycache__/
+
+# Oversight — per-run artifacts (baselines.json stays tracked for shared ratchets)
+.oversight/logs/
+.oversight/state/scores/
+.oversight/state/leaderboard.json

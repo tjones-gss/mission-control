@@ -1,0 +1,35 @@
+id: failing-tests-TEMPLATE
+title: 'Fix failing tests in <area>'
+domain: backend
+priority: high
+
+editable_paths:
+  - server/**
+  # Scope only to the source; DON'T edit the tests themselves unless
+  # the test clearly encodes a bug.
+
+evaluators:
+  targeted: 'cd server && npx vitest run tests/<path>.test.js'
+
+# Optional shell command that the loop will run to produce each candidate.
+# change_command: 'python scripts/repair-<area>.py'
+parallelizable: true
+
+goal: |
+  Reduce `vitest_failures_total` for the listed path to 0 without removing
+  assertions or weakening expectations.
+
+rationale: |
+  Failing tests block CI and erode trust in the suite.
+
+budget:
+  attempts: 5
+  wall_clock_minutes: 20
+
+success_criteria:
+  - 'vitest_failures_total delta <= 0'
+  - 'No deleted `expect(...)` calls in the diff.'
+  - 'Whole-suite `npm run test:server` still passes.'
+
+rollback_policy: |
+  Auto-revert on regression (run_job_loop.py default behavior).

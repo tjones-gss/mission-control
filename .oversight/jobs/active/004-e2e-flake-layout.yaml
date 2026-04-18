@@ -1,0 +1,45 @@
+id: 004-e2e-flake-layout
+title: 'De-flake e2e/layout.spec.js by removing hardcoded waitForTimeout'
+domain: e2e
+priority: medium
+
+editable_paths:
+  - e2e/layout.spec.js
+
+# The change helper strips `await page.waitForTimeout(n)` lines from the spec.
+# Playwright's built-in auto-wait covers the subsequent actions, so the fixed
+# sleep is almost always wasted time AND a flake source.
+change_command: 'python .oversight/scripts/fix_e2e_layout_waits.py'
+
+parallelizable: true
+
+evaluators:
+  flake_signals: 'python .oversight/scripts/eval_e2e_flake.py'
+  syntax: 'node --check e2e/layout.spec.js'
+
+goal: |
+  Reduce `e2e_flake_signals` by removing the 2000ms page.waitForTimeout in
+  layout.spec.js. Playwright auto-waits for visibility on the next action,
+  so the fixed wait is almost certainly wasted time AND a flake source.
+
+rationale: |
+  Hard-coded timeouts are the #1 flake source in Playwright. The e2e domain
+  has `e2e_flake_signals` as a soft-ratchet signal, so reducing it actually
+  lowers the aggregate score.
+
+budget:
+  attempts: 2
+  wall_clock_minutes: 5
+
+success_criteria:
+  - 'eval_e2e_flake.signals.e2e_waitForTimeout_count decreases by at least 1'
+  - 'node --check still passes on the spec'
+  - 'No new `test.skip` / `test.only` introduced (hard gate already covers .only)'
+
+rollback_policy: |
+  Auto-revert on regression. A genuine flake fix may need semantic changes
+  (swap to `await expect(locator).toBeVisible()`); use this job as the
+  *start* of that work, not the end.
+
+notes:
+  - 'Does NOT run the full Playwright suite as part of scoring; that is in the `full` layer.'

@@ -1,0 +1,57 @@
+{
+  "console_leak_count": 1,
+  "todo_count": 0,
+  "todo_density_kloc": 0.0,
+  "loc_total": 13337,
+  "loc_outlier_count": 5,
+  "dangerous_api_count": 0,
+  "source_files_scanned": 106,
+  "test_only_count": 0,
+  "test_skip_count": 3,
+  "test_fixme_count": 0,
+  "test_files_scanned": 97,
+  "e2e_waitForTimeout_count": 4,
+  "e2e_setTimeout_count": 0,
+  "e2e_waitFor_count": 0,
+  "e2e_slow_count": 0,
+  "e2e_flake_signals": 4,
+  "specs_scanned": 11,
+  "route_total": 48,
+  "covered_routes": 24,
+  "uncovered_routes": 24,
+  "route_coverage_pct": 50.0,
+  "secret_findings": 0,
+  "env_leak_count": 0,
+  "files_scanned_for_secrets": 236,
+  "__meta__": {
+    "timestamp": "20260417T232235",
+    "ran": [
+      {
+        "name": "code_health",
+        "exit_code": 0,
+        "duration_s": 0.3
+      },
+      {
+        "name": "test_markers",
+        "exit_code": 0,
+        "duration_s": 0.2
+      },
+      {
+        "name": "e2e_flake",
+        "exit_code": 0,
+        "duration_s": 0.1
+      },
+      {
+        "name": "route_parity",
+        "exit_code": 0,
+        "duration_s": 0.1
+      },
+      {
+        "name": "security",
+        "exit_code": 0,
+        "duration_s": 0.6
+      }
+    ],
+    "note": "Baselines for ratchet signals. aggregate_score.py subtracts these from current values to compute delta-penalties. Do not edit by hand."
+  }
+}

@@ -1,0 +1,30 @@
+name: scripts
+purpose: One-off dispatch/smoke scripts under scripts/ (multi-send, real-user-send, smoke-dispatch, use-the-app).
+
+editable_paths:
+  - scripts/**
+
+protected_paths: []
+
+local_evaluators:
+  syntax_all: 'python .oversight/scripts/check_node_syntax.py scripts'
+  code_health: 'python .oversight/scripts/eval_code_health.py'
+
+cross_checks:
+  lint: 'npm run lint'
+  security: 'python .oversight/scripts/eval_security.py'
+
+success_criteria:
+  syntax_exit_code: '==0'
+  lint_new_failures: '==0'
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 10
+  max_files: 4
+
+risk: low
+
+notes:
+  - These are ESM (.mjs) scripts intended to be run manually against a live dashboard.
+  - They talk to http://localhost:3001 / :5173. Never embed real credentials.
