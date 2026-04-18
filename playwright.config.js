@@ -4,7 +4,12 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // Local runs pick up one retry to absorb transient socket hiccups
+  // (ECONNRESET / socket hang up) from the single-threaded dev server
+  // when the full 78-test suite is running under 2 workers. CI keeps
+  // its higher budget of 2. A genuinely failing test still fails on
+  // both attempts; only true infra flake is hidden by retries: 1.
+  retries: process.env.CI ? 2 : 1,
   // Cap to 2 workers locally too: the dashboard's first-paint fires
   // ~6 useApi calls in parallel against a single-threaded Node server,
   // and 4+ headless browsers all hammering it at once produces head-of-

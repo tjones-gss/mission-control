@@ -123,42 +123,11 @@ test.describe('dispatch drawer', () => {
     await expect(sendBtn).toBeDisabled()
   })
 
-  test('GET /api/managers returns correct shape', async ({ page }) => {
-    await page.goto('/')
-    const resp = await page.evaluate(() => fetch('/api/managers').then((r) => r.json()))
-    expect(resp).toHaveProperty('managers')
-    expect(resp).toHaveProperty('standalone')
-    expect(Array.isArray(resp.managers)).toBe(true)
-    expect(Array.isArray(resp.standalone)).toBe(true)
-  })
-
-  test('POST to nonexistent session returns 404', async ({ page }) => {
-    await page.goto('/')
-    const resp = await page.evaluate(() =>
-      fetch('/api/sessions/nonexistent-id/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'test' }),
-      }).then((r) => ({ status: r.status })),
-    )
-    expect(resp.status).toBe(404)
-  })
-
-  test('POST with empty message returns 400', async ({ page }) => {
-    await page.goto('/')
-    // Get a real session ID from the API
-    const sessions = await page.evaluate(() => fetch('/api/sessions').then((r) => r.json()))
-    if (sessions.length === 0) return
-    const sid = sessions[0].sessionId
-    const resp = await page.evaluate(
-      (id) =>
-        fetch(`/api/sessions/${id}/message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: '' }),
-        }).then((r) => ({ status: r.status })),
-      sid,
-    )
-    expect(resp.status).toBe(400)
-  })
+  // Note: the corresponding pure-API shape/validation tests for the
+  // dispatch surface live in api-dispatch.spec.js. Keeping them in a
+  // dedicated API-only spec file matches the pattern used by
+  // api-sessions-name / api-tasks / api-validation, and avoids being
+  // scheduled onto a worker that is simultaneously running the UI
+  // tests above (which mount the dashboard and fire ~6 useApi calls
+  // in parallel against the single-threaded dev server).
 })
