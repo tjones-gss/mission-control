@@ -64,32 +64,42 @@ test.describe('workflows', () => {
     await page.getByPlaceholder('my-workflow').fill(name)
     await page.getByPlaceholder('What this workflow does…').fill('Created by E2E test')
 
+    // Synchronize on the POST response so the workflow is persisted
+    // before we try to interact with it in the list.
+    const postPromise = page.waitForResponse(
+      (r) => r.url().endsWith('/api/workflows') && r.request().method() === 'POST',
+    )
     await page.getByRole('button', { name: 'Save' }).click()
+    await postPromise
 
     // After save the workflow should appear in the left panel list
-    await expect(page.getByText(name)).toBeVisible()
+    const groupRow = page.locator('.group').filter({ hasText: name })
+    await expect(groupRow).toBeVisible({ timeout: 20_000 })
 
     // Clean up: delete the workflow we just created. The delete (X)
     // button is opacity-0 group-hover:opacity-100, which means hover
     // visibility — Playwright's click() waits for actionability and
     // hover isn't always sticky in headless. Force-click bypasses
     // the visibility check; the click handler still fires.
-    const groupRow = page.locator('.group').filter({ hasText: name })
     await groupRow.hover()
     await groupRow.getByTitle('Delete workflow').click({ force: true })
 
-    // Confirm deletion in the modal — scope by the modal's unique
-    // "This cannot be undone." paragraph to avoid colliding with the
-    // row's own Delete button.
-    const modal = page.locator('div').filter({ hasText: 'This cannot be undone.' }).last()
+    // Wait for the confirmation modal to appear before clicking Delete.
+    const modal = page.locator('.fixed.inset-0').filter({ hasText: 'This cannot be undone.' })
+    await expect(modal).toBeVisible()
+
+    // Synchronize on the DELETE response so the list update has landed
+    // before we assert the row is gone.
+    const deletePromise = page.waitForResponse(
+      (r) => r.url().includes('/api/workflows/') && r.request().method() === 'DELETE',
+    )
     await modal.getByRole('button', { name: 'Delete' }).click()
+    await deletePromise
 
     // The workflow should no longer appear in the LEFT-PANE LIST.
-    // Don't assert on `getByText(name)` globally — after delete, the
-    // editor pane still shows the previous workflow's header + Export
-    // button, both of which contain the name. Scope the assertion to
-    // the .group list rows that wrap each list item.
-    await expect(page.locator('.group').filter({ hasText: name })).toHaveCount(0)
+    await expect(page.locator('.group').filter({ hasText: name })).toHaveCount(0, {
+      timeout: 10_000,
+    })
   })
 
   test('workflow editor shows Add Step button', async ({ page }) => {
@@ -163,8 +173,18 @@ test.describe('workflows', () => {
     const groupRow = page.locator('.group').filter({ hasText: name })
     await groupRow.hover()
     await groupRow.getByTitle('Delete workflow').click({ force: true })
-    const modal = page.locator('div').filter({ hasText: 'This cannot be undone.' }).last()
+
+    const modal = page.locator('.fixed.inset-0').filter({ hasText: 'This cannot be undone.' })
+    await expect(modal).toBeVisible()
+
+    const deletePromise = page.waitForResponse(
+      (r) => r.url().includes('/api/workflows/') && r.request().method() === 'DELETE',
+    )
     await modal.getByRole('button', { name: 'Delete' }).click()
-    await expect(page.locator('.group').filter({ hasText: name })).toHaveCount(0)
+    await deletePromise
+
+    await expect(page.locator('.group').filter({ hasText: name })).toHaveCount(0, {
+      timeout: 10_000,
+    })
   })
 })
