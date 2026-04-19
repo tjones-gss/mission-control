@@ -23,8 +23,24 @@ const CLEANED_ENV = (() => {
 })()
 
 export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
+  return runClaudeCancellable({ args, cwd, timeoutMs }).promise
+}
+
+/**
+ * Like runClaude but also returns a cancel() function that kills the child
+ * process. The promise rejects with an error if cancel() is called.
+ * @param {object} options
+ * @param {string[]} options.args
+ * @param {string} [options.cwd]
+ * @param {number} [options.timeoutMs=120000]
+ * @returns {{ promise: Promise<{ stdout: string, stderr: string, exitCode: number }>, cancel: () => void }}
+ */
+export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000 }) {
   const env = CLEANED_ENV
-  return new Promise((resolve, reject) => {
+  let childRef = null
+  let cancelledFlag = false
+
+  const promise = new Promise((resolve, reject) => {
     let bin
     try {
       bin = getClaudeBin()
@@ -38,6 +54,7 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
     if (isShellScript(bin)) spawnOpts.shell = true
 
     const child = spawn(bin, args, spawnOpts)
+    childRef = child
 
     // Close stdin immediately — claude CLI waits for EOF on stdin when it is a pipe
     child.stdin.end()
@@ -68,6 +85,12 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
 
     child.on('close', (code, signal) => {
       clearTimeout(timer)
+      if (cancelledFlag) {
+        const err = new Error('claude CLI cancelled')
+        err.stderrOutput = stderr
+        err.stdoutOutput = stdout
+        return reject(err)
+      }
       if (code !== 0 || signal) {
         const err = new Error(`claude CLI exited with code=${code} signal=${signal}`)
         err.code = code
@@ -80,4 +103,17 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
       resolve({ stdout, stderr, exitCode: code })
     })
   })
+
+  function cancel() {
+    if (childRef) {
+      cancelledFlag = true
+      try {
+        childRef.kill()
+      } catch {
+        /* ignore if already exited */
+      }
+    }
+  }
+
+  return { promise, cancel }
 }

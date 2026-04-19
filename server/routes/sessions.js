@@ -11,7 +11,8 @@ import { getSessionMessages } from '../parsers/messages.js'
 import { getMemoryForSession } from '../parsers/memory.js'
 import { getCached, getInFlight } from '../intelligence/cache.js'
 import { runAnalysis } from '../intelligence/triggers.js'
-import { runClaude } from '../claude-cli.js'
+import { runClaude, runClaudeCancellable } from '../claude-cli.js'
+import { awaitNewSession } from '../lib/pending-session.js'
 import { logger } from '../lib/logger.js'
 import {
   startQuery,
@@ -480,24 +481,45 @@ router.post('/new', async (req, res) => {
 
   // Use CLI subprocess for new session creation (stable on Windows).
   // PTY is only used for resuming existing sessions (message endpoint).
-  try {
-    const baseArgs = ['-p', prompt.trim(), '--output-format', 'json']
-    if (name && typeof name === 'string' && name.trim()) {
-      baseArgs.push('--name', name.trim())
-    }
-    if (worktree === true) {
-      baseArgs.push('--worktree')
-    }
-    const args = buildCliArgs(baseArgs, options)
-    const { stdout, stderr } = await runClaude({ args, cwd, timeoutMs: 300_000 })
-    let result
-    try {
-      result = JSON.parse(stdout)
-    } catch {
-      result = { raw: stdout }
-    }
-    return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
-  } catch (err) {
+  const baseArgs = ['-p', prompt.trim(), '--output-format', 'json']
+  if (name && typeof name === 'string' && name.trim()) {
+    baseArgs.push('--name', name.trim())
+  }
+  if (worktree === true) {
+    baseArgs.push('--worktree')
+  }
+  const args = buildCliArgs(baseArgs, options)
+
+  // Race: file-watcher ack vs CLI completion vs 15s deadline (inside awaitNewSession).
+  //
+  // (1) awaitNewSession fires when the JSONL appears on disk → 202 streaming ack
+  // (2) runClaude resolves before any ack → 201 legacy shape (rare, likely an error-exit)
+  // (3) awaitNewSession times out (15 s, no JSONL seen) → 504 + kill child
+
+  const { promise: cliPromise, cancel: cancelCli } = runClaudeCancellable({
+    args,
+    cwd,
+    timeoutMs: 300_000,
+  })
+
+  // Race: file-watcher ack vs CLI completion vs 15s deadline.
+  //
+  // To prevent Node from ever seeing an unhandledRejection on cliPromise,
+  // we convert it to an always-resolving tagged promise immediately. The
+  // rejection is preserved in the tag so the try/catch below can re-raise it.
+  const taggedCli = cliPromise.then(
+    (v) => ({ _tag: 'cli', value: v }),
+    (err) => ({ _tag: 'cli_err', error: err }),
+  )
+  const taggedAck = awaitNewSession(cwd, { timeoutMs: 15_000 })
+    .then((id) => ({ _tag: 'ack', sessionId: id }))
+    .catch((err) => ({ _tag: 'timeout', error: err }))
+
+  const winner = await Promise.race([taggedCli, taggedAck])
+
+  if (winner._tag === 'cli_err') {
+    // CLI rejected before ack — keep existing 503 path
+    const err = winner.error
     logger.warn(
       {
         detail: err.message,
@@ -513,6 +535,53 @@ router.post('/new', async (req, res) => {
       stdout: err.stdoutOutput || null,
     })
   }
+
+  if (winner._tag === 'ack') {
+    // (1) File-watcher fired first — ack immediately, let CLI keep running in bg
+    const pendingSessionId = winner.sessionId
+    // taggedCli already has the only .then on cliPromise, so cliPromise itself
+    // is already fully handled. Log any background failure via taggedCli.
+    taggedCli.then((t) => {
+      if (t._tag === 'cli_err') {
+        logger.warn(
+          {
+            pendingSessionId,
+            detail: t.error.message,
+            stderr: truncateForLog(t.error.stderrOutput),
+            stdout: truncateForLog(t.error.stdoutOutput),
+          },
+          'cli_failed_after_ack',
+        )
+      }
+    })
+    return res.status(202).json({ ok: true, pendingSessionId, status: 'streaming' })
+  }
+
+  if (winner._tag === 'cli') {
+    // (2) CLI completed before file-watcher (probably fast error exit or instant success)
+    const { stdout, stderr } = winner.value
+    let result
+    try {
+      result = JSON.parse(stdout)
+    } catch {
+      result = { raw: stdout }
+    }
+    return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
+  }
+
+  // (3) Timeout — kill the child and return 504
+  cancelCli()
+  const timeoutErr = winner.error
+  logger.warn(
+    {
+      detail: timeoutErr.message,
+    },
+    'session_create_timeout',
+  )
+  return res.status(504).json({
+    error: 'timeout_waiting_for_session',
+    detail: timeoutErr.message,
+  })
 })
 
 // ──────────────────────────────────────────────────────────────────────────────

@@ -28,6 +28,13 @@ vi.mock('fs', () => ({
 }))
 vi.mock('../../claude-cli.js', () => ({
   runClaude: vi.fn().mockResolvedValue({ stdout: '{"result":"ok"}', stderr: '', exitCode: 0 }),
+  runClaudeCancellable: vi.fn().mockImplementation(() => {
+    const promise = Promise.resolve({ stdout: '{"result":"ok"}', stderr: '', exitCode: 0 })
+    return { promise, cancel: vi.fn() }
+  }),
+}))
+vi.mock('../../lib/pending-session.js', () => ({
+  awaitNewSession: vi.fn().mockResolvedValue('pending-session-id'),
 }))
 vi.mock('../../sse.js', () => ({
   emit: vi.fn(),
@@ -79,7 +86,8 @@ import request from 'supertest'
 import fs from 'fs'
 import { getAllSessions, getSessionById } from '../../parsers/sessions.js'
 import { getSessionMessages } from '../../parsers/messages.js'
-import { runClaude } from '../../claude-cli.js'
+import { runClaude, runClaudeCancellable } from '../../claude-cli.js'
+import { awaitNewSession } from '../../lib/pending-session.js'
 import {
   startQuery,
   spawnNewSession,
@@ -335,6 +343,22 @@ describe('POST /:sessionId/skill', () => {
 })
 
 // ─── POST /new ──────────────────────────────────────────────────────────────
+// The route now races runClaudeCancellable vs awaitNewSession.
+// Default mock setup: awaitNewSession resolves immediately (→ 202 ack).
+// Individual tests override these mocks to drive each branch.
+
+/**
+ * Create a rejected promise with a noop .catch attached so that Vitest's
+ * unhandledRejection hook doesn't see it as unhandled. The route will still
+ * observe the rejection through its own `taggedCli = cliPromise.then(ok, err)`
+ * chain because .catch() is just syntactic sugar for .then(undefined, onRejected),
+ * and multiple .then handlers on the same promise are all notified.
+ */
+function rejectedCliPromise(err) {
+  const p = Promise.reject(err)
+  p.catch(() => {}) // suppress unhandledRejection at Vitest process level
+  return p
+}
 
 describe('POST /new', () => {
   it('400 when prompt is missing', async () => {
@@ -349,57 +373,142 @@ describe('POST /new', () => {
     expect(res.body.error).toMatch(/cwd is required/i)
   })
 
-  it('201 when new session created via CLI subprocess', async () => {
-    runClaude.mockResolvedValue({ stdout: '{"session_id":"new-123"}', stderr: '', exitCode: 0 })
+  // Scenario 1: awaitNewSession resolves → 202 with pendingSessionId
+  // (The normal fast path — file watcher fires before CLI completes)
+  it('202 with pendingSessionId when awaitNewSession resolves first', async () => {
+    // awaitNewSession resolves immediately (default mock)
+    // CLI promise stays pending so ack wins the race
+    let resolveCli
+    runClaudeCancellable.mockReturnValue({
+      promise: new Promise((r) => {
+        resolveCli = r
+      }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockResolvedValue('new-sess-ack-123')
+
+    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
+    expect(res.status).toBe(202)
+    expect(res.body.ok).toBe(true)
+    expect(res.body.pendingSessionId).toBe('new-sess-ack-123')
+    expect(res.body.status).toBe('streaming')
+
+    // Resolve CLI now (background) — shouldn't change response (already sent)
+    resolveCli({ stdout: '{}', stderr: '', exitCode: 0 })
+  })
+
+  // Scenario 2: runClaude resolves first (CLI completes before any new_session event) → 201 legacy
+  // (Rare in production — typically a fast error-exit or a very quick interaction)
+  it('201 legacy shape when CLI completes before awaitNewSession', async () => {
+    // CLI resolves immediately, awaitNewSession never resolves (times out much later)
+    runClaudeCancellable.mockReturnValue({
+      promise: Promise.resolve({ stdout: '{"session_id":"new-123"}', stderr: '', exitCode: 0 }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves
+
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
     expect(res.status).toBe(201)
     expect(res.body.ok).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/tmp' }))
+    expect(res.body.result).toEqual({ session_id: 'new-123' })
+    expect(runClaudeCancellable).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/tmp' }))
   })
 
-  it('201 when session created with name', async () => {
-    runClaude.mockResolvedValue({ stdout: '{"session_id":"new-456"}', stderr: '', exitCode: 0 })
-    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello', name: 'test' })
-    expect(res.status).toBe(201)
-    expect(res.body.ok).toBe(true)
+  // Scenario 3: awaitNewSession times out → 504
+  it('504 when awaitNewSession times out and CLI is still pending', async () => {
+    const cancelMock = vi.fn()
+    runClaudeCancellable.mockReturnValue({
+      promise: new Promise(() => {}), // never resolves
+      cancel: cancelMock,
+    })
+    awaitNewSession.mockRejectedValue(new Error('timeout_waiting_for_session'))
+
+    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
+    expect(res.status).toBe(504)
+    expect(res.body.error).toBe('timeout_waiting_for_session')
+    expect(cancelMock).toHaveBeenCalled()
   })
 
-  it('201 when worktree session created via CLI', async () => {
-    runClaude.mockResolvedValue({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 })
-    const res = await request(app)
-      .post('/new')
-      .send({ cwd: '/tmp', prompt: 'hello', worktree: true })
-    expect(res.status).toBe(201)
-    expect(res.body.ok).toBe(true)
-    expect(runClaude).toHaveBeenCalledWith(
-      expect.objectContaining({
-        args: expect.arrayContaining(['-p', 'hello', '--worktree']),
-      }),
-    )
-  })
+  // Scenario 4: runClaude rejects before ack → 503
+  it('503 when CLI rejects before ack', async () => {
+    const err = new Error('claude CLI exited with code=1 signal=null')
+    err.stderrOutput = 'error: something broke\n'
+    err.stdoutOutput = ''
+    runClaudeCancellable.mockReturnValue({
+      promise: rejectedCliPromise(err),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves
 
-  it('503 when PTY spawn fails', async () => {
-    spawnNewSession.mockRejectedValue(new Error('spawn failed'))
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
     expect(res.status).toBe(503)
     expect(res.body.error).toBe('session_create_failed')
+    expect(res.body.detail).toMatch(/code=1/)
+    expect(res.body.stderr).toBe('error: something broke\n')
   })
 
+  // Scenario 5: CLI rejects AFTER ack → logs warn, doesn't affect already-sent response
+  it('logs warn when CLI fails after 202 ack, does not re-raise', async () => {
+    let rejectCli
+    const cliPromise = new Promise((_resolve, reject) => {
+      rejectCli = reject
+    })
+    // Suppress the unhandled rejection that would fire when we reject below —
+    // the route converts cliPromise to taggedCli (which catches it), but to
+    // avoid a race between test rejection and route setup, attach a noop here.
+    cliPromise.catch(() => {})
+    runClaudeCancellable.mockReturnValue({
+      promise: cliPromise,
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockResolvedValue('acked-session-id')
+
+    const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
+    expect(res.status).toBe(202)
+    expect(res.body.pendingSessionId).toBe('acked-session-id')
+
+    // Now reject the CLI after the response was already sent
+    const bgErr = new Error('claude CLI exited with code=1 signal=null')
+    bgErr.stderrOutput = 'bg failure'
+    rejectCli(bgErr)
+
+    // Give the taggedCli.then handler a tick to run
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ pendingSessionId: 'acked-session-id' }),
+      'cli_failed_after_ack',
+    )
+  })
+
+  // Scenario 6: does NOT forward --effort (preserved assertion)
   it('does NOT forward --effort to the claude CLI (SDK-only option)', async () => {
-    runClaude.mockResolvedValue({ stdout: '{"session_id":"new-789"}', stderr: '', exitCode: 0 })
+    // awaitNewSession never resolves so CLI path wins (CLI resolves immediately)
+    runClaudeCancellable.mockReturnValue({
+      promise: Promise.resolve({ stdout: '{"session_id":"new-789"}', stderr: '', exitCode: 0 }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves
+
     const res = await request(app)
       .post('/new')
       .send({ cwd: '/tmp', prompt: 'hello', options: { effort: 'low' } })
     expect(res.status).toBe(201)
-    const argv = runClaude.mock.calls.at(-1)[0].args
+    const argv = runClaudeCancellable.mock.calls.at(-1)[0].args
     expect(argv).not.toContain('--effort')
     expect(argv).not.toContain('low')
   })
 
+  // Scenario 7: 503 carries stderr (preserved assertion)
   it('503 error response includes stderr captured from the CLI', async () => {
     const err = new Error('claude CLI exited with code=1 signal=null')
     err.stderrOutput = 'error: unknown option --effort\n'
-    runClaude.mockRejectedValueOnce(err)
+    runClaudeCancellable.mockReturnValue({
+      promise: rejectedCliPromise(err),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {}))
+
     const res = await request(app)
       .post('/new')
       .send({ cwd: '/tmp', prompt: 'hello', options: { effort: 'low' } })
@@ -409,11 +518,17 @@ describe('POST /new', () => {
     expect(res.body.stderr).toBe('error: unknown option --effort\n')
   })
 
+  // Scenario 8: 503 carries stdout (preserved assertion)
   it('503 error response also includes stdout (for quota-style JSON errors)', async () => {
     const err = new Error('claude CLI exited with code=1 signal=null')
     err.stderrOutput = ''
     err.stdoutOutput = '{"is_error":true,"api_error_status":429,"result":"You\'ve hit your limit"}'
-    runClaude.mockRejectedValueOnce(err)
+    runClaudeCancellable.mockReturnValue({
+      promise: rejectedCliPromise(err),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {}))
+
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hi' })
     expect(res.status).toBe(503)
     expect(res.body.stdout).toContain('api_error_status')
@@ -425,19 +540,42 @@ describe('POST /new', () => {
     const err = new Error('claude CLI exited with code=1 signal=null')
     err.stderrOutput = big
     err.stdoutOutput = big
-    runClaude.mockRejectedValueOnce(err)
+    runClaudeCancellable.mockReturnValue({
+      promise: rejectedCliPromise(err),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {}))
+
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hi' })
     expect(res.status).toBe(503)
     // Dashboard still gets the full payload so users can inspect the whole error.
     expect(res.body.stderr).toBe(big)
     expect(res.body.stdout).toBe(big)
-    // Logger must not receive the full 10KB payload — it should be truncated
-    // with a clear marker so pino/logaggregator don't get flooded.
+    // Logger must not receive the full 10KB payload — it should be truncated.
     expect(logger.warn).toHaveBeenCalled()
     const [logPayload] = logger.warn.mock.calls.at(-1)
     expect(logPayload.stderr.length).toBeLessThan(big.length)
     expect(logPayload.stderr).toMatch(/\[truncated \d+ bytes\]/)
     expect(logPayload.stdout).toMatch(/\[truncated \d+ bytes\]/)
+  })
+
+  it('includes --worktree in CLI args when worktree flag is set', async () => {
+    runClaudeCancellable.mockReturnValue({
+      promise: Promise.resolve({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {}))
+
+    const res = await request(app)
+      .post('/new')
+      .send({ cwd: '/tmp', prompt: 'hello', worktree: true })
+    expect(res.status).toBe(201)
+    expect(res.body.ok).toBe(true)
+    expect(runClaudeCancellable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: expect.arrayContaining(['-p', 'hello', '--worktree']),
+      }),
+    )
   })
 })
 
