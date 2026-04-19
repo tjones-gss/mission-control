@@ -13,9 +13,11 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
   const [error, setError] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
 
+  const safeSessions = Array.isArray(sessions) ? sessions : []
+
   const recentCwds = useMemo(() => {
     const seen = new Set()
-    const ordered = [...sessions]
+    const ordered = [...safeSessions]
       .sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0))
       .map((s) => s.cwd)
       .filter((c) => {
@@ -24,7 +26,7 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
         return true
       })
     return ordered.slice(0, 5)
-  }, [sessions])
+  }, [safeSessions])
 
   const canSubmit = cwd.trim() && prompt.trim() && !creating
 
