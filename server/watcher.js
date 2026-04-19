@@ -75,7 +75,5 @@ export function startWatcher() {
       emit('skills_update', { filePath: rel, ts: Date.now() })
     }
   })
-
-  console.log(`Watching ${CLAUDE_DIR}`)
   return watcher
 }
