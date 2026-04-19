@@ -22,6 +22,8 @@ Extras in v2:
   * `--cwd` lets the loop run inside a git worktree for parallel execution.
   * If `--command` is omitted, falls back to the job's `change_command:` field.
 
+  Security: `change_command` is executed via the shell — use only trusted commands.
+
 Usage:
   python .oversight/scripts/run_job_loop.py --job <path-or-id> --oneshot
   python .oversight/scripts/run_job_loop.py --job <f> --command "npm run lint:fix"
@@ -46,6 +48,7 @@ from _common import (  # type: ignore
     count_vitest_failures,
     git_changed_files,
     is_forbidden,
+    is_git_work_tree,
     list_jobs,
     load_baselines,
     load_domain,
@@ -209,6 +212,12 @@ def main() -> int:
     args = p.parse_args()
 
     loop_cwd = Path(args.cwd).resolve() if args.cwd else REPO_ROOT
+    if not is_git_work_tree(loop_cwd):
+        print(
+            f"Refusing to run: not a git working tree (missing .git): {loop_cwd}",
+            file=sys.stderr,
+        )
+        return 2
 
     job_path = Path(args.job)
     if not job_path.exists():

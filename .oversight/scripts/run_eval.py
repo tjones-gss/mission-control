@@ -4,6 +4,7 @@ Usage:
   python .oversight/scripts/run_eval.py --domain frontend [--layer fast|medium|full]
   python .oversight/scripts/run_eval.py --job .oversight/jobs/active/<file>.yaml
   python .oversight/scripts/run_eval.py --shared fast|medium|full
+  python .oversight/scripts/run_eval.py --shared fast --dry-run
 
 Exit codes:
   0 = all evaluators succeeded
@@ -77,6 +78,11 @@ def main() -> int:
     parser.add_argument("--layer", default="fast", choices=["fast", "medium", "full", "all"])
     parser.add_argument("--out", default=None, help="Write full result JSON to this path.")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print resolved evaluator commands only; do not run them or write JSON.",
+    )
     args = parser.parse_args()
 
     manifest = load_manifest()
@@ -105,6 +111,12 @@ def main() -> int:
     else:
         label = f"shared:{args.shared}"
         cmds = _collect_commands(None, args.shared, shared)
+
+    if args.dry_run:
+        print(f"{label}: {len(cmds)} evaluator(s):")
+        for name, cmd in cmds:
+            print(f"  {name}  $ {cmd}")
+        return 0
 
     results = []
     overall_ok = True
