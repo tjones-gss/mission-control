@@ -133,7 +133,13 @@ Fill in a working directory and prompt (required), plus optional session name, m
 
 ### How a session is spawned
 
-New sessions are created via a one-shot CLI subprocess (`claude -p … --output-format json`). Interactive messaging after creation runs through a PTY on your Claude subscription — **no API credits consumed**. If the CLI exits non-zero (e.g. a 429 quota response), the error panel renders the captured `stderr` and `stdout` in scrollable monospace blocks so you see the real cause instead of an opaque "exited with code=1".
+New sessions are created via a one-shot CLI subprocess (`claude -p … --output-format json`). Interactive messaging after creation runs through a PTY on your Claude subscription — **no API credits consumed**.
+
+**Early ack — you're inside the session in ~500 ms.** The server no longer waits for the CLI to finish before responding. It races the full CLI run against the file watcher noticing the new JSONL file on disk. The moment the watcher fires, the route returns `202 { pendingSessionId }` and the dashboard drops you straight into the conversation view. The CLI keeps running in the background, streaming updates through the existing SSE channel — you're watching Claude think in real time instead of staring at a "Creating…" spinner for the whole 10-60 s run.
+
+If the CLI exits non-zero before the watcher fires (e.g. a 429 quota response), the error panel renders the captured `stderr` and `stdout` in scrollable monospace blocks so you see the real cause instead of an opaque "exited with code=1".
+
+If the CLI *does* exit non-zero **after** the ack (the JSONL is already on disk, the client is already inside the session), the failure is logged at warn-level and the already-partial transcript stays visible. The 15-second ack deadline returns `504 timeout_waiting_for_session` if nothing appears.
 
 > The `effort` option is SDK-only and is not valid for the one-shot `-p` CLI used here. It's exposed on the per-message **Session Control Bar** inside each conversation (SDK path), where it actually takes effect.
 

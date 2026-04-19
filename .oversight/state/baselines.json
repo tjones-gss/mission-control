@@ -1,15 +1,15 @@
 {
-  "console_leak_count": 1,
+  "console_leak_count": 0,
   "todo_count": 0,
   "todo_density_kloc": 0.0,
-  "loc_total": 13368,
+  "loc_total": 13647,
   "loc_outlier_count": 5,
   "dangerous_api_count": 0,
-  "source_files_scanned": 106,
+  "source_files_scanned": 107,
   "test_only_count": 0,
   "test_skip_count": 3,
   "test_fixme_count": 0,
-  "test_files_scanned": 98,
+  "test_files_scanned": 99,
   "e2e_waitForTimeout_count": 4,
   "e2e_setTimeout_count": 0,
   "e2e_waitFor_count": 0,
@@ -22,7 +22,7 @@
   "route_coverage_pct": 50.0,
   "secret_findings": 0,
   "env_leak_count": 0,
-  "files_scanned_for_secrets": 264,
+  "files_scanned_for_secrets": 273,
   "sse_client_has_backoff": 0,
   "sse_client_cleans_up": 1,
   "sse_server_has_heartbeat": 0,
@@ -39,17 +39,24 @@
   "streaming_writes_without_chunking": 0,
   "connection_quality_score": 62,
   "connection_quality_issue_count": 6,
-  "coverage_line_pct": 71.68,
-  "coverage_branch_pct": 59.46,
-  "coverage_function_pct": 67.57,
-  "coverage_statement_pct": 68.93,
+  "spawn_env_cache_hot": 1,
+  "spawn_bin_memoized": 1,
+  "spawn_uses_stream_json": 0,
+  "spawn_early_ack": 1,
+  "spawn_timeout_explicit": 1,
+  "spawn_score": 75,
+  "spawn_issue_count": 1,
+  "coverage_line_pct": 71.73,
+  "coverage_branch_pct": 59.58,
+  "coverage_function_pct": 67.47,
+  "coverage_statement_pct": 68.95,
   "__meta__": {
-    "timestamp": "20260418T213236",
+    "timestamp": "20260419T091950",
     "ran": [
       {
         "name": "code_health",
         "exit_code": 0,
-        "duration_s": 0.4
+        "duration_s": 0.9
       },
       {
         "name": "test_markers",
@@ -74,12 +81,17 @@
       {
         "name": "connection_quality",
         "exit_code": 0,
-        "duration_s": 0.4
+        "duration_s": 0.3
+      },
+      {
+        "name": "session_spawn_quality",
+        "exit_code": 0,
+        "duration_s": 0.1
       },
       {
         "name": "coverage",
         "exit_code": 0,
-        "duration_s": 26.5
+        "duration_s": 33.7
       }
     ],
     "note": "Baselines for ratchet signals. aggregate_score.py subtracts these from current values to compute delta-penalties. Do not edit by hand."

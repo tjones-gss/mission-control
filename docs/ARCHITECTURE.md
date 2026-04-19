@@ -103,6 +103,7 @@ Oversight is a local web dashboard that monitors Claude Code agent activity in r
 | `server/lib/apiError.js` | Standardized `ApiError` class + factory helpers (badRequest, notFound, conflict, unauthorized) |
 | `server/lib/claude-bin.js` | Locates the `claude` CLI on PATH (`claude.exe` → `claude.cmd` → `claude.ps1` on Windows, `claude` elsewhere). Exposes a lazy, memoized `getClaudeBin()` so the server boots even if the CLI is missing — routes fail with a clean 503 at call time instead of crashing at import. |
 | `server/lib/atomic-write.js` | Atomic JSON writer (write-temp + rename) used by any state file that must never be half-written |
+| `server/lib/pending-session.js` | `awaitNewSession(cwd, { timeoutMs })` returns a Promise that resolves with the new sessionId as soon as the chokidar watcher emits `new_session` for a matching encoded cwd. Snapshots existing JSONL IDs before subscribing so a pre-existing file doesn't short-circuit the current spawn. Case-insensitive cwd match on win32. Powers the POST /new early-ack path (job 013). |
 | `server/middleware/security.js` | Helmet security headers, express-rate-limit, optional API key auth |
 | `server/middleware/requestLogger.js` | pino-http request logging with correlation IDs (X-Request-Id) |
 | `server/middleware/performance.js` | Response compression, cache headers, connection timeouts |
@@ -127,7 +128,7 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 
 | Module | Key Endpoints |
 |--------|--------------|
-| `routes/sessions.js` | `GET /`, `GET /:id`, `GET /:id/messages`, `POST /:id/message`, `POST /:id/skill`, `POST /:id/fork`, `POST /:id/name`, `POST /new`, `POST /:id/tool-approval`, `POST /:id/cancel`, `GET /:id/query-status`. Uses `router.param('sessionId')` middleware for input validation. |
+| `routes/sessions.js` | `GET /`, `GET /:id`, `GET /:id/messages`, `POST /:id/message`, `POST /:id/skill`, `POST /:id/fork`, `POST /:id/name`, `POST /new`, `POST /:id/tool-approval`, `POST /:id/cancel`, `GET /:id/query-status`. Uses `router.param('sessionId')` middleware for input validation. **POST /new** races `awaitNewSession(cwd)` (watcher signal) against `runClaudeCancellable(...)` (full CLI run). Whichever wins picks the response: 202 `{ pendingSessionId }` on watcher ack (~500 ms, common case), 201 `{ ok, result, stderr }` on CLI-wins (rare error paths), 504 on 15-s deadline, 503 on CLI failure before ack. CLI failure after ack is logged warn-level and never re-hits the client. |
 | `routes/tasks.js` | `GET /:sessionId`, task CRUD (async `fs/promises`) |
 | `routes/skills.js` | `GET /`, skill listing |
 | `routes/teams.js` | `GET /`, `POST /:name/inbox`, `PATCH /:name/inbox/:messageId` |
@@ -160,7 +161,7 @@ AI-powered session analysis using the `claude` CLI.
 
 | File | Purpose |
 |------|---------|
-| `claude-cli.js` | Spawns `claude` CLI as subprocess for new sessions, fork, worktree creation, and intel analysis. Resolves the binary via `lib/claude-bin.js` (lazy + memoized). On non-zero exit the rejected error carries both `stderrOutput` and `stdoutOutput` so callers can surface structured failures (e.g. the 429 quota JSON the CLI writes to stdout). Concurrent writes to the same session are blocked at the route layer (409 Conflict). |
+| `claude-cli.js` | Spawns `claude` CLI as subprocess for new sessions, fork, worktree creation, and intel analysis. Resolves the binary via `lib/claude-bin.js` (lazy + memoized). On non-zero exit the rejected error carries both `stderrOutput` and `stdoutOutput` so callers can surface structured failures (e.g. the 429 quota JSON the CLI writes to stdout). Exposes both `runClaude(...)` (returns a bare Promise, legacy shape) and `runClaudeCancellable(...)` (returns `{ promise, cancel }` so callers can kill the child when a timeout fires). Concurrent writes to the same session are blocked at the route layer (409 Conflict). |
 
 ### PTY Session Control
 
