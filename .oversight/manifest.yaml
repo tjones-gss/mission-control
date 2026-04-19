@@ -102,6 +102,7 @@ shared_validation:
     e2e_flake: 'python .oversight/scripts/eval_e2e_flake.py'
     route_parity: 'python .oversight/scripts/eval_route_parity.py'
     connection_quality: 'python .oversight/scripts/eval_connection_quality.py'
+    spawn_quality: 'python .oversight/scripts/eval_session_spawn_quality.py'
   medium:
     test_server: 'npm run test:server'
     test_client: 'npm run test:client'
@@ -162,6 +163,14 @@ gate_policy:
   # gating; the score is for humans scanning a leaderboard.
   connection_quality_score: advisory
   connection_quality_issue_count: advisory
+  # Session-spawn quality — soft ratchets, symmetric reward.
+  spawn_env_cache_hot: soft
+  spawn_bin_memoized: soft
+  spawn_uses_stream_json: soft
+  spawn_early_ack: soft
+  spawn_timeout_explicit: soft
+  spawn_score: advisory
+  spawn_issue_count: advisory
 
 domain_registry:
   - frontend

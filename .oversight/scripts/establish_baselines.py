@@ -30,8 +30,9 @@ EVAL_SEQUENCE = [
     ("e2e_flake",           "python .oversight/scripts/eval_e2e_flake.py",           True),
     ("route_parity",        "python .oversight/scripts/eval_route_parity.py",        True),
     ("security",            "python .oversight/scripts/eval_security.py",            True),
-    ("connection_quality",  "python .oversight/scripts/eval_connection_quality.py",  True),
-    ("coverage",            "python .oversight/scripts/eval_coverage.py",            False),  # slow
+    ("connection_quality",    "python .oversight/scripts/eval_connection_quality.py",    True),
+    ("session_spawn_quality", "python .oversight/scripts/eval_session_spawn_quality.py", True),
+    ("coverage",              "python .oversight/scripts/eval_coverage.py",              False),  # slow
 ]
 
 
