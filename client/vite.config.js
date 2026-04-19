@@ -9,6 +9,10 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+        // New-session startup can legitimately take longer than default proxy limits.
+        // Keep the dev proxy alive long enough for the backend's 300s session creation window.
+        timeout: 330000,
+        proxyTimeout: 330000,
       },
     },
   },

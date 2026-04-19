@@ -141,6 +141,9 @@ export default function App() {
 
         setEvents((prev) => [...prev.slice(-199), evt])
         if (evt.type === 'session_update' || evt.type === 'new_session') {
+          if (evt.type === 'new_session') {
+            setShowNewSession(false)
+          }
           if (!sessionsDebounceRef.current) {
             sessionsDebounceRef.current = setTimeout(() => {
               sessionsDebounceRef.current = null
@@ -318,6 +321,19 @@ export default function App() {
             {needsInputSessions.length} waiting
           </button>
         )}
+        <button
+          onClick={() => setShowNewSession((s) => !s)}
+          className={`md:hidden ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+            showNewSession
+              ? 'bg-indigo-600/20 text-indigo-200'
+              : 'text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30'
+          }`}
+          title="New session"
+          aria-label="New session"
+        >
+          <Plus size={12} />
+          <span>New</span>
+        </button>
         <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full md:w-auto md:ml-auto order-last md:order-none">
           {TABS.map((tab) => {
             const Icon = tab.icon
@@ -360,6 +376,11 @@ export default function App() {
           </button>
         </nav>
       </header>
+      {showNewSession && (
+        <div className="md:hidden border-b border-gray-800 bg-gray-950/95">
+          <NewSessionForm sessions={sessions} onCreated={() => setShowNewSession(false)} />
+        </div>
+      )}
 
       {/* Body — reserve 36px at the bottom for the DispatchDrawerHandle,
           which is fixed at bottom-0 center. Without this clearance the
