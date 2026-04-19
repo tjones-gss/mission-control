@@ -69,9 +69,27 @@ RATCHET_INCREASING = [
     "uncovered_routes",
     "e2e_flake_signals",
     "dangerous_api_count",
+    "spawn_sites_missing_stderr",
+    "spawn_sites_missing_stdout",
+    "spawn_sites_missing_timeout",
+    "pty_sites_missing_exit_handler",
+    "upload_sites_missing_cleanup",
+    "streaming_writes_without_chunking",
 ]
 # Signals that ratchet — decrease is bad (percent-style coverage).
 RATCHET_PCT = ["coverage_line_pct", "coverage_branch_pct"]
+# Signals that ratchet — increase is good (lower is worse).
+RATCHET_DECREASING = [
+    "sse_client_has_backoff",
+    "sse_client_cleans_up",
+    "sse_server_has_heartbeat",
+    "sse_server_flushes_headers",
+    "spawn_env_cache_hot",
+    "spawn_bin_memoized",
+    "spawn_uses_stream_json",
+    "spawn_early_ack",
+    "spawn_timeout_explicit",
+]
 
 
 def _load_doc(p: str) -> dict:
@@ -152,6 +170,9 @@ def score_verdict(docs: list[dict], baselines: dict | None = None) -> dict:
     for key in RATCHET_INCREASING:
         if sig(key) > base(key):
             soft_regressions.append(f"{key}: {int(base(key))}->{int(sig(key))}")
+    for key in RATCHET_DECREASING:
+        if sig(key) < base(key):
+            soft_regressions.append(f"{key}: {base(key)}->{sig(key)}")
     for key in RATCHET_PCT:
         if key in signals and key in baselines and sig(key) < base(key):
             soft_regressions.append(f"{key}: {base(key)}->{sig(key)}")
@@ -164,28 +185,33 @@ def score_verdict(docs: list[dict], baselines: dict | None = None) -> dict:
     contrib["playwright_failures_total"] = 100 * sig("playwright_failures_total")
     contrib["test_only_count"] = 50 * sig("test_only_count")
     contrib["dangerous_api_delta"] = 50 * max(0.0, sig("dangerous_api_count") - base("dangerous_api_count"))
-    # Penalties for ratchet regression (higher than baseline = bad).
-    contrib["uncovered_routes_delta"] = 10 * max(0.0, sig("uncovered_routes") - base("uncovered_routes"))
-    contrib["test_skip_delta"] = 10 * max(0.0, sig("test_skip_count") - base("test_skip_count"))
-    contrib["console_leak_delta"] = 5 * max(0.0, sig("console_leak_count") - base("console_leak_count"))
 
-    # Symmetric rewards for ratchet improvement (lower than baseline = good).
-    # These ONLY apply when the candidate actually measured the signal.
-    # (Without the `key in signals` guard, the absence of a signal would look
-    # like a 100% improvement and inflate the score artificially.)
-    def _reward(key: str, weight: float) -> float:
+    # Helper for symmetric reward/penalty for RATCHET_INCREASING signals.
+    # Higher than baseline = bad (penalty). Lower = good (reward).
+    def _ratchet_increasing(key: str, weight: float) -> None:
         if key not in signals:
-            return 0.0
-        return -weight * max(0.0, base(key) - sig(key))
+            return
+        contrib[f"{key}_delta"] = weight * max(0.0, sig(key) - base(key))
+        contrib[f"{key}_reward"] = -weight * max(0.0, base(key) - sig(key))
 
-    contrib["uncovered_routes_reward"] = _reward("uncovered_routes", 10)
-    contrib["test_skip_reward"] = _reward("test_skip_count", 10)
-    contrib["console_leak_reward"] = _reward("console_leak_count", 5)
-    contrib["e2e_flake_reward"] = _reward("e2e_flake_signals", 1)
-    contrib["dangerous_api_reward"] = _reward("dangerous_api_count", 50)
+    # Helper for symmetric reward/penalty for RATCHET_DECREASING signals.
+    # Higher than baseline = good (reward). Lower = bad (penalty).
+    def _ratchet_decreasing(key: str, weight: float) -> None:
+        if key not in signals:
+            return
+        contrib[f"{key}_reward"] = -weight * max(0.0, sig(key) - base(key))
+        contrib[f"{key}_delta"] = weight * max(0.0, base(key) - sig(key))
+
+    # Apply RATCHET_INCREASING contributions (5 points per unit, matching console_leak precedent).
+    for key in RATCHET_INCREASING:
+        _ratchet_increasing(key, 5)
+
+    # Apply RATCHET_DECREASING contributions (5 points per unit, opposite polarity).
+    for key in RATCHET_DECREASING:
+        _ratchet_decreasing(key, 5)
+
     contrib["todo_density_kloc"] = 2 * sig("todo_density_kloc")
     contrib["prettier_failures_total"] = 1 * sig("prettier_failures_total")
-    contrib["e2e_flake_signals_delta"] = 1 * max(0.0, sig("e2e_flake_signals") - base("e2e_flake_signals"))
     contrib["coverage_line_pct"] = -20 * sig("coverage_line_pct")
     contrib["coverage_branch_pct"] = -10 * sig("coverage_branch_pct")
 
@@ -197,7 +223,7 @@ def score_verdict(docs: list[dict], baselines: dict | None = None) -> dict:
         "signals": signals,
         "baselines_used": {
             k: baselines.get(k)
-            for k in list(RATCHET_INCREASING) + list(RATCHET_PCT) + ["dangerous_api_count"]
+            for k in list(RATCHET_INCREASING) + list(RATCHET_DECREASING) + list(RATCHET_PCT) + ["dangerous_api_count"]
             if k in baselines
         },
         "contributions": {k: round(v, 3) for k, v in contrib.items()},

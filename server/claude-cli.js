@@ -9,13 +9,21 @@ import { getClaudeBin, isShellScript } from './lib/claude-bin.js'
  * @param {number} [options.timeoutMs=120000] - Timeout in milliseconds
  * @returns {Promise<{ stdout: string, stderr: string, exitCode: number }>}
  */
-export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
-  // Unset CLAUDECODE and all CLAUDE_CODE_* vars so the CLI doesn't refuse to run inside an active session
+// Module-scope env snapshot. CLAUDECODE + CLAUDE_CODE_* are set at process
+// startup and don't change during the lifetime of the server; scrubbing them
+// once here avoids cloning ~100 env keys + running a filter loop on every
+// spawn. Any variable that DOES change at runtime (PATH edits, temp auth
+// tokens) still refreshes naturally because Node's process.env is live here.
+const CLEANED_ENV = (() => {
   const env = { ...process.env }
   for (const key of Object.keys(env)) {
     if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE_')) delete env[key]
   }
+  return env
+})()
 
+export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
+  const env = CLEANED_ENV
   return new Promise((resolve, reject) => {
     let bin
     try {

@@ -46,6 +46,45 @@ class ScoreVerdictTests(unittest.TestCase):
         v1 = score_verdict([{"signals": {"coverage_line_pct": 50, "coverage_branch_pct": 40}}], baselines={})
         self.assertLess(v1["score"], v0["score"])
 
+    def test_spawn_env_cache_hot_improvement_lowers_score(self) -> None:
+        """RATCHET_DECREASING: improvement (0 -> 1, baseline 0) produces negative delta."""
+        baselines = {"spawn_env_cache_hot": 0.0}
+        before = score_verdict(
+            [{"signals": {"spawn_env_cache_hot": 0}}],
+            baselines=baselines,
+        )["score"]
+        after = score_verdict(
+            [{"signals": {"spawn_env_cache_hot": 1}}],
+            baselines=baselines,
+        )["score"]
+        self.assertLess(after, before)
+
+    def test_spawn_sites_missing_stderr_regression_raises_score(self) -> None:
+        """RATCHET_INCREASING: regression (0 -> 2, baseline 0) produces positive delta."""
+        baselines = {"spawn_sites_missing_stderr": 0.0}
+        before = score_verdict(
+            [{"signals": {"spawn_sites_missing_stderr": 0}}],
+            baselines=baselines,
+        )["score"]
+        after = score_verdict(
+            [{"signals": {"spawn_sites_missing_stderr": 2}}],
+            baselines=baselines,
+        )["score"]
+        self.assertGreater(after, before)
+
+    def test_sse_server_has_heartbeat_improvement_lowers_score(self) -> None:
+        """RATCHET_DECREASING: improvement (0 -> 1, baseline 0) produces negative delta."""
+        baselines = {"sse_server_has_heartbeat": 0.0}
+        before = score_verdict(
+            [{"signals": {"sse_server_has_heartbeat": 0}}],
+            baselines=baselines,
+        )["score"]
+        after = score_verdict(
+            [{"signals": {"sse_server_has_heartbeat": 1}}],
+            baselines=baselines,
+        )["score"]
+        self.assertLess(after, before)
+
 
 if __name__ == "__main__":
     unittest.main()
