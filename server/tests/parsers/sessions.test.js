@@ -80,6 +80,21 @@ describe('getAllSessions()', () => {
     expect(getAllSessions()).toEqual([])
   })
 
+  it('ignores metadata-only jsonl files that have no conversation records', () => {
+    const jsonl = [
+      JSON.stringify({ type: 'ai-title', aiTitle: 'Analyze session', sessionId: 's1' }),
+      JSON.stringify({ type: 'queue-operation', operation: 'enqueue', sessionId: 's1' }),
+    ].join('\n')
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync
+      .mockReturnValueOnce([makeProjectDirEntry('C--project')])
+      .mockReturnValueOnce(['session-abc.jsonl'])
+    fs.statSync.mockReturnValue(makeStat())
+    fs.readFileSync.mockReturnValue(jsonl)
+
+    expect(getAllSessions()).toEqual([])
+  })
+
   it('parses a minimal valid session file', () => {
     const record = makeRecord({ slug: 'my-project', cwd: '/home/user/project' })
     const jsonl = JSON.stringify(record)

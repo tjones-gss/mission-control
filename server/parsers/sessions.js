@@ -74,6 +74,10 @@ function parseSessionFile(filePath, projectDirName, filename) {
       .filter(Boolean)
 
     if (records.length === 0) return null
+    // Claude writes metadata-only JSONL files (e.g. ai-title stubs) that are
+    // not real conversations. Ignore those so they do not flood the dashboard.
+    const hasConversation = records.some(isConversationRecord)
+    if (!hasConversation) return null
 
     const sessionId = filename.replace('.jsonl', '')
     const slug = records.find((r) => r.slug)?.slug || null
@@ -232,6 +236,13 @@ function parseSessionFile(filePath, projectDirName, filename) {
   } catch {
     return null
   }
+}
+
+function isConversationRecord(record) {
+  if (!record || typeof record !== 'object') return false
+  if (record.type === 'user' || record.type === 'assistant' || record.type === 'system') return true
+  const role = record.role || record.message?.role
+  return role === 'user' || role === 'assistant' || role === 'system'
 }
 
 function buildAgentTree(records, subagentsDir) {
