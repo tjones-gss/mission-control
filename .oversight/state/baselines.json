@@ -2,34 +2,54 @@
   "console_leak_count": 1,
   "todo_count": 0,
   "todo_density_kloc": 0.0,
-  "loc_total": 13337,
+  "loc_total": 13368,
   "loc_outlier_count": 5,
   "dangerous_api_count": 0,
   "source_files_scanned": 106,
   "test_only_count": 0,
   "test_skip_count": 3,
   "test_fixme_count": 0,
-  "test_files_scanned": 97,
+  "test_files_scanned": 98,
   "e2e_waitForTimeout_count": 4,
   "e2e_setTimeout_count": 0,
   "e2e_waitFor_count": 0,
   "e2e_slow_count": 0,
   "e2e_flake_signals": 4,
-  "specs_scanned": 11,
+  "specs_scanned": 12,
   "route_total": 48,
   "covered_routes": 24,
   "uncovered_routes": 24,
   "route_coverage_pct": 50.0,
   "secret_findings": 0,
   "env_leak_count": 0,
-  "files_scanned_for_secrets": 236,
+  "files_scanned_for_secrets": 264,
+  "sse_client_has_backoff": 0,
+  "sse_client_cleans_up": 1,
+  "sse_server_has_heartbeat": 0,
+  "sse_server_flushes_headers": 0,
+  "spawn_sites_total": 4,
+  "child_spawn_sites_total": 2,
+  "pty_spawn_sites_total": 2,
+  "spawn_sites_missing_stderr": 1,
+  "spawn_sites_missing_stdout": 1,
+  "spawn_sites_missing_timeout": 1,
+  "pty_sites_missing_exit_handler": 0,
+  "upload_sites_total": 1,
+  "upload_sites_missing_cleanup": 0,
+  "streaming_writes_without_chunking": 0,
+  "connection_quality_score": 62,
+  "connection_quality_issue_count": 6,
+  "coverage_line_pct": 71.68,
+  "coverage_branch_pct": 59.46,
+  "coverage_function_pct": 67.57,
+  "coverage_statement_pct": 68.93,
   "__meta__": {
-    "timestamp": "20260417T232235",
+    "timestamp": "20260418T213236",
     "ran": [
       {
         "name": "code_health",
         "exit_code": 0,
-        "duration_s": 0.3
+        "duration_s": 0.4
       },
       {
         "name": "test_markers",
@@ -44,12 +64,22 @@
       {
         "name": "route_parity",
         "exit_code": 0,
-        "duration_s": 0.1
+        "duration_s": 0.2
       },
       {
         "name": "security",
         "exit_code": 0,
-        "duration_s": 0.6
+        "duration_s": 0.9
+      },
+      {
+        "name": "connection_quality",
+        "exit_code": 0,
+        "duration_s": 0.4
+      },
+      {
+        "name": "coverage",
+        "exit_code": 0,
+        "duration_s": 26.5
       }
     ],
     "note": "Baselines for ratchet signals. aggregate_score.py subtracts these from current values to compute delta-penalties. Do not edit by hand."

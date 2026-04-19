@@ -101,6 +101,7 @@ shared_validation:
     test_markers: 'python .oversight/scripts/eval_test_markers.py'
     e2e_flake: 'python .oversight/scripts/eval_e2e_flake.py'
     route_parity: 'python .oversight/scripts/eval_route_parity.py'
+    connection_quality: 'python .oversight/scripts/eval_connection_quality.py'
   medium:
     test_server: 'npm run test:server'
     test_client: 'npm run test:client'
@@ -144,6 +145,23 @@ gate_policy:
   e2e_setTimeout_count: advisory
   # Style — soft.
   prettier_failures_total: soft
+  # Connection / session-spawn quality — soft ratchets (symmetric).
+  # Reward improvements, penalize regressions; never hard-block because
+  # a subjective quality signal misfire shouldn't kill an unrelated job.
+  sse_client_has_backoff: soft
+  sse_client_cleans_up: soft
+  sse_server_has_heartbeat: soft
+  sse_server_flushes_headers: soft
+  spawn_sites_missing_stderr: soft
+  spawn_sites_missing_stdout: soft
+  spawn_sites_missing_timeout: soft
+  pty_sites_missing_exit_handler: soft
+  upload_sites_missing_cleanup: soft
+  streaming_writes_without_chunking: soft
+  # Rolled-up quality score — advisory. Use the individual signals for
+  # gating; the score is for humans scanning a leaderboard.
+  connection_quality_score: advisory
+  connection_quality_issue_count: advisory
 
 domain_registry:
   - frontend

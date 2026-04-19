@@ -1,5 +1,12 @@
 """Client-side test coverage evaluator.
 
+Requires the Vitest v8 coverage provider (not installed by default here):
+
+  cd client && npm i -D @vitest/coverage-v8
+
+Without it, `vitest --coverage` fails and this evaluator returns `ok: false`
+(hard gate) so missing coverage cannot be mistaken for zero-percent coverage.
+
 Runs `vitest run --coverage --reporter=json-summary` in client/, parses
 the generated `client/coverage/coverage-summary.json`, and emits signals:
 
@@ -52,7 +59,16 @@ def main() -> int:
     parser.add_argument("--target", default="client", choices=["client"])
     args = parser.parse_args()
 
-    cmd = "npx vitest run --coverage --reporter=json-summary --reporter=default"
+    # Vitest 4 separates test reporters (`--reporter=...`) from coverage
+    # reporters (`--coverage.reporter=...`). Passing json-summary to the test
+    # reporter pipeline fails with "cannot load json-summary module". The
+    # summary must be requested via the coverage-specific flag.
+    cmd = (
+        "npx vitest run --coverage"
+        " --coverage.reporter=json-summary"
+        " --coverage.reporter=text"
+        " --reporter=default"
+    )
     cwd = REPO_ROOT / args.target
     if not cwd.exists():
         print(f"Target directory missing: {cwd}", file=sys.stderr)

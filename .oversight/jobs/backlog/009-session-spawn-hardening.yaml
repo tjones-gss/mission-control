@@ -1,0 +1,54 @@
+id: '009-session-spawn-hardening'
+title: 'Audit subprocess spawns for stderr/stdout capture and timeout budget'
+domain: backend
+priority: medium
+
+editable_paths:
+  - server/claude-cli.js
+  - server/lib/claude-bin.js
+  - server/intelligence/analyzer.js
+  - server/tests/lib/claude-bin.test.js
+
+# No `change_command`. Each site may legitimately omit one of these
+# (e.g. `execFileSync` used only to locate the CLI on PATH doesn't need
+# a stderr buffer — it throws on non-zero exit). Author reviews, the
+# evaluator ratchets.
+evaluators:
+  lint: 'npm run lint'
+  test_server: 'npm run test:server'
+  connection_quality: 'python .oversight/scripts/eval_connection_quality.py'
+
+goal: |
+  For every child_process-family spawn site surfaced by
+  eval_connection_quality.hits.spawn_missing_*:
+
+    * Either capture both stderrOutput AND stdoutOutput on the rejection
+      error path (so the dashboard can render real errors), OR
+    * Document why the site is exempt (inline one-line comment) and tell
+      the evaluator via a non-suppressed pass-through.
+
+  Must not regress spawn_sites_total count (don't silently drop a call
+  to make the number go down).
+
+rationale: |
+  We already did this manually for `server/claude-cli.js` during the
+  b808197 review. The evaluator surfaces any *new* site that skips
+  stderr/stdout capture so the regression never re-appears. Enterprise
+  debugging depends on structured failure payloads reaching the UI.
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 20
+  max_files: 4
+
+success_criteria:
+  - 'spawn_sites_missing_stderr <= baseline'
+  - 'spawn_sites_missing_stdout <= baseline'
+  - 'spawn_sites_missing_timeout <= baseline'
+  - 'spawn_sites_total unchanged or strictly greater (no dropped sites)'
+  - 'vitest_failures_total delta <= 0'
+
+rollback_policy: |
+  Auto-revert on any regression. Signal-based gates make this a pure
+  ratchet — the only way to accept is a net improvement or audit-neutral
+  rewrite.
