@@ -2,6 +2,8 @@
 
 Short, dense, actionable. Read `README.md` for the full tour.
 
+**Hardening / multi-session work:** use [.oversight/docs/HARDENING.md](docs/HARDENING.md) so large passes are split into tracks A–H without blowing context.
+
 ## What this repo is
 
 Fullstack Node.js monorepo: React 18 + Vite client (`client/`), Express 4 +
@@ -20,18 +22,19 @@ Each has its own YAML in `.oversight/domains/`. Inspect with:
 python .oversight/scripts/discover_domains.py
 ```
 
-## Evaluator families (15 evaluators, 6 families)
+## Evaluator families (16 evaluators, 7 families)
 
-| Family        | Evaluators (all repo-verified)                                                          |
-| ------------- | --------------------------------------------------------------------------------------- |
-| Correctness   | `npm run test:server`, `npm run test:client`, `node --check`, `vite build`              |
-| Test health   | `eval_test_markers.py`, `eval_coverage.py`                                              |
-| Code health   | `eval_code_health.py`                                                                   |
-| Style         | `npm run lint` (Prettier)                                                               |
-| Security      | `eval_security.py` + `_secretscan.mjs`                                                  |
-| API contract  | `eval_route_parity.py`                                                                  |
-| E2E stability | `eval_e2e_flake.py`, `npm run test:e2e`                                                 |
-| Docs          | `check_docs_sanity.py`                                                                  |
+| Family              | Evaluators (all repo-verified)                                                          |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| Correctness         | `npm run test:server`, `npm run test:client`, `node --check`, `vite build`              |
+| Test health         | `eval_test_markers.py`, `eval_coverage.py`                                              |
+| Code health         | `eval_code_health.py`                                                                   |
+| Style               | `npm run lint` (Prettier)                                                               |
+| Security            | `eval_security.py` + `_secretscan.mjs`                                                  |
+| API contract        | `eval_route_parity.py`                                                                  |
+| E2E stability       | `eval_e2e_flake.py`, `npm run test:e2e`                                                 |
+| Docs                | `check_docs_sanity.py`                                                                  |
+| Connection quality  | `eval_connection_quality.py` — SSE backoff/heartbeat/flush, spawn-site stderr/stdout/timeout capture, PTY onExit handlers, upload cleanup, streaming-write chunking hints |
 
 Fast layer: prettier + node --check + every Python evaluator.
 Medium layer: + `npm run test:*` + `vite build`.
@@ -107,6 +110,13 @@ The `10000.0` on the coverage job is the framework doing its job: a hard gate
    - Low risk; all evaluators gate acceptance. Read the CRLF note below first.
 2. **`002-docs-sync-baseline`** — `.oversight/jobs/backlog/002-docs-sync-baseline.yaml`
    - Establish current state of `check_docs_sanity.py`; fix anything it flags.
+3. **`008-sse-resilience`** — `.oversight/jobs/backlog/008-sse-resilience.yaml`
+   - Adds client-side reconnect backoff + server-side heartbeat / `flushHeaders()` so long-lived SSE survives idle GC and doesn't storm on recovery.
+   - Touches `server/sse.js`, `client/src/hooks/useSSE.js`, and their tests. Manual change, ratchet-gated.
+4. **`009-session-spawn-hardening`** — `.oversight/jobs/backlog/009-session-spawn-hardening.yaml`
+   - Ratchets every `child_process.spawn` / `execFile` site to carry `stderrOutput`/`stdoutOutput` on failure and an explicit timeout.
+5. **`010-chunking-observability`** — `.oversight/jobs/backlog/010-chunking-observability.yaml`
+   - Audit-only. Holds `streaming_writes_without_chunking` at 0 so a future PR can't accidentally de-chunk an SSE / NDJSON route.
 
 ### CRLF drift warning for `001-format-drift`
 

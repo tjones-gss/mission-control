@@ -157,6 +157,17 @@ def git_changed_files(cwd: Path | None = None) -> list[str]:
     return files
 
 
+def is_git_work_tree(path: Path) -> bool:
+    """True if `path` looks like a git checkout (file or dir `.git`).
+
+    Worktrees use a `.git` *file* pointing at the main repo; bare repos are not supported.
+    """
+    try:
+        return (path.resolve() / ".git").exists()
+    except OSError:
+        return False
+
+
 def ensure_dir(p: Path) -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p

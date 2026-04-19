@@ -38,13 +38,9 @@ test.describe('navigation', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Skills' }).click()
     await expect(page.getByRole('button', { name: 'Skills' })).toHaveClass(/bg-gray-800/)
-    // SkillsPanel is identifiable by its unique "New Skill" button —
-    // the panel's own "Skills" heading would collide with the header
-    // tab button (both have the exact text "Skills") and produce a
-    // strict-mode violation once the panel finishes loading on fast
-    // CI runners. Use a longer timeout to match goToSkills() in
-    // skills.spec.js: the panel early-returns "Loading skills..."
-    // until /api/skills resolves, which can take 5-30s under load.
+    // SkillsPanel early-returns "Loading skills..." until /api/skills
+    // resolves. The synchronous filesystem scan can take 5-30s under
+    // parallel-worker load (see skills.spec.js goToSkills for details).
     await expect(page.getByRole('button', { name: /New Skill/ })).toBeVisible({ timeout: 60_000 })
   })
 

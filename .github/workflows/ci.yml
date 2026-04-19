@@ -10,6 +10,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  oversight_smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Oversight framework smoke
+        run: |
+          python -m compileall -q .oversight/scripts
+          python .oversight/scripts/check_gate_policy.py
+          python .oversight/scripts/run_selftest.py
+
   lint:
     runs-on: ubuntu-latest
     steps:

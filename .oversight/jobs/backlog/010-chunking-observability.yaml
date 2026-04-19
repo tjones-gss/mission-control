@@ -1,0 +1,39 @@
+id: '010-chunking-observability'
+title: 'Keep streaming writes chunked — lock in flushHeaders / text-event-stream hints'
+domain: backend
+priority: low
+
+editable_paths:
+  - server/sse.js
+  - server/routes/stream.js
+
+# Audit-only. Success = the signal stays at 0 forever. There's nothing
+# to "change" today; the job exists so that if someone *later* adds a
+# `res.write(...)` in a file that has no chunking hint, the ratchet
+# fires and the candidate gets reverted.
+evaluators:
+  lint: 'npm run lint'
+  connection_quality: 'python .oversight/scripts/eval_connection_quality.py'
+
+goal: |
+  Hold streaming_writes_without_chunking at 0 indefinitely.
+
+rationale: |
+  SSE and NDJSON routes rely on the response being framed as a chunked
+  stream. If a future change adds a `res.write(...)` in a route that no
+  longer advertises text/event-stream, application/x-ndjson, or calls
+  flushHeaders, the response will buffer until the response ends — which
+  breaks all real-time UI updates. The ratchet catches this silent
+  regression the next time any job runs.
+
+budget:
+  attempts: 1
+  wall_clock_minutes: 5
+  max_files: 0
+
+success_criteria:
+  - 'streaming_writes_without_chunking == 0'
+
+rollback_policy: |
+  Not applicable — audit-only. Gate policy prevents regressions at the
+  point a sibling job's candidate attempts to land.

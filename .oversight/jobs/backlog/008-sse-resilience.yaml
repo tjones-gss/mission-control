@@ -1,0 +1,77 @@
+id: '008-sse-resilience'
+title: 'Harden SSE connection layer — client backoff, server heartbeat + flushHeaders'
+domain: backend # also touches client/src/hooks/useSSE.js, but backend owns the stream
+priority: high
+
+editable_paths:
+  - server/sse.js
+  - client/src/hooks/useSSE.js
+  - server/tests/sse.test.js
+  - client/src/tests/hooks/useSSE.test.js
+
+# No `change_command` — this job needs a reviewed code change, not a
+# mechanical rewrite. Run it with run_job_loop.py --manual so the author
+# edits the files; the evaluators below gate the acceptance.
+evaluators:
+  lint: 'npm run lint'
+  test_server: 'npm run test:server'
+  test_client: 'npm run test:client'
+  connection_quality: 'python .oversight/scripts/eval_connection_quality.py'
+
+goal: |
+  Move eval_connection_quality signals to a green state for the SSE layer:
+
+    sse_client_has_backoff     0 -> 1
+    sse_server_has_heartbeat   0 -> 1
+    sse_server_flushes_headers 0 -> 1
+
+  Keep sse_client_cleans_up at 1 (already green).
+
+rationale: |
+  Today the client EventSource reconnects immediately on error and the
+  server never flushes headers or sends keep-alive frames. On an idle
+  connection a proxy / corporate VPN can silently GC the stream after
+  60s; without a heartbeat the browser only notices when it next tries
+  to read. Without backoff, a crashed server gets re-connect-stormed the
+  moment it comes back up.
+
+  Safe because:
+    - The evaluator is static analysis (deterministic, no flake).
+    - Per-gate thresholds mean the loop will never accept a candidate
+      that regressed any other dimension.
+    - All existing SSE tests must still pass.
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 30
+  max_files: 4
+
+success_criteria:
+  - 'sse_client_has_backoff == 1'
+  - 'sse_server_has_heartbeat == 1'
+  - 'sse_server_flushes_headers == 1'
+  - 'vitest_failures_total delta <= 0'
+  - 'connection_quality_score strictly greater than baseline'
+
+rollback_policy: |
+  Auto-revert on any regression (run_job_loop.py default). Because this
+  is a cross-file change, rolling back requires reverting both
+  server/sse.js and client/src/hooks/useSSE.js in the same commit; the
+  loop's per-attempt `git reset --hard` handles that.
+
+notes: |
+  Recommended implementation sketch (not enforced — evaluator only sees
+  presence of patterns):
+
+    server/sse.js
+      res.flushHeaders()
+      const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000)
+      req.on('close', () => clearInterval(heartbeat))
+
+    client/src/hooks/useSSE.js
+      let retry = 0
+      const reconnect = () => {
+        const delay = Math.min(1000 * 2 ** retry++, 30000)
+        setTimeout(() => { es = new EventSource(url) }, delay)
+      }
+      es.onopen = () => { retry = 0 }

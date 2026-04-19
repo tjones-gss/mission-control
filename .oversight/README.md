@@ -7,6 +7,28 @@ a coding agent, or a scheduled job.
 It is **not** a CI system. It's a sandbox for iterative improvement loops that
 are paranoid about regressions.
 
+### Security note
+
+Commands in job YAML and `run()` helpers are executed with **`shell=True`**
+(Python `subprocess`). Only run the improvement loop with **trusted**
+`change_command` strings (your own scripts or reviewed one-liners). Do not pass
+untrusted input into those fields.
+
+### Hardening and self-checks
+
+Multi-session hardening checklist (tracks A–H), parallel work boundaries, and
+global “definition of done”:
+
+- [.oversight/docs/HARDENING.md](docs/HARDENING.md)
+
+Quick verification (no npm required):
+
+```bash
+python .oversight/scripts/check_gate_policy.py   # manifest gate_policy vs scorer
+python .oversight/scripts/run_selftest.py        # YAML goldens + score table tests
+python .oversight/scripts/run_eval.py --shared fast --dry-run
+```
+
 ---
 
 ## Why it exists
@@ -227,7 +249,11 @@ python .oversight/scripts/run_parallel.py --layer fast              # the defaul
 python .oversight/scripts/run_parallel.py --job 003 --layer medium  # one job, heavier evals
 python .oversight/scripts/run_parallel.py --dry-run                 # print the plan
 python .oversight/scripts/run_parallel.py --cleanup                 # remove all oversight worktrees
+python .oversight/scripts/run_parallel.py --force-overlap           # unsafe: run despite editable_paths collision
 ```
+
+If two active jobs declare the same `editable_paths` entry, the runner **aborts**
+unless you pass `--force-overlap` (see `HARDENING.md`).
 
 **Promotion** to a mergeable branch is a separate, manual step:
 
@@ -320,6 +346,8 @@ different test framework, extend `_common.py > count_*_failures`.
 .oversight/
 ├── README.md                 ← this file
 ├── AGENT_START.md            ← concise handoff for future agents
+├── docs/
+│   └── HARDENING.md          ← multi-session hardening checklist (tracks A–H)
 ├── manifest.yaml             ← repo + policy + domain registry + gate policy + parallel config
 ├── domains/                  ← one YAML per domain
 │   ├── frontend.yaml
@@ -360,6 +388,9 @@ different test framework, extend `_common.py > count_*_failures`.
 │   ├── check_yaml_parse.py
 │   ├── check_docs_sanity.py
 │   ├── check_package_manifests.py
+│   ├── check_gate_policy.py  ← manifest gate_policy vs aggregate_score
+│   ├── run_selftest.py       ← YAML goldens + unittest for scoring
+│   ├── test_aggregate_score.py
 │   ├── summarize_attempt.py
 │   └── promote_candidate.py
 ├── state/

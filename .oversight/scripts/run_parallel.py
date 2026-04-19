@@ -181,6 +181,11 @@ def main() -> int:
     parser.add_argument("--layer", default="fast", choices=["fast", "medium", "full", "all"])
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--cleanup", action="store_true", help="Remove all oversight worktrees and exit.")
+    parser.add_argument(
+        "--force-overlap",
+        action="store_true",
+        help="Run even when two active jobs share the same editable_paths (unsafe; serial fix recommended).",
+    )
     args = parser.parse_args()
 
     manifest = load_manifest()
@@ -203,6 +208,15 @@ def main() -> int:
         )
         for ep, prior in p["collisions"]:
             print(f"    WARN: scope overlap with {prior} on {ep}")
+
+    has_collision = any(p["collisions"] for p in plans)
+    if has_collision and not args.force_overlap and not args.cleanup and not args.dry_run:
+        print(
+            "\nAborting: active jobs have overlapping editable_paths. "
+            "Resolve job YAML scopes, run jobs serially, or pass --force-overlap if you accept the risk.",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.cleanup:
         _cleanup_all(plans)

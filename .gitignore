@@ -6,6 +6,9 @@ dist/
 .playwright-mcp/
 playwright-report/
 test-results/
+# Vitest + v8 coverage artifacts (written per-run by eval_coverage.py).
+coverage/
+**/coverage/
 .claude/
 qa-*.png
 .qa-tally.md

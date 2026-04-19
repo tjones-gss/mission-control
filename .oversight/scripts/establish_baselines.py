@@ -25,12 +25,13 @@ from _common import OVERSIGHT, REPO_ROOT, now_stamp, run, write_json  # type: ig
 
 
 EVAL_SEQUENCE = [
-    ("code_health",   "python .oversight/scripts/eval_code_health.py",     True),
-    ("test_markers",  "python .oversight/scripts/eval_test_markers.py",    True),
-    ("e2e_flake",     "python .oversight/scripts/eval_e2e_flake.py",       True),
-    ("route_parity",  "python .oversight/scripts/eval_route_parity.py",    True),
-    ("security",      "python .oversight/scripts/eval_security.py",        True),
-    ("coverage",      "python .oversight/scripts/eval_coverage.py",        False),  # slow
+    ("code_health",         "python .oversight/scripts/eval_code_health.py",         True),
+    ("test_markers",        "python .oversight/scripts/eval_test_markers.py",        True),
+    ("e2e_flake",           "python .oversight/scripts/eval_e2e_flake.py",           True),
+    ("route_parity",        "python .oversight/scripts/eval_route_parity.py",        True),
+    ("security",            "python .oversight/scripts/eval_security.py",            True),
+    ("connection_quality",  "python .oversight/scripts/eval_connection_quality.py",  True),
+    ("coverage",            "python .oversight/scripts/eval_coverage.py",            False),  # slow
 ]
 
 

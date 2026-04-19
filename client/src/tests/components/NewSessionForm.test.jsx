@@ -11,6 +11,11 @@ function stubFsHome(path = '/Users/alice', sep = '/') {
 }
 
 describe('NewSessionForm — layout', () => {
+  it('does not crash when sessions is null', () => {
+    render(<NewSessionForm onCreated={vi.fn()} sessions={null} />)
+    expect(screen.getByPlaceholderText(/working directory/i)).toBeInTheDocument()
+  })
+
   it('renders name, cwd, and prompt inputs', () => {
     render(<NewSessionForm onCreated={vi.fn()} />)
     expect(screen.getByPlaceholderText(/session name/i)).toBeInTheDocument()

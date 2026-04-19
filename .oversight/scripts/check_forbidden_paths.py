@@ -1,7 +1,8 @@
 """Confirm that no working-tree change touches a globally forbidden path.
 
-Unlike check_scope.py this ignores domain/job editable paths; it is a
-*safety net* you can run any time, including as a git pre-commit helper.
+Patterns are loaded from `manifest.yaml` -> `forbidden_paths` (same source as
+`run_job_loop.py`). Unlike `check_scope.py`, this ignores domain/job editable
+paths; it is a *safety net* you can run any time, including as a git pre-commit helper.
 
 Exit codes:
   0 = clean

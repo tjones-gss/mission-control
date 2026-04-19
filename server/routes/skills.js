@@ -35,14 +35,17 @@ async function resolveSkillPath(name) {
   }
 }
 
-// Memoize getAllSkills() with a short TTL. Scanning ~/.claude/skills,
+// Memoize getAllSkills() with a generous TTL. Scanning ~/.claude/skills,
 // commands, and every installed plugin's SKILL.md files is fully
 // synchronous and can take 500ms-2s with many plugins. The dashboard
 // fires this from multiple useApi consumers on first paint and on tab
 // switches, which can saturate the single-threaded event loop and make
-// e2e tests time out under parallel workers.
+// e2e tests time out under parallel workers. 30s keeps the response
+// snappy while still picking up new files within a reasonable window;
+// explicit writes (POST/PUT/DELETE) call invalidateSkillsCache() so
+// user-initiated changes are reflected immediately.
 let skillsCache = { data: null, expiresAt: 0 }
-const SKILLS_CACHE_TTL_MS = 5_000
+const SKILLS_CACHE_TTL_MS = 30_000
 function getCachedSkills() {
   const now = Date.now()
   if (skillsCache.data && skillsCache.expiresAt > now) return skillsCache.data
