@@ -67,8 +67,13 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
         })
         return
       }
+      const data = await res.json().catch(() => ({}))
       reset()
-      onCreated?.()
+      if (res.status === 202 && data.pendingSessionId) {
+        onCreated?.({ pendingSessionId: data.pendingSessionId })
+      } else {
+        onCreated?.()
+      }
     } catch (e) {
       setError({ detail: e.message, stderr: null, stdout: null })
     } finally {

@@ -378,7 +378,16 @@ export default function App() {
       </header>
       {showNewSession && (
         <div className="md:hidden border-b border-gray-800 bg-gray-950/95">
-          <NewSessionForm sessions={sessions} onCreated={() => setShowNewSession(false)} />
+          <NewSessionForm
+            sessions={sessions}
+            onCreated={(arg) => {
+              setShowNewSession(false)
+              if (arg?.pendingSessionId) {
+                setSelectedSessionId(arg.pendingSessionId)
+                setAgentView('detail')
+              }
+            }}
+          />
         </div>
       )}
 
@@ -404,7 +413,16 @@ export default function App() {
             </button>
           </div>
           {showNewSession && (
-            <NewSessionForm sessions={sessions} onCreated={() => setShowNewSession(false)} />
+            <NewSessionForm
+              sessions={sessions}
+              onCreated={(arg) => {
+                setShowNewSession(false)
+                if (arg?.pendingSessionId) {
+                  setSelectedSessionId(arg.pendingSessionId)
+                  setAgentView('detail')
+                }
+              }}
+            />
           )}
           <SessionsList
             sessions={sessions}

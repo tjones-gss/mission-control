@@ -261,6 +261,46 @@ describe('NewSessionForm — submit', () => {
     expect(cwd.value).toBe('')
     expect(prompt.value).toBe('')
   })
+
+  it('202 early-ack response calls onCreated with { pendingSessionId }', async () => {
+    server.use(
+      http.post('/api/sessions/new', () =>
+        HttpResponse.json(
+          { ok: true, pendingSessionId: 'new-abc', status: 'streaming' },
+          { status: 202 },
+        ),
+      ),
+    )
+    const onCreated = vi.fn()
+    render(<NewSessionForm onCreated={onCreated} />)
+    fireEvent.change(screen.getByPlaceholderText(/working directory/i), {
+      target: { value: '/tmp/proj' },
+    })
+    fireEvent.change(screen.getByPlaceholderText(/^prompt/i), {
+      target: { value: 'hi' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /create session/i }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith({ pendingSessionId: 'new-abc' }))
+  })
+
+  it('201 legacy response calls onCreated with no pendingSessionId argument', async () => {
+    server.use(
+      http.post('/api/sessions/new', () =>
+        HttpResponse.json({ ok: true, result: { sessionId: 'old-1' } }, { status: 201 }),
+      ),
+    )
+    const onCreated = vi.fn()
+    render(<NewSessionForm onCreated={onCreated} />)
+    fireEvent.change(screen.getByPlaceholderText(/working directory/i), {
+      target: { value: '/tmp/proj' },
+    })
+    fireEvent.change(screen.getByPlaceholderText(/^prompt/i), {
+      target: { value: 'hi' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /create session/i }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalled())
+    expect(onCreated.mock.calls[0][0]).toBeUndefined()
+  })
 })
 
 describe('NewSessionForm — folder picker integration', () => {

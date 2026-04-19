@@ -182,8 +182,20 @@ def scored_stream_json(route_path: Path | None, cli_path: Path | None) -> int:
 
 
 def scored_early_ack(route_path: Path | None) -> int:
-    """1 if POST /new replies 2xx BEFORE awaiting runClaude, 0 if it awaits
-    the full CLI run before responding."""
+    """1 if POST /new acks early (before the full CLI run completes), 0 if
+    it blocks on the full CLI run before responding.
+
+    Two equally valid shapes qualify:
+      (a) Legacy explicit shape: `res.status(2xx)` appears in the route
+          body BEFORE an `await runClaude(...)` call.
+      (b) Race shape: the route uses the dedicated `awaitNewSession`
+          helper (from server/lib/pending-session.js) AND replies with a
+          `res.status(202)` somewhere in the /new block. The helper by
+          design resolves only when the file watcher reports a new
+          session on disk — i.e. the route must ack *before* CLI exit.
+
+    If neither shape is detected, score 0.
+    """
     if not route_path:
         return 0
     text = read_text(route_path)
@@ -191,9 +203,16 @@ def scored_early_ack(route_path: Path | None) -> int:
     if not m:
         return 0
     body = m.group(0)
+
+    # Shape (b): the canonical race pattern built for job 013.
+    if "awaitNewSession" in body and re.search(r"res\.status\(\s*202\s*\)", body):
+        return 1
+
+    # Shape (a): legacy "status-before-await" detection.
     await_m = RX_AWAIT_RUN_CLAUDE.search(body)
     if not await_m:
-        # No await at all → hard to call either way; treat as non-qualifying.
+        # No blocking await at all and no awaitNewSession → nothing
+        # distinguishes this from a no-op route. Score 0.
         return 0
     prefix = body[: await_m.start()]
     status_before = RX_RES_STATUS_SUCCESS.search(prefix)
