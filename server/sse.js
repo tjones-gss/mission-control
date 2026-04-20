@@ -3,6 +3,22 @@
 
 const clients = new Set()
 
+export function initClient(res) {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
+
+  const hb = setInterval(() => res.write(': heartbeat\n\n'), 15000)
+
+  clients.add(res)
+  res.on('close', () => {
+    clearInterval(hb)
+    clients.delete(res)
+  })
+}
+
 export function addClient(res) {
   clients.add(res)
   res.on('close', () => clients.delete(res))

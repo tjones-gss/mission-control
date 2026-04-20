@@ -12,7 +12,11 @@ class MockEventSource {
     this.url = url
     this.listeners = {}
     this.onerror = null
+    this.onopen = null
+    this.closed = false
     MockEventSource.instance = this
+    if (!MockEventSource.instances) MockEventSource.instances = []
+    MockEventSource.instances.push(this)
   }
   addEventListener(type, handler) {
     if (!this.listeners[type]) this.listeners[type] = []

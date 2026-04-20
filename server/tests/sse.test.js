@@ -1,6 +1,6 @@
 // ─── SSE client registry tests ───────────────────────────────────────────────
 
-import { addClient, removeClient, emit, onEvent } from '../sse.js'
+import { addClient, removeClient, emit, onEvent, initClient } from '../sse.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -168,6 +168,69 @@ describe('onEvent', () => {
 
     // Cleanup
     unsub()
+  })
+})
+
+// ─── initClient: flushHeaders + heartbeat ────────────────────────────────────
+
+describe('initClient', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function createInitRes() {
+    const callbacks = {}
+    const res = {
+      setHeader: vi.fn(),
+      flushHeaders: vi.fn(),
+      write: vi.fn(),
+      on: vi.fn((event, cb) => {
+        callbacks[event] = cb
+      }),
+      _trigger: (event) => callbacks[event]?.(),
+    }
+    return res
+  }
+
+  it('calls res.flushHeaders after setting headers', () => {
+    const res = createInitRes()
+    initClient(res)
+    expect(res.flushHeaders).toHaveBeenCalledTimes(1)
+    res._trigger('close')
+  })
+
+  it('writes a heartbeat comment every 15 seconds', () => {
+    const res = createInitRes()
+    initClient(res)
+    expect(res.write).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(15000)
+    expect(res.write).toHaveBeenCalledWith(': heartbeat\n\n')
+    vi.advanceTimersByTime(15000)
+    expect(res.write).toHaveBeenCalledTimes(2)
+    res._trigger('close')
+  })
+
+  it('clears the heartbeat interval on req close', () => {
+    const res = createInitRes()
+    initClient(res)
+    res._trigger('close')
+    vi.advanceTimersByTime(30000)
+    expect(res.write).not.toHaveBeenCalled()
+  })
+
+  it('removes client from registry on close', () => {
+    const res = createInitRes()
+    initClient(res)
+    emit('ping', {})
+    expect(res.write).toHaveBeenCalledWith('event: ping\ndata: {}\n\n')
+    res._trigger('close')
+    res.write.mockClear()
+    emit('ping', {})
+    expect(res.write).not.toHaveBeenCalled()
   })
 })
 

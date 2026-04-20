@@ -7,7 +7,9 @@ export function useSSE(onMessage) {
 
   useEffect(() => {
     let active = true
-    const es = new EventSource('/api/stream')
+    let retryCount = 0
+    let reconnectTimer = null
+    let es = null
 
     const events = [
       'session_update',
@@ -28,24 +30,39 @@ export function useSSE(onMessage) {
       'config_update',
       'hooks_update',
     ]
-    events.forEach((evt) => {
-      es.addEventListener(evt, (e) => {
-        if (active) onMessageRef.current({ type: evt, data: JSON.parse(e.data) })
-      })
-    })
 
-    let wasOpen = false
-    es.onopen = () => {
-      wasOpen = true
-      if (active) setConnected(true)
+    function connect() {
+      es = new EventSource('/api/stream')
+
+      events.forEach((evt) => {
+        es.addEventListener(evt, (e) => {
+          if (active) onMessageRef.current({ type: evt, data: JSON.parse(e.data) })
+        })
+      })
+
+      es.onopen = () => {
+        retryCount = 0
+        if (active) setConnected(true)
+      }
+
+      es.onerror = () => {
+        if (!active) return
+        setConnected(false)
+        es.close()
+        const delay = Math.min(1000 * 2 ** retryCount, 30000)
+        retryCount += 1
+        reconnectTimer = setTimeout(() => {
+          if (active) connect()
+        }, delay)
+      }
     }
-    es.onerror = () => {
-      if (wasOpen && active) setConnected(false)
-    }
+
+    connect()
 
     return () => {
       active = false
-      es.close()
+      clearTimeout(reconnectTimer)
+      if (es) es.close()
       // Do NOT call setConnected(false) here. Under React StrictMode the
       // effect runs → cleanup → effect, and flipping `connected` to false
       // in cleanup can race with the re-mounted EventSource's onopen,

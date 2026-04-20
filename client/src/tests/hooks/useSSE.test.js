@@ -5,6 +5,7 @@ describe('useSSE', () => {
   beforeEach(() => {
     // Reset instance between tests
     global.EventSource.instance = null
+    global.EventSource.instances = []
   })
 
   it('creates EventSource pointing at /api/stream on mount', () => {
@@ -107,6 +108,157 @@ describe('useSSE', () => {
     })
     expect(onMessage1).not.toHaveBeenCalled()
     expect(onMessage2).toHaveBeenCalledWith({ type: 'session_update', data: { id: '1' } })
+  })
+
+  it('reconnects with exponential backoff on error', () => {
+    vi.useFakeTimers()
+    const onMessage = vi.fn()
+    renderHook(() => useSSE(onMessage))
+
+    // 1st error → delay = 1000 * 2^0 = 1000 ms
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    expect(global.EventSource.instances).toHaveLength(1)
+    act(() => {
+      vi.advanceTimersByTime(999)
+    })
+    expect(global.EventSource.instances).toHaveLength(1)
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(global.EventSource.instances).toHaveLength(2)
+
+    // 2nd error → delay = 1000 * 2^1 = 2000 ms
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    act(() => {
+      vi.advanceTimersByTime(1999)
+    })
+    expect(global.EventSource.instances).toHaveLength(2)
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(global.EventSource.instances).toHaveLength(3)
+
+    // 3rd error → delay = 1000 * 2^2 = 4000 ms
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    act(() => {
+      vi.advanceTimersByTime(3999)
+    })
+    expect(global.EventSource.instances).toHaveLength(3)
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(global.EventSource.instances).toHaveLength(4)
+
+    vi.useRealTimers()
+  })
+
+  it('backoff delay is capped at 30 seconds', () => {
+    vi.useFakeTimers()
+    const onMessage = vi.fn()
+    renderHook(() => useSSE(onMessage))
+
+    // Drive retryCount to 5 (delay would be 32000 without cap)
+    for (let i = 0; i < 5; i++) {
+      act(() => {
+        global.EventSource.instance.onerror()
+      })
+      const uncappedDelay = 1000 * 2 ** i
+      act(() => {
+        vi.advanceTimersByTime(Math.min(uncappedDelay, 30000))
+      })
+    }
+    const instancesBeforeCap = global.EventSource.instances.length
+
+    // At retryCount=5, delay = min(32000, 30000) = 30000
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    act(() => {
+      vi.advanceTimersByTime(29999)
+    })
+    expect(global.EventSource.instances).toHaveLength(instancesBeforeCap)
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(global.EventSource.instances).toHaveLength(instancesBeforeCap + 1)
+
+    vi.useRealTimers()
+  })
+
+  it('resets backoff delay to 1s after a successful onopen', () => {
+    vi.useFakeTimers()
+    const onMessage = vi.fn()
+    renderHook(() => useSSE(onMessage))
+
+    // Trigger 3 errors to advance retryCount
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    act(() => {
+      vi.advanceTimersByTime(4000)
+    })
+
+    // Successful open resets retryCount to 0
+    act(() => {
+      global.EventSource.instance.onopen()
+    })
+
+    // Next error should use delay = 1000 ms again
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    const countBeforeReset = global.EventSource.instances.length
+    act(() => {
+      vi.advanceTimersByTime(999)
+    })
+    expect(global.EventSource.instances).toHaveLength(countBeforeReset)
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(global.EventSource.instances).toHaveLength(countBeforeReset + 1)
+
+    vi.useRealTimers()
+  })
+
+  it('clears pending reconnect timer on unmount', () => {
+    vi.useFakeTimers()
+    const onMessage = vi.fn()
+    const { unmount } = renderHook(() => useSSE(onMessage))
+
+    // Trigger an error to schedule a reconnect
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    const countAfterError = global.EventSource.instances.length
+
+    // Unmount before the timer fires
+    unmount()
+
+    // Advance past the reconnect delay — no new EventSource should be created
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(global.EventSource.instances).toHaveLength(countAfterError)
+
+    vi.useRealTimers()
   })
 
   it('listens to exactly all expected event types', () => {
