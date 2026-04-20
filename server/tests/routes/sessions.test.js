@@ -27,9 +27,17 @@ vi.mock('fs', () => ({
   existsSync: vi.fn(() => true),
 }))
 vi.mock('../../claude-cli.js', () => ({
-  runClaude: vi.fn().mockResolvedValue({ stdout: '{"result":"ok"}', stderr: '', exitCode: 0 }),
+  runClaude: vi.fn().mockResolvedValue({
+    stdout: '{"type":"system","session_id":"x"}\n{"type":"result","result":"ok"}\n',
+    stderr: '',
+    exitCode: 0,
+  }),
   runClaudeCancellable: vi.fn().mockImplementation(() => {
-    const promise = Promise.resolve({ stdout: '{"result":"ok"}', stderr: '', exitCode: 0 })
+    const promise = Promise.resolve({
+      stdout: '{"type":"system","session_id":"x"}\n{"type":"result","result":"ok"}\n',
+      stderr: '',
+      exitCode: 0,
+    })
     return { promise, cancel: vi.fn() }
   }),
 }))
@@ -98,7 +106,12 @@ import {
 } from '../../pty-session.js'
 import { onEvent } from '../../sse.js'
 import { logger } from '../../lib/logger.js'
-import { router, _resetSessionsCache, truncateForLog } from '../../routes/sessions.js'
+import {
+  router,
+  _resetSessionsCache,
+  truncateForLog,
+  parseStreamJsonStdout,
+} from '../../routes/sessions.js'
 
 const app = express()
 app.use(express.json())
@@ -400,9 +413,14 @@ describe('POST /new', () => {
   // Scenario 2: runClaude resolves first (CLI completes before any new_session event) → 201 legacy
   // (Rare in production — typically a fast error-exit or a very quick interaction)
   it('201 legacy shape when CLI completes before awaitNewSession', async () => {
-    // CLI resolves immediately, awaitNewSession never resolves (times out much later)
+    // CLI resolves immediately with NDJSON, awaitNewSession never resolves
     runClaudeCancellable.mockReturnValue({
-      promise: Promise.resolve({ stdout: '{"session_id":"new-123"}', stderr: '', exitCode: 0 }),
+      promise: Promise.resolve({
+        stdout:
+          '{"type":"system","session_id":"new-123"}\n{"type":"result","session_id":"new-123"}\n',
+        stderr: '',
+        exitCode: 0,
+      }),
       cancel: vi.fn(),
     })
     awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves
@@ -410,7 +428,8 @@ describe('POST /new', () => {
     const res = await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
     expect(res.status).toBe(201)
     expect(res.body.ok).toBe(true)
-    expect(res.body.result).toEqual({ session_id: 'new-123' })
+    // parser picks the last object with type === 'result'
+    expect(res.body.result).toEqual({ type: 'result', session_id: 'new-123' })
     expect(runClaudeCancellable).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/tmp' }))
   })
 
@@ -485,7 +504,11 @@ describe('POST /new', () => {
   it('does NOT forward --effort to the claude CLI (SDK-only option)', async () => {
     // awaitNewSession never resolves so CLI path wins (CLI resolves immediately)
     runClaudeCancellable.mockReturnValue({
-      promise: Promise.resolve({ stdout: '{"session_id":"new-789"}', stderr: '', exitCode: 0 }),
+      promise: Promise.resolve({
+        stdout: '{"type":"result","session_id":"new-789"}\n',
+        stderr: '',
+        exitCode: 0,
+      }),
       cancel: vi.fn(),
     })
     awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves
@@ -561,7 +584,11 @@ describe('POST /new', () => {
 
   it('includes --worktree in CLI args when worktree flag is set', async () => {
     runClaudeCancellable.mockReturnValue({
-      promise: Promise.resolve({ stdout: '{"session":"new123"}', stderr: '', exitCode: 0 }),
+      promise: Promise.resolve({
+        stdout: '{"type":"result","session":"new123"}\n',
+        stderr: '',
+        exitCode: 0,
+      }),
       cancel: vi.fn(),
     })
     awaitNewSession.mockReturnValue(new Promise(() => {}))
@@ -598,6 +625,61 @@ describe('truncateForLog', () => {
     expect(out).not.toBe(big)
     expect(out.length).toBeLessThan(big.length)
     expect(out).toMatch(/\[truncated 2952 bytes\]/) // 5000 - 2048 = 2952
+  })
+})
+
+// ─── parseStreamJsonStdout helper ──────────────────────────────────────────
+
+describe('parseStreamJsonStdout', () => {
+  it('picks the last type:result object from NDJSON stdout', () => {
+    const stdout =
+      '{"type":"system","session_id":"x"}\n' + '{"type":"result","session_id":"abc","ok":true}\n'
+    expect(parseStreamJsonStdout(stdout)).toEqual({
+      type: 'result',
+      session_id: 'abc',
+      ok: true,
+    })
+  })
+
+  it('falls back to the last parseable object when no type:result line exists', () => {
+    const stdout = '{"type":"system","session_id":"x"}\n{"type":"tool_use","id":"t1"}\n'
+    expect(parseStreamJsonStdout(stdout)).toEqual({ type: 'tool_use', id: 't1' })
+  })
+
+  it('skips unparseable lines and does not crash', () => {
+    const stdout =
+      'not json at all\n' + '{"type":"result","session_id":"ok"}\n' + 'another bad line ###\n'
+    expect(parseStreamJsonStdout(stdout)).toEqual({ type: 'result', session_id: 'ok' })
+  })
+
+  it('returns { raw: stdout } when every line is unparseable', () => {
+    const stdout = 'garbage\nmore garbage\n'
+    expect(parseStreamJsonStdout(stdout)).toEqual({ raw: stdout })
+  })
+
+  it('returns { raw: "" } for null/undefined/empty input', () => {
+    expect(parseStreamJsonStdout(null)).toEqual({ raw: '' })
+    expect(parseStreamJsonStdout(undefined)).toEqual({ raw: '' })
+    expect(parseStreamJsonStdout('')).toEqual({ raw: '' })
+  })
+})
+
+// ─── POST /new — stream-json flag ──────────────────────────────────────────
+
+describe('POST /new — stream-json CLI flag', () => {
+  it('passes --output-format stream-json to runClaudeCancellable', async () => {
+    runClaudeCancellable.mockReturnValue({
+      promise: new Promise(() => {}), // stays pending; ack wins
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockResolvedValue('ack-sess-id')
+
+    await request(app).post('/new').send({ cwd: '/tmp', prompt: 'hello' })
+
+    const argv = runClaudeCancellable.mock.calls.at(-1)[0].args
+    expect(argv).toContain('--output-format')
+    expect(argv[argv.indexOf('--output-format') + 1]).toBe('stream-json')
+    expect(argv).not.toContain('json')
   })
 })
 

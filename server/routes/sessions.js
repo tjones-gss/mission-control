@@ -149,6 +149,32 @@ router.param('sessionId', (req, res, next, id) => {
 })
 
 // ──────────────────────────────────────────────────────────────────────────────
+// NDJSON stdout parser (used by stream-json CLI output)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Parse stdout from `--output-format stream-json`: one JSON object per line.
+ * Returns the last object with `type === 'result'`, or the last parseable
+ * object, or `{ raw: stdout }` as a fallback so callers always get an object.
+ */
+export function parseStreamJsonStdout(stdout) {
+  if (!stdout || typeof stdout !== 'string') return { raw: stdout ?? '' }
+  const objects = []
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    try {
+      objects.push(JSON.parse(trimmed))
+    } catch {
+      // skip unparseable lines (e.g. debug noise)
+    }
+  }
+  if (objects.length === 0) return { raw: stdout }
+  const resultObj = [...objects].reverse().find((o) => o.type === 'result')
+  return resultObj ?? objects[objects.length - 1]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Log helpers
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -481,7 +507,7 @@ router.post('/new', async (req, res) => {
 
   // Use CLI subprocess for new session creation (stable on Windows).
   // PTY is only used for resuming existing sessions (message endpoint).
-  const baseArgs = ['-p', prompt.trim(), '--output-format', 'json']
+  const baseArgs = ['-p', prompt.trim(), '--output-format', 'stream-json']
   if (name && typeof name === 'string' && name.trim()) {
     baseArgs.push('--name', name.trim())
   }
@@ -560,12 +586,7 @@ router.post('/new', async (req, res) => {
   if (winner._tag === 'cli') {
     // (2) CLI completed before file-watcher (probably fast error exit or instant success)
     const { stdout, stderr } = winner.value
-    let result
-    try {
-      result = JSON.parse(stdout)
-    } catch {
-      result = { raw: stdout }
-    }
+    const result = parseStreamJsonStdout(stdout)
     return res.status(201).json({ ok: true, result, stderr: stderr || undefined })
   }
 
@@ -601,7 +622,15 @@ router.post('/:sessionId/fork', async (req, res) => {
 
   try {
     const args = buildCliArgs(
-      ['--resume', sessionId, '--fork-session', '-p', prompt.trim(), '--output-format', 'json'],
+      [
+        '--resume',
+        sessionId,
+        '--fork-session',
+        '-p',
+        prompt.trim(),
+        '--output-format',
+        'stream-json',
+      ],
       options,
     )
 
@@ -611,12 +640,7 @@ router.post('/:sessionId/fork', async (req, res) => {
       timeoutMs: 120_000,
     })
 
-    let result
-    try {
-      result = JSON.parse(stdout)
-    } catch {
-      result = { raw: stdout }
-    }
+    const result = parseStreamJsonStdout(stdout)
 
     res.status(201).json({ ok: true, result, stderr: stderr || undefined })
   } catch (err) {
