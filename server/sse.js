@@ -1,6 +1,8 @@
 // Shared SSE client registry — imported by watcher.js and intelligence/triggers.js
 // Kept in a separate module to avoid circular imports.
 
+import { logger } from './lib/logger.js'
+
 const clients = new Set()
 
 export function initClient(res) {
@@ -63,8 +65,8 @@ export function emit(event, data) {
   for (const cb of listeners) {
     try {
       cb(event, data)
-    } catch {
-      /* ignore */
+    } catch (err) {
+      logger.warn({ err, eventName: event }, 'sse_listener_throw')
     }
   }
 }

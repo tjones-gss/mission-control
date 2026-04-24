@@ -1,5 +1,12 @@
 // ─── SSE client registry tests ───────────────────────────────────────────────
 
+vi.mock('../lib/logger.js', () => ({
+  logger: {
+    warn: vi.fn(),
+  },
+}))
+
+import { logger } from '../lib/logger.js'
 import { addClient, removeClient, emit, onEvent, initClient } from '../sse.js'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -20,6 +27,7 @@ let trackedClients
 
 beforeEach(() => {
   trackedClients = []
+  logger.warn.mockClear()
 })
 
 afterEach(() => {
@@ -168,6 +176,42 @@ describe('onEvent', () => {
 
     // Cleanup
     unsub()
+  })
+
+  it('logs via logger.warn when a listener throws, including sse_listener_throw message', () => {
+    const err = new Error('listener exploded')
+    const badCb = vi.fn(() => {
+      throw err
+    })
+    const unsub = onEvent(badCb)
+    logger.warn.mockClear()
+
+    emit('myEvent', { x: 1 })
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err, eventName: 'myEvent' }),
+      'sse_listener_throw',
+    )
+
+    // Cleanup
+    unsub()
+  })
+
+  it('continues notifying subsequent listeners after one throws', () => {
+    const err = new Error('first throws')
+    const badCb = vi.fn(() => {
+      throw err
+    })
+    const goodCb = vi.fn()
+    const unsub1 = onEvent(badCb)
+    const unsub2 = onEvent(goodCb)
+
+    emit('test', {})
+
+    expect(goodCb).toHaveBeenCalledTimes(1)
+
+    unsub1()
+    unsub2()
   })
 })
 

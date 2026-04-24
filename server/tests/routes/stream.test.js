@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import express from 'express'
 
 vi.mock('../../watcher.js', () => ({
@@ -6,7 +6,12 @@ vi.mock('../../watcher.js', () => ({
   removeClient: vi.fn(),
 }))
 
+vi.mock('../../sse.js', () => ({
+  initClient: vi.fn(),
+}))
+
 const { addClient, removeClient } = await import('../../watcher.js')
+const { initClient } = await import('../../sse.js')
 const { router } = await import('../../routes/stream.js')
 
 const app = express()
@@ -39,24 +44,10 @@ function callHandler() {
 }
 
 describe('GET / (SSE stream)', () => {
-  it('sets Content-Type to text/event-stream', () => {
+  it('delegates SSE setup to initClient', () => {
     const { res } = callHandler()
-    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
-  })
-
-  it('sets Cache-Control to no-cache', () => {
-    const { res } = callHandler()
-    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache')
-  })
-
-  it('sets Connection to keep-alive', () => {
-    const { res } = callHandler()
-    expect(res.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
-  })
-
-  it('calls flushHeaders', () => {
-    const { res } = callHandler()
-    expect(res.flushHeaders).toHaveBeenCalledTimes(1)
+    expect(initClient).toHaveBeenCalledTimes(1)
+    expect(initClient).toHaveBeenCalledWith(res)
   })
 
   it('calls addClient with the response object', () => {
@@ -65,52 +56,14 @@ describe('GET / (SSE stream)', () => {
     expect(addClient).toHaveBeenCalledWith(res)
   })
 
-  it('sends heartbeat event at 30s intervals', () => {
-    vi.useFakeTimers()
+  it('registers a close handler on the response', () => {
     const { res } = callHandler()
-
-    expect(res.write).not.toHaveBeenCalled()
-
-    vi.advanceTimersByTime(30000)
-    expect(res.write).toHaveBeenCalledTimes(1)
-    expect(res.write).toHaveBeenCalledWith('event: heartbeat\ndata: {}\n\n')
-
-    vi.advanceTimersByTime(30000)
-    expect(res.write).toHaveBeenCalledTimes(2)
-
-    vi.useRealTimers()
-  })
-
-  it('clears heartbeat interval on connection close', () => {
-    vi.useFakeTimers()
-    const { res, handlers } = callHandler()
-
-    vi.advanceTimersByTime(30000)
-    expect(res.write).toHaveBeenCalledTimes(1)
-
-    // Simulate connection close
-    handlers.close()
-
-    vi.advanceTimersByTime(30000)
-    expect(res.write).toHaveBeenCalledTimes(1) // no new writes
-    vi.useRealTimers()
+    expect(res.on).toHaveBeenCalledWith('close', expect.any(Function))
   })
 
   it('calls removeClient on connection close', () => {
     const { res, handlers } = callHandler()
     handlers.close()
     expect(removeClient).toHaveBeenCalledWith(res)
-  })
-
-  it('calls removeClient when heartbeat write throws', () => {
-    vi.useFakeTimers()
-    const { res } = callHandler()
-    res.write.mockImplementation(() => {
-      throw new Error('write failed')
-    })
-
-    vi.advanceTimersByTime(30000)
-    expect(removeClient).toHaveBeenCalledWith(res)
-    vi.useRealTimers()
   })
 })

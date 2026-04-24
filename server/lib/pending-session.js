@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { onEvent } from '../sse.js'
+import { logger } from './logger.js'
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
 const IS_WIN32 = process.platform === 'win32'
@@ -62,8 +63,10 @@ export function _existingSessionIdsInCwd(cwd) {
         break
       }
     }
-  } catch {
-    /* projects dir may not exist */
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      logger.warn({ err, dir: PROJECTS_DIR }, 'pending_session_projects_read_failed')
+    }
     return ids
   }
 

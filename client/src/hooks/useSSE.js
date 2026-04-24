@@ -33,6 +33,7 @@ export function useSSE(onMessage) {
 
     function connect() {
       es = new EventSource('/api/stream')
+      let wasOpen = false
 
       events.forEach((evt) => {
         es.addEventListener(evt, (e) => {
@@ -41,13 +42,14 @@ export function useSSE(onMessage) {
       })
 
       es.onopen = () => {
+        wasOpen = true
         retryCount = 0
         if (active) setConnected(true)
       }
 
       es.onerror = () => {
         if (!active) return
-        setConnected(false)
+        if (wasOpen) setConnected(false)
         es.close()
         const delay = Math.min(1000 * 2 ** retryCount, 30000)
         retryCount += 1

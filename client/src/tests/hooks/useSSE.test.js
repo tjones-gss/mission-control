@@ -261,6 +261,30 @@ describe('useSSE', () => {
     vi.useRealTimers()
   })
 
+  it('wasOpen guard: onerror before onopen does not call setConnected(false)', () => {
+    const onMessage = vi.fn()
+    const { result } = renderHook(() => useSSE(onMessage))
+    const es = global.EventSource.instance
+
+    // Fire onerror BEFORE any onopen — connected should stay true (initial state)
+    act(() => {
+      es.onerror()
+    })
+    expect(result.current.connected).toBe(true)
+
+    // Now fire onopen — connected goes true (already true, but state is set)
+    act(() => {
+      global.EventSource.instance.onopen()
+    })
+    expect(result.current.connected).toBe(true)
+
+    // Fire onerror again AFTER onopen — now connected should go false
+    act(() => {
+      global.EventSource.instance.onerror()
+    })
+    expect(result.current.connected).toBe(false)
+  })
+
   it('listens to exactly all expected event types', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))

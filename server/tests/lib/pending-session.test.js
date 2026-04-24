@@ -27,7 +27,14 @@ vi.mock('fs', () => ({
   readdirSync: vi.fn(() => []),
 }))
 
+vi.mock('../../lib/logger.js', () => ({
+  logger: {
+    warn: vi.fn(),
+  },
+}))
+
 import fs from 'fs'
+import { logger } from '../../lib/logger.js'
 import { onEvent, _fireEvent, _listenerCount } from '../../sse.js'
 import {
   awaitNewSession,
@@ -40,6 +47,8 @@ beforeEach(() => {
   vi.resetAllMocks()
   // Default: no existing sessions on disk
   fs.readdirSync.mockReturnValue([])
+  // Default: logger.warn is a no-op mock
+  logger.warn.mockReset?.()
 })
 
 // ─── encodeProjectDir ─────────────────────────────────────────────────────────
@@ -62,6 +71,33 @@ describe('encodeProjectDir', () => {
       )
       expect(encodeProjectDir('D:\\work\\repo')).toBe('D--work-repo')
     }
+  })
+})
+
+// ─── _existingSessionIdsInCwd — error handling ───────────────────────────────
+
+describe('_existingSessionIdsInCwd error handling', () => {
+  it('returns empty set silently when PROJECTS_DIR does not exist (ENOENT)', () => {
+    const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    fs.readdirSync.mockImplementation(() => {
+      throw enoent
+    })
+    const result = _existingSessionIdsInCwd('/some/cwd')
+    expect(result.size).toBe(0)
+    expect(logger.warn).not.toHaveBeenCalled()
+  })
+
+  it('warns via logger.warn when PROJECTS_DIR read fails with non-ENOENT error', () => {
+    const eacces = Object.assign(new Error('EACCES'), { code: 'EACCES' })
+    fs.readdirSync.mockImplementation(() => {
+      throw eacces
+    })
+    const result = _existingSessionIdsInCwd('/some/cwd')
+    expect(result.size).toBe(0)
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: eacces }),
+      'pending_session_projects_read_failed',
+    )
   })
 })
 
