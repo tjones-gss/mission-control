@@ -41,8 +41,11 @@ test.describe('tasks tab', () => {
     const pendingHeader = page.getByRole('heading', { name: /Pending \(\d+\)/ })
     const inProgressHeader = page.getByRole('heading', { name: /In Progress \(\d+\)/ })
     const completedHeader = page.getByRole('heading', { name: /Completed \(\d+\)/ })
+    // .first() so strict mode tolerates multiple recognizable elements
+    // being visible at once (the board can render "+ New Task" alongside
+    // populated column headers when the active session has tasks).
     await expect(
-      newTaskBtn.or(emptyState).or(pendingHeader).or(inProgressHeader).or(completedHeader),
+      newTaskBtn.or(emptyState).or(pendingHeader).or(inProgressHeader).or(completedHeader).first(),
     ).toBeVisible({ timeout: 15_000 })
   })
 

@@ -54,8 +54,13 @@ test.describe('navigation', () => {
     await page.goto('/')
 
     for (const tabName of ['Workflows', 'Skills', 'Tasks', 'Agents']) {
-      await page.getByRole('button', { name: tabName }).click()
-      await expect(page.getByRole('button', { name: tabName })).toHaveClass(/bg-gray-800/)
+      // exact:true so 'Agents' doesn't also match session-card buttons
+      // whose accessible name contains the word "agent" (e.g. project
+      // "behind-the-agent-curtain") — strict-mode rejects multi-match.
+      await page.getByRole('button', { name: tabName, exact: true }).click()
+      await expect(page.getByRole('button', { name: tabName, exact: true })).toHaveClass(
+        /bg-gray-800/,
+      )
     }
   })
 })

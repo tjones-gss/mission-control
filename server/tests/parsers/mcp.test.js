@@ -85,6 +85,44 @@ describe('getMcpServers()', () => {
 
     expect(getMcpServers()).toEqual([])
   })
+
+  it('reads user-scope MCP servers from ~/.claude.json', () => {
+    // Claude Code's `claude mcp add -s user` writes to ~/.claude.json,
+    // not ~/.claude/settings.json — make sure we pick those up.
+    const claudeJson = { mcpServers: { 'cli-added': { command: 'cli' } } }
+
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockImplementation((p) => {
+      if (String(p).endsWith('.claude.json')) return JSON.stringify(claudeJson)
+      return JSON.stringify({})
+    })
+
+    const result = getMcpServers()
+    expect(result.map((s) => s.name)).toEqual(['cli-added'])
+    expect(result[0].scope).toBe('user')
+  })
+
+  it('merges ~/.claude.json and ~/.claude/settings.json without duplicates', () => {
+    const claudeJson = { mcpServers: { shared: { command: 'a' }, only_json: { command: 'b' } } }
+    const settings = {
+      mcpServers: { shared: { command: 'IGNORED' }, only_settings: { command: 'c' } },
+    }
+
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockImplementation((p) => {
+      const s = String(p)
+      if (s.endsWith('.claude.json')) return JSON.stringify(claudeJson)
+      if (s.endsWith('settings.json')) return JSON.stringify(settings)
+      return JSON.stringify({})
+    })
+
+    const result = getMcpServers()
+    const names = result.map((s) => s.name).sort()
+    expect(names).toEqual(['only_json', 'only_settings', 'shared'])
+    // For overlaps, .claude.json wins (canonical source for `claude mcp add`).
+    const shared = result.find((s) => s.name === 'shared')
+    expect(shared.command).toBe('a')
+  })
 })
 
 describe('getMcpServersForSession()', () => {
