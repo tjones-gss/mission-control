@@ -4,23 +4,26 @@ import os from 'os'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude')
 const SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json')
+// Claude Code's `claude mcp add -s user` writes user-scope MCP servers to
+// ~/.claude.json (top-level `mcpServers`), not ~/.claude/settings.json.
+// Read both so the dashboard reflects what the CLI actually loads.
+const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json')
 
 export function getMcpServers() {
-  const userConfig = readConfig(SETTINGS_PATH)
   const servers = []
+  const seen = new Set()
 
-  const mcpServers = userConfig.mcpServers || {}
-  for (const [name, config] of Object.entries(mcpServers)) {
-    servers.push({
-      name,
-      transportType: detectTransport(config),
-      command: config.command || null,
-      args: config.args || [],
-      url: config.url || null,
-      env: config.env ? Object.keys(config.env) : [],
-      toolPrefix: `mcp__${name}__`,
-      scope: 'user',
-    })
+  // ~/.claude.json takes precedence — that's the canonical location used
+  // by `claude mcp add -s user`. Fall back to ~/.claude/settings.json for
+  // legacy/manual configs.
+  for (const sourcePath of [CLAUDE_JSON_PATH, SETTINGS_PATH]) {
+    const config = readConfig(sourcePath)
+    const mcpServers = config.mcpServers || {}
+    for (const [name, entry] of Object.entries(mcpServers)) {
+      if (seen.has(name)) continue
+      seen.add(name)
+      servers.push(buildServer(name, entry, 'user'))
+    }
   }
 
   return servers
@@ -36,44 +39,39 @@ export function getMcpServersForSession(cwd) {
   const localConfig = readConfig(path.join(cwd, '.claude', 'settings.local.json'))
 
   const projectMcp = projectConfig.mcpServers || {}
-  for (const [name, config] of Object.entries(projectMcp)) {
+  for (const [name, entry] of Object.entries(projectMcp)) {
     const existing = userServers.find((s) => s.name === name)
     if (existing) {
       existing.scope = 'project (overrides user)'
     } else {
-      userServers.push({
-        name,
-        transportType: detectTransport(config),
-        command: config.command || null,
-        args: config.args || [],
-        url: config.url || null,
-        env: config.env ? Object.keys(config.env) : [],
-        toolPrefix: `mcp__${name}__`,
-        scope: 'project',
-      })
+      userServers.push(buildServer(name, entry, 'project'))
     }
   }
 
   const localMcp = localConfig.mcpServers || {}
-  for (const [name, config] of Object.entries(localMcp)) {
+  for (const [name, entry] of Object.entries(localMcp)) {
     const existing = userServers.find((s) => s.name === name)
     if (existing) {
       existing.scope = 'local (overrides)'
     } else {
-      userServers.push({
-        name,
-        transportType: detectTransport(config),
-        command: config.command || null,
-        args: config.args || [],
-        url: config.url || null,
-        env: config.env ? Object.keys(config.env) : [],
-        toolPrefix: `mcp__${name}__`,
-        scope: 'local',
-      })
+      userServers.push(buildServer(name, entry, 'local'))
     }
   }
 
   return userServers
+}
+
+function buildServer(name, config, scope) {
+  return {
+    name,
+    transportType: detectTransport(config),
+    command: config.command || null,
+    args: config.args || [],
+    url: config.url || null,
+    env: config.env ? Object.keys(config.env) : [],
+    toolPrefix: `mcp__${name}__`,
+    scope,
+  }
 }
 
 function readConfig(filePath) {
