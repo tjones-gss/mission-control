@@ -9,8 +9,8 @@ acceptance_commands:
 
 # Spec: Code-quality polish
 
-- **ADR:** [0003](../adr/_proposals/0003-code-quality-polish.draft.md) (will move to `../adr/0003-code-quality-polish.md` once Accepted)
-- **Status:** Draft
+- **ADR:** [0003](../adr/0003-code-quality-polish.md)
+- **Status:** Approved
 - **Date:** 2026-05-09
 
 ## Goal
