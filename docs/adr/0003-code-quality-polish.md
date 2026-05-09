@@ -1,6 +1,6 @@
 # 0003 — Code-quality polish: remove dead surface and normalize error shape
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-05-09
 - **Mode:** brownfield
 - **Decision seed:** Do a single bounded polish slice that removes three pieces of latent dead/buggy surface accumulated in the codebase.
