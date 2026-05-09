@@ -123,6 +123,7 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 | `parsers/skills.js` | Various skill directories | User and plugin skills with metadata |
 | `parsers/workflows.js` | Git data + session context | Workflow/branch information |
 | `parsers/history.js` | `history.jsonl` | Command history entries |
+| `parsers/conductor.js` | `<cwd>/.conductor/<NNNN>/status.json` | Discovers conductor roots by scanning session JSONL prefixes for `cwd` (first 8 KB each). Parses run status defensively: `task_iters` map with legacy `iter_count` scalar fallback. Whitelists `projectPath` against known session cwds before any FS read to prevent path-traversal. Exports `getConductorRuns()`, `getConductorRunById()`, `readRunFile()`. |
 
 ### Routes
 
@@ -137,6 +138,7 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 | `routes/stream.js` | `GET /stream` — SSE endpoint |
 | `routes/fs.js` | `GET /api/fs/home`, `GET /api/fs/list?path=…` — host filesystem enumeration used by the sidebar folder picker. Returns `sep` so the client stays platform-agnostic. Absolute-only, NUL-reject, UNC-reject on Windows. Unrestricted directory listing is intentional for a local-only dashboard; documented inline. |
 | `routes/managers.js` | `GET /api/managers` — manager/team/standalone session groupings surfaced by the Dispatch Manager. |
+| `routes/conductor.js` | `GET /api/conductor` (list all runs), `GET /api/conductor/:projectKey/:adr` (single run), `GET /api/conductor/:projectKey/:adr/:kind` (file content, kind ∈ `journal`, `ratification`, `skill-diff`, `plan`, `status`). `projectKey` is `encodeURIComponent`-encoded absolute path; server decodes and whitelists it against known roots. File content returned as `text/plain` to avoid JSON parsing on malformed content. |
 
 ### Intelligence
 
@@ -155,7 +157,9 @@ AI-powered session analysis using the `claude` CLI.
 | `watcher.js` | chokidar file watcher on `~/.claude/`, detects changes, triggers parser re-reads |
 | `sse.js` | SSE connection manager, broadcasts typed events to all connected clients |
 
-**SSE Event Types:** `session_update`, `new_session`, `task_update`, `team_update`, `intelligence_update`, `history_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`
+**SSE Event Types:** `session_update`, `new_session`, `task_update`, `team_update`, `intelligence_update`, `history_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`, `conductor_update`
+
+**Conductor watching:** On startup and on every `new_session` event, `watcher.js` calls `getKnownConductorRoots()` and dynamically `chokidar.add()`s any `.conductor/` directories it finds. `chokidar.add()` is idempotent so no dedup logic is needed. Changes to files under those directories emit `conductor_update` with `{ projectPath, adr, filePath, ts }` and skip the normal `~/.claude/` path handling.
 
 ### CLI Bridge
 
@@ -243,6 +247,9 @@ AI-powered session analysis using the `claude` CLI.
 | `SkillsPanel.jsx` | Installed skills viewer |
 | `TeamsPanel/` | Team configs, inbox feed, compose input |
 | `HistoryTab/` | Command history stats, feed, search, filters |
+| `ConductorTab/ConductorTab.jsx` | Master list of all discovered Conductor runs across projects — phase pill, validator iter count, split count, escalation badge |
+| `ConductorTab/RunDetail.jsx` | Detail view for a single run — acceptance-command checklist, sub-tabs for journal/ratification/skill-diff rendered via `Markdown.jsx` |
+| `ConductorTab/StartConductorDialog.jsx` | Launch dialog — validates 4-digit ADR, POSTs `/conductor NNNN` to `POST /api/sessions/new` |
 | `ErrorBoundary.jsx` | React error boundary with retry |
 | `LiveFeed.jsx` | Right sidebar — real-time SSE event stream |
 | `LegendModal.jsx` | Help overlay with layout, color, shortcut reference |
@@ -273,6 +280,10 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 | `~/.claude/teams/*/inboxes/*.json` | JSON | Team inbox messages |
 | `~/.claude/history.jsonl` | JSONL | Command history |
 | `server/data/session-names.json` | JSON | User-assigned session display names (cached in memory) |
+| `<projectCwd>/.conductor/<NNNN>/status.json` | JSON | Conductor run state: `phase`, `task_iters` map, `splits`, `acceptance_commands_required/run`, `escalation_reason`, `started_at` |
+| `<projectCwd>/.conductor/<NNNN>/journal-draft.md` | Markdown | Conductor journal draft (present only when run has reached journal phase) |
+| `<projectCwd>/.conductor/<NNNN>/ratification-proposal.md` | Markdown | Ratification proposal |
+| `<projectCwd>/.conductor/<NNNN>/skill-diff-proposal.md` | Markdown | Skill-diff proposal |
 
 ---
 
@@ -288,12 +299,12 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 
 ## Testing
 
-**1,108 total tests** — 670 server (44 files) + 438 client (39 files). All must pass before pushing.
+**1,136 total tests** — 691 server (46 files) + 445 client (40 files). All must pass before pushing.
 
 | Suite | Runner | Count | Location |
 |-------|--------|-------|----------|
-| Server parsers | Vitest | ~170 | `server/tests/parsers/` |
-| Server routes | Vitest | ~200 | `server/tests/routes/` (incl. sessions, fs, stream, health, tasks, teams, workflows, skills, managers, plans, history) |
+| Server parsers | Vitest | ~191 | `server/tests/parsers/` (incl. conductor: parser shape, malformed handling, ADR filtering, path-traversal rejection) |
+| Server routes | Vitest | ~200 | `server/tests/routes/` (incl. sessions, fs, stream, health, tasks, teams, workflows, skills, managers, plans, history, conductor) |
 | Server intelligence | Vitest | ~37 | `server/tests/intelligence/` (cache, analyzer, triggers) |
 | Server infrastructure | Vitest | ~22 | `server/tests/` (sse, watcher) |
 | Server PTY | Vitest | 59 | `server/tests/pty-session.test.js` |
@@ -302,7 +313,7 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 | Server utils | Vitest | ~60 | `server/tests/utils/` (cost, costEnhanced, export, commandClassifier, secretScanner) |
 | Client hooks | Vitest + RTL | ~100 | `client/src/tests/hooks/` |
 | Client audio | Vitest | 25 | `client/src/tests/audio/` |
-| Client components | Vitest + RTL | ~300 | `client/src/tests/components/` (incl. NewSessionForm, FolderPicker, DispatchSignal) |
+| Client components | Vitest + RTL | ~307 | `client/src/tests/components/` (incl. NewSessionForm, FolderPicker, DispatchSignal, ConductorTab: paused/running rendering, Start dialog ADR validation) |
 | E2E | Playwright | — | `e2e/` (incl. `api-dispatch.spec.js`, split out so shape/validation tests don't contend with UI tests for worker slots) |
 
 **Test infrastructure:**
@@ -334,6 +345,10 @@ oversight/
 │   │   │   │   ├── NotificationsTab.jsx
 │   │   │   │   ├── SoundsVoiceTab.jsx
 │   │   │   │   └── ShortcutsTab.jsx
+│   │   │   ├── ConductorTab/
+│   │   │   │   ├── ConductorTab.jsx       # Run list — phase pill, iter/split counts
+│   │   │   │   ├── RunDetail.jsx          # Single run detail + sub-tabs
+│   │   │   │   └── StartConductorDialog.jsx # ADR input → POST /api/sessions/new
 │   │   │   ├── AgentTree.jsx
 │   │   │   ├── ConversationView.jsx
 │   │   │   ├── DispatchDrawer.jsx        # Dispatch Manager modal
@@ -382,8 +397,8 @@ oversight/
 │   │   ├── analyzer.js
 │   │   ├── cache.js
 │   │   └── triggers.js
-│   ├── parsers/                  # 13+ parser modules (sessions, messages, tasks, teams, skills, workflows, history, managers, plans, mcp, hooks, config, memory)
-│   ├── routes/                   # 11+ route modules (sessions, fs, tasks, skills, teams, workflows, history, managers, plans, stream, health)
+│   ├── parsers/                  # 14+ parser modules (sessions, messages, tasks, teams, skills, workflows, history, managers, plans, mcp, hooks, config, memory, conductor)
+│   ├── routes/                   # 12+ route modules (sessions, fs, tasks, skills, teams, workflows, history, managers, plans, stream, health, conductor)
 │   ├── lib/
 │   │   ├── config.js             # Centralized env var config
 │   │   ├── logger.js             # Pino structured logger

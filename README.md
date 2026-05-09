@@ -113,6 +113,18 @@ Browse your Claude Code command history with search, project filtering, and grou
 
 ---
 
+## Conductor
+
+Oversight auto-discovers Conductor harness runs across every project you have a Claude session in. No configuration — Oversight walks session `cwd` values, looks for `.conductor/<NNNN>/` directories, and surfaces them in a dedicated tab.
+
+Each run card shows the current **phase** (bootstrap → plan → build → integration → ship → retrospective), the active task, validator iteration count (max 5 before a split), split count (≥ 2 = stuck), acceptance commands run vs. required, and the escalation reason if paused. Click a run to open the detail view, where sub-tabs render `journal-draft.md`, `ratification-proposal.md`, and `skill-diff-proposal.md` via the same Markdown renderer used elsewhere.
+
+**Launching a run:** the **Start** button opens a dialog where you enter a 4-digit ADR number. Submitting sends `/conductor NNNN` to the existing new-session path — no separate launcher route.
+
+**Escalation alerts:** when a run transitions into a paused state (`escalated` or `aborted` phase, or a non-empty `escalation_reason`), Oversight fires a desktop notification and plays the `conductorEscalation` sound. Alerts are deduped per run — repeated `status.json` rewrites with the same escalation reason don't re-notify.
+
+---
+
 ## New Sessions
 
 Click the **+** button at the top of the sidebar to open the inline new-session form. Everything you need lives in the sidebar itself — no modal, no context switch.
@@ -189,6 +201,7 @@ Sessions older than 4 hours are considered abandoned and won't trigger notificat
 | `success` | Major triad arpeggio |
 | `fail` | Minor second descend |
 | `none` | No sound |
+| `conductorEscalation` | Alert sound played when a Conductor run pauses (escalated/aborted) |
 
 **Text-to-speech:** Enable per-event TTS voice announcements. Choose from any system voice. New announcements cancel in-progress speech automatically.
 
@@ -271,10 +284,14 @@ For **interactive messaging**, Oversight spawns `claude --resume <sessionId>` in
 | `~/.claude/skills/*.md` | User skill files |
 | `server/data/workflows/*.json` | Workflow definitions |
 | `server/data/session-names.json` | Custom session display names |
+| `<projectCwd>/.conductor/<NNNN>/status.json` | Conductor run state (phase, task_iters, splits, escalation_reason) |
+| `<projectCwd>/.conductor/<NNNN>/journal-draft.md` | Conductor journal draft (rendered as Markdown) |
+| `<projectCwd>/.conductor/<NNNN>/ratification-proposal.md` | Conductor ratification proposal |
+| `<projectCwd>/.conductor/<NNNN>/skill-diff-proposal.md` | Conductor skill-diff proposal |
 
 ### SSE Event Types
 
-`session_update`, `new_session`, `task_update`, `team_update`, `history_update`, `intelligence_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`
+`session_update`, `new_session`, `task_update`, `team_update`, `history_update`, `intelligence_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`, `conductor_update`
 
 ---
 
