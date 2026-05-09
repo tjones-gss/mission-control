@@ -9,7 +9,10 @@ test-results/
 # Vitest + v8 coverage artifacts (written per-run by eval_coverage.py).
 coverage/
 **/coverage/
-.claude/
+# Claude Code per-user state — but skills/commands ship with the repo
+.claude/*
+!.claude/skills/
+!.claude/commands/
 qa-*.png
 .qa-tally.md
 snapshot-*.md
