@@ -6,8 +6,6 @@ import { getAvailableVoices } from '../../audio/tts.js'
 const PRESET_NAMES = Object.keys(PRESETS)
 const EVENT_LABELS = {
   needsInput: 'Needs input',
-  sessionError: 'Session error',
-  sessionComplete: 'Session complete',
   sessionUpdate: 'Session update',
   newSession: 'New session',
   taskUpdate: 'Task update',

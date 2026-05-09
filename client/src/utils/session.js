@@ -1,5 +1,8 @@
 export function projectLabel(session) {
-  const src = session.cwd || session.projectName || ''
+  const src = session.cwd || ''
   const parts = src.split(/[/\\]/).filter(Boolean)
-  return parts[parts.length - 1] || session.slug || session.sessionId.slice(0, 8)
+  if (parts.length > 0) return parts[parts.length - 1]
+  if (session.slug) return session.slug
+  if (session.sessionId) return `session ${session.sessionId.slice(0, 8)}`
+  return 'session'
 }

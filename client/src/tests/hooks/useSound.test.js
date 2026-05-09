@@ -65,7 +65,7 @@ describe('getSoundPrefs / setSoundPrefs', () => {
     expect(prefs.masterVolume).toBe(0.5)
     expect(prefs.events.needsInput).toEqual({ sound: 'alert', voice: false })
     // Non-overridden events should still have defaults
-    expect(prefs.events.sessionError).toEqual({ sound: 'fail', voice: true })
+    expect(prefs.events.newSession).toEqual({ sound: 'ping', voice: false })
   })
 
   it('returns defaults when localStorage has invalid JSON', () => {
@@ -145,7 +145,7 @@ describe('useSound — getPrefs / updatePrefs', () => {
 
     const prefs = result.current.getPrefs()
     expect(prefs.events.needsInput).toEqual({ sound: 'alert', voice: false })
-    expect(prefs.events.sessionError).toEqual({ sound: 'fail', voice: true })
+    expect(prefs.events.newSession).toEqual({ sound: 'ping', voice: false })
   })
 })
 

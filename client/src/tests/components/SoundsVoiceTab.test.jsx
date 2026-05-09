@@ -15,7 +15,7 @@ const mockSoundEngine = {
     customSounds: {},
     events: {
       needsInput: { sound: 'chime', voice: false },
-      sessionError: { sound: 'alert', voice: false },
+      newSession: { sound: 'ping', voice: false },
     },
   })),
   updatePrefs: vi.fn((partial) => ({ ...mockSoundEngine.getPrefs(), ...partial })),
@@ -30,10 +30,10 @@ describe('SoundsVoiceTab', () => {
     vi.clearAllMocks()
   })
 
-  it('renders event sound mapping rows (Needs input, Session error, etc.)', () => {
+  it('renders event sound mapping rows (Needs input, New session, etc.)', () => {
     render(<SoundsVoiceTab soundEngine={mockSoundEngine} />)
     expect(screen.getByText('Needs input')).toBeInTheDocument()
-    expect(screen.getByText('Session error')).toBeInTheDocument()
+    expect(screen.getByText('New session')).toBeInTheDocument()
   })
 
   it('shows Upload sound button', () => {

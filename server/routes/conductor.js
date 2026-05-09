@@ -12,7 +12,7 @@ router.get('/', (_req, res) => {
 router.get('/:projectKey/:adr', (req, res) => {
   const { projectKey, adr } = req.params
   if (!ADR_RE.test(adr)) {
-    return res.status(400).json({ error: 'invalid_adr', detail: 'ADR must be 4 digits' })
+    return res.status(400).json({ error: 'invalid_adr' })
   }
   let projectPath
   try {

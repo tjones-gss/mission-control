@@ -11,7 +11,7 @@ const IS_WIN32 = process.platform === 'win32'
  * Encode a filesystem CWD path to the encoded project-dir name that Claude
  * uses under ~/.claude/projects/.
  *
- * Forward-encoding (inverse of decodeProjectDir in parsers/sessions.js):
+ * Forward-encoding mirrors how Claude encodes CWDs into project-dir names:
  *   Windows: C:\Users\foo\bar  →  C--Users-foo-bar
  *   POSIX:   /Users/foo/bar    →  -Users-foo-bar
  *

@@ -91,9 +91,6 @@ function parseSessionFile(filePath, projectDirName, filename) {
     const subagentsDir = path.join(path.dirname(filePath), sessionId, 'subagents')
     const agentTree = buildAgentTree(records, subagentsDir)
 
-    // Project name from encoded dir name (replace -- with / and - with \)
-    const projectName = decodeProjectDir(projectDirName)
-
     // Extract rich spy data from records
     let lastThought = null
     let lastAction = null
@@ -212,7 +209,6 @@ function parseSessionFile(filePath, projectDirName, filename) {
       sessionId,
       slug,
       cwd,
-      projectName,
       version,
       firstTimestamp,
       lastModified,
@@ -344,9 +340,4 @@ function extractSubagentDescription(msgs) {
     return textBlock?.text?.slice(0, 80) || 'Subagent'
   }
   return 'Subagent'
-}
-
-function decodeProjectDir(dirName) {
-  // C--Users-Travis-Desktop-Projects-foo → C:\Users\Travis\Desktop\Projects\foo
-  return dirName.replace(/^([A-Z])--/, '$1:\\').replace(/-/g, '\\')
 }

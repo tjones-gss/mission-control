@@ -11,8 +11,6 @@ const DEFAULT_PREFS = {
   masterVolume: 0.7,
   events: {
     needsInput: { sound: 'chime', voice: true },
-    sessionError: { sound: 'fail', voice: true },
-    sessionComplete: { sound: 'success', voice: true },
     sessionUpdate: { sound: 'gentle', voice: false },
     newSession: { sound: 'ping', voice: false },
     taskUpdate: { sound: 'gentle', voice: false },

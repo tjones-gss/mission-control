@@ -57,8 +57,6 @@ export function cancelSpeech() {
 
 export const TTS_TEMPLATES = {
   needsInput: (ctx) => `Session ${ctx.projectLabel} needs your input`,
-  sessionError: (ctx) => `Session ${ctx.projectLabel} encountered an error`,
-  sessionComplete: (ctx) => `Session ${ctx.projectLabel} has completed`,
   newSession: (ctx) => `New session started: ${ctx.projectLabel}`,
   taskUpdate: () => `Task board updated`,
   intelligenceReady: () => `Intelligence analysis ready`,

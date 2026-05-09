@@ -114,6 +114,26 @@ describe('getAllSessions()', () => {
     expect(result[0].messageCount).toBe(1)
   })
 
+  it('does not include a projectName field on the returned session object', () => {
+    // AC#1: parseSessionFile() must not carry projectName. The previous
+    // decodeProjectDir()-derived field was buggy on Windows paths and had
+    // no remaining consumers. Lock this in so it cannot regress.
+    const record = makeRecord({ slug: 'my-project', cwd: '/home/user/project' })
+    const jsonl = JSON.stringify(record)
+
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync
+      .mockReturnValueOnce([makeProjectDirEntry('C--Users-Travis-Desktop-Projects-foo')])
+      .mockReturnValueOnce(['session-abc.jsonl'])
+    fs.statSync.mockReturnValue(makeStat())
+    fs.readFileSync.mockReturnValue(jsonl)
+
+    const result = getAllSessions()
+    expect(result).toHaveLength(1)
+    expect(result[0].projectName).toBeUndefined()
+    expect(Object.prototype.hasOwnProperty.call(result[0], 'projectName')).toBe(false)
+  })
+
   it('marks session as active when modified within 5 minutes', () => {
     const record = makeRecord()
     fs.existsSync.mockReturnValue(true)

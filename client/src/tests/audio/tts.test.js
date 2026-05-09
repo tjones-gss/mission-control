@@ -83,8 +83,6 @@ describe('cancelSpeech', () => {
 describe('TTS_TEMPLATES', () => {
   it('has templates for key events', () => {
     expect(typeof TTS_TEMPLATES.needsInput).toBe('function')
-    expect(typeof TTS_TEMPLATES.sessionError).toBe('function')
-    expect(typeof TTS_TEMPLATES.sessionComplete).toBe('function')
     expect(typeof TTS_TEMPLATES.newSession).toBe('function')
   })
 
@@ -92,18 +90,6 @@ describe('TTS_TEMPLATES', () => {
     const text = TTS_TEMPLATES.needsInput({ projectLabel: 'my-app' })
     expect(text).toContain('my-app')
     expect(text).toContain('input')
-  })
-
-  it('sessionError template includes project label', () => {
-    const text = TTS_TEMPLATES.sessionError({ projectLabel: 'my-app' })
-    expect(text).toContain('my-app')
-    expect(text).toContain('error')
-  })
-
-  it('sessionComplete template includes project label', () => {
-    const text = TTS_TEMPLATES.sessionComplete({ projectLabel: 'my-app' })
-    expect(text).toContain('my-app')
-    expect(text).toContain('completed')
   })
 
   it('sessionUpdate template returns null (too frequent for TTS)', () => {
