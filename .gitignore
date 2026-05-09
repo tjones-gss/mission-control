@@ -27,3 +27,6 @@ __pycache__/
 .oversight/logs/
 .oversight/state/scores/
 .oversight/state/leaderboard.json
+
+# Conductor harness state (per-run, lives wherever /conductor is invoked)
+.conductor/

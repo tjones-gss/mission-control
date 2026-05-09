@@ -19,6 +19,7 @@ const DEFAULT_PREFS = {
     intelligenceReady: { sound: 'ping', voice: false },
     teamUpdate: { sound: 'none', voice: false },
     historyUpdate: { sound: 'none', voice: false },
+    conductorEscalation: { sound: 'alert', voice: true },
   },
   ttsVoice: null,
   customSounds: {},

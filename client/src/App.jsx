@@ -14,6 +14,7 @@ import {
   Users,
   History,
   Layers,
+  Workflow,
 } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
@@ -29,6 +30,7 @@ import { WorkflowsPanel } from './components/WorkflowsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { TeamsPanel } from './components/TeamsPanel/TeamsPanel.jsx'
 import { HistoryTab } from './components/HistoryTab/HistoryTab.jsx'
+import { ConductorTab } from './components/ConductorTab/ConductorTab.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
@@ -45,6 +47,7 @@ const TABS = [
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
   { id: 'teams', label: 'Teams', icon: Users },
+  { id: 'conductor', label: 'Conductor', icon: Workflow },
   { id: 'history', label: 'History', icon: History },
 ]
 
@@ -97,6 +100,12 @@ export default function App() {
   const [planVersion, setPlanVersion] = useState(0)
   const [configVersion, setConfigVersion] = useState(0)
   const [memoryVersion, setMemoryVersion] = useState(0)
+  const [conductorVersion, setConductorVersion] = useState(0)
+  // Per-run escalation dedupe: only fire sound + notification on the
+  // transition into a paused/escalated state, not on every status.json
+  // rewrite that keeps the same escalation_reason. Key = `${projectPath}::${adr}`,
+  // value = the last seen escalation_reason string (or null when running).
+  const lastEscalationRef = useRef(new Map())
 
   const { data: sessions, refetch: refetchSessions } = useApi('/api/sessions', [sessionsVersion])
   const {
@@ -171,6 +180,47 @@ export default function App() {
         }
         if (evt.type === 'memory_update') {
           setMemoryVersion((v) => v + 1)
+        }
+        if (evt.type === 'conductor_update') {
+          setConductorVersion((v) => v + 1)
+          // The watcher payload only tells us *something* in this run's
+          // .conductor/<adr>/ changed — it doesn't include the parsed
+          // status. Fetch the run and check isPaused so we can fire the
+          // escalation sound + notification exactly once on transition.
+          const { projectPath, adr } = evt.data || {}
+          if (projectPath && adr) {
+            const key = `${projectPath}::${adr}`
+            fetch(`/api/conductor/${encodeURIComponent(projectPath)}/${adr}`)
+              .then((res) => (res.ok ? res.json() : null))
+              .then((run) => {
+                if (!run) return
+                const lastReason = lastEscalationRef.current.get(key) ?? null
+                const currentReason = run.isPaused ? run.escalationReason || 'paused' : null
+                lastEscalationRef.current.set(key, currentReason)
+                // Fire only on transition from running/different-reason to paused
+                if (currentReason && currentReason !== lastReason) {
+                  if (getNotificationPrefs().sound) {
+                    soundEngine.play('conductorEscalation', {
+                      projectLabel: run.projectLabel,
+                      adr: run.adr,
+                      escalationReason: run.escalationReason || 'paused',
+                    })
+                  }
+                  if (
+                    typeof Notification !== 'undefined' &&
+                    Notification.permission === 'granted'
+                  ) {
+                    new Notification('Conductor paused', {
+                      body: `${run.projectLabel} ADR ${run.adr}: ${run.escalationReason || 'awaiting your decision'}`,
+                      tag: `conductor-${key}`,
+                    })
+                  }
+                }
+              })
+              .catch(() => {
+                /* network errors swallowed — next event will retry */
+              })
+          }
         }
         if (evt.type === 'workflows_update') {
           refetchWorkflows?.()
@@ -514,6 +564,11 @@ export default function App() {
           {activeTab === 'history' && (
             <ErrorBoundary>
               <HistoryTab historyVersion={historyVersion} />
+            </ErrorBoundary>
+          )}
+          {activeTab === 'conductor' && (
+            <ErrorBoundary>
+              <ConductorTab conductorVersion={conductorVersion} sessions={sessions} />
             </ErrorBoundary>
           )}
         </main>

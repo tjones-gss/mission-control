@@ -29,6 +29,7 @@ export function useSSE(onMessage) {
       'plan_update',
       'config_update',
       'hooks_update',
+      'conductor_update',
     ]
 
     function connect() {

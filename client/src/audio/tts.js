@@ -65,4 +65,8 @@ export const TTS_TEMPLATES = {
   sessionUpdate: () => null, // too frequent for TTS
   teamUpdate: () => null,
   historyUpdate: () => null,
+  conductorEscalation: (ctx) => {
+    const where = ctx.projectLabel ? `${ctx.projectLabel} ADR ${ctx.adr}` : `ADR ${ctx.adr}`
+    return `Conductor on ${where} is paused: ${ctx.escalationReason || 'awaiting your decision'}`
+  },
 }

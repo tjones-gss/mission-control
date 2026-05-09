@@ -20,6 +20,7 @@ import { router as mcpRouter } from './routes/mcp.js'
 import { router as managersRouter } from './routes/managers.js'
 import { router as fsRouter } from './routes/fs.js'
 import { router as healthRouter, setHealthReady } from './routes/health.js'
+import { router as conductorRouter } from './routes/conductor.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
 import './intelligence/triggers.js'
@@ -48,6 +49,7 @@ app.use('/api/mcp-servers', mcpRouter)
 app.use('/api/managers', managersRouter)
 app.use('/api/fs', fsRouter)
 app.use('/api/health', healthRouter)
+app.use('/api/conductor', conductorRouter)
 
 // JSON 404 for any unmatched /api/* request — without this, Express
 // returns its built-in "Cannot POST X" HTML page, which forces every

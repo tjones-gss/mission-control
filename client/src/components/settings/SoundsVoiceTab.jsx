@@ -14,6 +14,7 @@ const EVENT_LABELS = {
   intelligenceReady: 'Intel ready',
   teamUpdate: 'Team update',
   historyUpdate: 'History update',
+  conductorEscalation: 'Conductor escalation',
 }
 
 export function SoundsVoiceTab({ soundEngine }) {
