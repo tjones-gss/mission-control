@@ -7,6 +7,8 @@
     "packages/contracts"
   ],
   "scripts": {
+    "setup": "node installers/setup.mjs",
+    "setup:check": "node installers/setup.mjs --check",
     "up": "npm --prefix apps/cockpit run dev",
     "dev": "npm run up",
     "test:cockpit": "npm --prefix apps/cockpit test",

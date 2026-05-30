@@ -41,13 +41,55 @@ first-time user into a power user.
 From the repo root:
 
 ```
-npm install
+npm run setup     # or: node installers/setup.mjs
 npm run up
 ```
 
-`npm run up` launches the cockpit dashboard (the Oversight window) with one
-command. The window is the front door: it works on its own, with no harness
-setup. Adopt the rails later, per project, when you want them.
+`npm run setup` is the one-command installer. It checks prerequisites (Node 18+
+and npm are the only hard requirement), installs the root workspaces, and then
+installs the cockpit's `server/` and `client/` (which have their own
+`package.json` and are not workspaces). It does not launch anything by default —
+it prints the next steps. It is safe to re-run.
+
+Then `npm run up` launches the cockpit dashboard (the Oversight window) and you
+open it at http://localhost:5173. The window is the front door: it works on its
+own, with no harness setup.
+
+Installer flags (all cross-platform — `setup.ps1` / `setup.sh` are thin wrappers
+around `setup.mjs`):
+
+- `node installers/setup.mjs --launch` — install, then run `npm run up` for you.
+- `node installers/setup.mjs --check` — preflight only (no install, no launch);
+  exits nonzero if the cockpit prerequisites are missing. Good for CI. Also
+  available as `npm run setup:check`.
+
+Python and (on Windows) Git Bash are only needed for the opt-in rails, not the
+cockpit. The installer warns about them but never blocks the cockpit on them.
+
+### Add the rails to a project (optional)
+
+The harness rails are opt-in and per-project — adopt them when you feel the pain,
+not before. They need Python (3.10+ recommended) and, on Windows, Git Bash to run
+the `.sh` hooks. To wire them into a project:
+
+```
+node installers/add-rails.mjs --project <path-to-your-project>
+```
+
+This reuses the harness's own adapter installer
+(`packages/harness/tools/install-claude-adapter.py`), which copies `.claude/` +
+`CLAUDE.md`, makes the hooks executable, and on Windows wires `settings.json` to
+Git Bash (WSL-safe). The equivalent manual command, run **from the repo root**, is:
+
+```
+python packages/harness/tools/install-claude-adapter.py --root <path-to-your-project>
+```
+
+Run `node installers/add-rails.mjs --project <path> --print` to print the exact
+command with absolute paths (so it works from any directory). After wiring, restart
+Claude Code in that project and run `/hooks` to verify. The rails are best-effort
+accident-prevention, not an adversary-proof boundary — pair them with OS-level
+sandboxing.
 
 ## Layout
 
