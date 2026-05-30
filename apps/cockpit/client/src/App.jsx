@@ -15,6 +15,7 @@ import {
   History,
   Layers,
   Workflow,
+  Gauge,
 } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
@@ -31,6 +32,7 @@ import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { TeamsPanel } from './components/TeamsPanel/TeamsPanel.jsx'
 import { HistoryTab } from './components/HistoryTab/HistoryTab.jsx'
 import { ConductorTab } from './components/ConductorTab/ConductorTab.jsx'
+import { MissionControlTab } from './components/MissionControlTab/MissionControlTab.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
@@ -48,6 +50,7 @@ const TABS = [
   { id: 'skills', label: 'Skills', icon: Command },
   { id: 'teams', label: 'Teams', icon: Users },
   { id: 'conductor', label: 'Conductor', icon: Workflow },
+  { id: 'mission-control', label: 'Mission Control', icon: Gauge },
   { id: 'history', label: 'History', icon: History },
 ]
 
@@ -101,6 +104,7 @@ export default function App() {
   const [configVersion, setConfigVersion] = useState(0)
   const [memoryVersion, setMemoryVersion] = useState(0)
   const [conductorVersion, setConductorVersion] = useState(0)
+  const [harnessVersion, setHarnessVersion] = useState(0)
   // Per-run escalation dedupe: only fire sound + notification on the
   // transition into a paused/escalated state, not on every status.json
   // rewrite that keeps the same escalation_reason. Key = `${projectPath}::${adr}`,
@@ -222,6 +226,9 @@ export default function App() {
               })
           }
         }
+        if (evt.type === 'harness_update') {
+          setHarnessVersion((v) => v + 1)
+        }
         if (evt.type === 'workflows_update') {
           refetchWorkflows?.()
         }
@@ -302,6 +309,7 @@ export default function App() {
       tabTasks: () => setActiveTab('tasks'),
       tabWorkflows: () => setActiveTab('workflows'),
       tabSkills: () => setActiveTab('skills'),
+      tabMissionControl: () => setActiveTab('mission-control'),
       quickApprove: () => {
         const session = selectedSessionRef.current
         if (session?.needsInput) {
@@ -569,6 +577,11 @@ export default function App() {
           {activeTab === 'conductor' && (
             <ErrorBoundary>
               <ConductorTab conductorVersion={conductorVersion} sessions={sessions} />
+            </ErrorBoundary>
+          )}
+          {activeTab === 'mission-control' && (
+            <ErrorBoundary>
+              <MissionControlTab harnessVersion={harnessVersion} />
             </ErrorBoundary>
           )}
         </main>

@@ -30,6 +30,7 @@ export function useSSE(onMessage) {
       'config_update',
       'hooks_update',
       'conductor_update',
+      'harness_update',
     ]
 
     function connect() {
