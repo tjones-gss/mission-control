@@ -1,0 +1,42 @@
+id: 003-console-leak
+title: 'Remove console logging from server/watcher.js'
+domain: backend
+priority: medium
+
+editable_paths:
+  - server/watcher.js
+
+# Tiny, deterministic change_command: strip console.(log|debug) calls in the
+# single file. The helper lives in .oversight/scripts/ to keep the YAML parser
+# simple (no block-scalar literals in job files).
+change_command: 'python .oversight/scripts/fix_watcher_console.py'
+
+parallelizable: true
+
+evaluators:
+  # Job-specific lightweight evaluators. The backend domain already contributes
+  # code_health, syntax_index, test_markers, route_parity at the fast layer.
+  # `npm run test:server` is in the domain's cross_checks (medium layer only)
+  # so the console-leak job doesn't run the full server suite per attempt.
+  syntax_watcher: 'node --check server/watcher.js'
+
+goal: |
+  Remove console.log / console.debug calls from server/watcher.js. The server
+  uses pino (server/lib/logger.js) for structured logging; console printing
+  leaks noise into stdout and interferes with tests.
+
+rationale: |
+  `console_leak_count` is a ratchet signal (gate_policy: soft). Two calls exist
+  today per the plan. Bringing it to 0 sets a clean baseline for future jobs.
+
+budget:
+  attempts: 2
+  wall_clock_minutes: 5
+
+success_criteria:
+  - 'eval_code_health.signals.console_leak_count decreases by at least 1'
+  - 'npm run test:server still passes'
+  - 'node --check server/watcher.js still passes'
+
+rollback_policy: |
+  Auto-revert on regression (run_job_loop.py default).

@@ -1,0 +1,209 @@
+# Oversight auto-improvement manifest
+# Parsed by .oversight/scripts/_yaml.py (simple-YAML subset).
+# Keep this file flat and string-valued when possible.
+
+schema_version: 1
+repo:
+  name: oversight
+  kind: fullstack-monorepo
+  description: Real-time dashboard for observing Claude Code agents (React + Express + Playwright)
+  root_package_manager: npm
+  node_version_ci: '22'
+  languages:
+    - javascript
+    - jsx
+  has_typescript: false
+  workspaces:
+    - client
+    - server
+
+stack:
+  frontend:
+    framework: react-18
+    bundler: vite
+    styling: tailwind
+    test_runner: vitest
+    test_env: jsdom
+  backend:
+    framework: express-4
+    runtime: node
+    test_runner: vitest
+    test_env: node
+    notable_deps:
+      - chokidar
+      - node-pty
+      - pino
+      - helmet
+  e2e:
+    framework: playwright
+    browsers:
+      - chromium
+    base_url: 'http://localhost:5173'
+  infra:
+    docker: true
+    compose: true
+    ci: github-actions
+
+policy:
+  never_weaken_tests: true
+  never_disable_lints_silently: true
+  require_eval_before_accept: true
+  prefer_reversible_changes: true
+  max_files_per_attempt: 10
+  max_lines_changed_per_attempt: 400
+
+forbidden_paths:
+  # Dependency / build artifacts
+  - node_modules/
+  - '**/node_modules/**'
+  - dist/
+  - '**/dist/**'
+  - build/
+  - '**/build/**'
+  - coverage/
+  - '**/coverage/**'
+  # Test / report artifacts
+  - playwright-report/
+  - test-results/
+  - test_screenshots/
+  - qa-*.png
+  - snapshot-*.md
+  - .qa-tally.md
+  # Secrets / env
+  - .env
+  - .env.*
+  # Lockfiles (editable only by `dependency-maintenance` jobs)
+  - package-lock.json
+  - '**/package-lock.json'
+  # Generated / agent state
+  - .claude/
+  - .worktrees/
+  - .playwright-mcp/
+  # Generated screenshots & docs images
+  - docs/screenshots/
+  - 'client/*.png'
+  # The framework should never edit its own *jobs*, *domains*, *scripts*, or
+  # *manifest* from inside a loop (those are how the loop is defined). State
+  # and logs, however, ARE intentionally written by evaluators and baseline
+  # jobs — do NOT forbid them.
+  - .oversight/scripts/**
+  - .oversight/jobs/**
+  - .oversight/domains/**
+  - .oversight/manifest.yaml
+
+shared_validation:
+  # Layered evaluators — fast first. Each command writes a score JSON
+  # under .oversight/state/scores/ via run_eval.py or eval_*.py.
+  fast:
+    lint: 'npm run lint'
+    node_syntax_server: 'node --check server/index.js'
+    code_health: 'python .oversight/scripts/eval_code_health.py'
+    test_markers: 'python .oversight/scripts/eval_test_markers.py'
+    e2e_flake: 'python .oversight/scripts/eval_e2e_flake.py'
+    route_parity: 'python .oversight/scripts/eval_route_parity.py'
+    connection_quality: 'python .oversight/scripts/eval_connection_quality.py'
+    spawn_quality: 'python .oversight/scripts/eval_session_spawn_quality.py'
+  medium:
+    test_server: 'npm run test:server'
+    test_client: 'npm run test:client'
+    build_client: 'cd client && npx vite build'
+    security: 'python .oversight/scripts/eval_security.py'
+  full:
+    test_e2e: 'npm run test:e2e'
+    coverage: 'python .oversight/scripts/eval_coverage.py'
+
+# Per-signal gate policy consumed by run_job_loop.py and aggregate_score.py.
+# Values: hard (regression reverts attempt), soft (counts toward score),
+# advisory (reported but never blocks).
+gate_policy:
+  # Correctness — hard gates.
+  failed_commands: hard
+  vitest_failures_total: hard
+  playwright_failures_total: hard
+  # Security — hard gates.
+  secret_findings: hard
+  env_leak_count: hard
+  dangerous_api_count: hard
+  test_only_count: hard
+  # Test health — soft ratchet.
+  test_skip_count: soft
+  test_fixme_count: advisory
+  coverage_line_pct: soft
+  coverage_branch_pct: soft
+  coverage_function_pct: advisory
+  coverage_statement_pct: advisory
+  # Code health — soft ratchet on leaks, advisory on structure.
+  console_leak_count: soft
+  todo_density_kloc: advisory
+  todo_count: advisory
+  loc_outlier_count: advisory
+  # API contract — soft.
+  uncovered_routes: soft
+  route_coverage_pct: advisory
+  # E2E stability — soft.
+  e2e_flake_signals: soft
+  e2e_waitForTimeout_count: advisory
+  e2e_setTimeout_count: advisory
+  # Style — soft.
+  prettier_failures_total: soft
+  # Connection / session-spawn quality — soft ratchets (symmetric).
+  # Reward improvements, penalize regressions; never hard-block because
+  # a subjective quality signal misfire shouldn't kill an unrelated job.
+  sse_client_has_backoff: soft
+  sse_client_cleans_up: soft
+  sse_server_has_heartbeat: soft
+  sse_server_flushes_headers: soft
+  spawn_sites_missing_stderr: soft
+  spawn_sites_missing_stdout: soft
+  spawn_sites_missing_timeout: soft
+  pty_sites_missing_exit_handler: soft
+  upload_sites_missing_cleanup: soft
+  streaming_writes_without_chunking: soft
+  # Rolled-up quality score — advisory. Use the individual signals for
+  # gating; the score is for humans scanning a leaderboard.
+  connection_quality_score: advisory
+  connection_quality_issue_count: advisory
+  # Session-spawn quality — soft ratchets, symmetric reward.
+  spawn_env_cache_hot: soft
+  spawn_bin_memoized: soft
+  spawn_uses_stream_json: soft
+  spawn_early_ack: soft
+  spawn_timeout_explicit: soft
+  spawn_score: advisory
+  spawn_issue_count: advisory
+
+domain_registry:
+  - frontend
+  - backend
+  - e2e
+  - docs
+  - infra
+  - scripts
+  - dependencies
+
+# Where the loop runner stores scores, attempts, and candidate diffs.
+paths:
+  domains_dir: .oversight/domains
+  jobs_dir: .oversight/jobs
+  scripts_dir: .oversight/scripts
+  state_dir: .oversight/state
+  logs_dir: .oversight/logs
+  attempts_dir: .oversight/logs/attempts
+  scores_dir: .oversight/state/scores
+
+# Git conventions for reversible improvement loops.
+git:
+  branch_prefix: 'oversight/'
+  worktree_prefix: '.worktrees/oversight-'
+  require_clean_worktree: true
+  commit_trailer: 'Improvement-Loop: ditto'
+
+# Parallel execution tuning (see .oversight/scripts/run_parallel.py).
+parallel:
+  # Upper bound on concurrent worktrees.
+  max_workers: 4
+  # Seconds between worker startups — reduces npm cache / EADDRINUSE contention.
+  stagger_seconds: 2
+  # If true, link main-tree node_modules into each worktree via junction/symlink
+  # instead of running `npm ci` per worktree.
+  link_node_modules: true

@@ -1,0 +1,39 @@
+name: dependencies
+purpose: Controlled changes to package.json / lockfiles. This is the ONLY domain allowed to touch lockfiles.
+
+editable_paths:
+  - package.json
+  - client/package.json
+  - server/package.json
+  - package-lock.json
+  - client/package-lock.json
+  - server/package-lock.json
+
+protected_paths: [] # lockfiles are unlocked ONLY here.
+
+local_evaluators:
+  # Verify each manifest is valid JSON and that `npm install --package-lock-only --dry-run`
+  # would succeed. INFERRED: --dry-run requires network; treat as best-effort.
+  manifests_parse: 'python .oversight/scripts/check_package_manifests.py'
+  security: 'python .oversight/scripts/eval_security.py'
+
+cross_checks:
+  test_server: 'npm run test:server'
+  test_client: 'npm run test:client'
+  lint: 'npm run lint'
+
+success_criteria:
+  manifests_exit_code: '==0'
+  vitest_failing_tests_delta: '<=0'
+
+budget:
+  attempts: 2
+  wall_clock_minutes: 30
+  max_files: 6
+
+risk: high
+
+notes:
+  - Network access is usually required; if offline, dependency jobs should auto-skip.
+  - Never delete "dependencies" entries without confirming nothing in src/ imports them.
+  - After any manifest change, regenerate the lockfile with `npm install` (never hand-edit).

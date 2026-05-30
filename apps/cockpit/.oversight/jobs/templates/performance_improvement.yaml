@@ -1,0 +1,39 @@
+id: perf-TEMPLATE
+title: 'Reduce <metric> for <hot-path>'
+domain: backend
+priority: low
+
+editable_paths:
+  - server/<specific file or dir>
+
+evaluators:
+  # Custom benchmark must be deterministic and fast.
+  bench: 'node .oversight/benchmarks/<name>.mjs'
+
+# change_command can wrap an automated fix if the hot path has a known tweak.
+# change_command: 'node .oversight/perf-fixes/<name>.mjs'
+parallelizable: true
+
+goal: |
+  Reduce <metric> (duration, memory, SSE latency, etc.) on the named hot
+  path WITHOUT changing observable behavior.
+
+rationale: |
+  Users see <symptom>.
+
+budget:
+  attempts: 5
+  wall_clock_minutes: 30
+
+success_criteria:
+  - 'Benchmark shows >=10% improvement, or a declared threshold.'
+  - 'No unit test regressions.'
+  - 'API response shapes unchanged (snapshot/contract tests still pass).'
+
+rollback_policy: |
+  Auto-revert if benchmark regresses or unit tests fail.
+
+notes: |
+  If no benchmark exists yet, your first commit in this job should be to
+  create a deterministic benchmark script (in .oversight/benchmarks/).
+  That commit is itself evaluated only by "does it run?".

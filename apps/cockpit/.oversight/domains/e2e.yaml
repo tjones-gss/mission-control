@@ -1,0 +1,42 @@
+name: e2e
+purpose: Playwright end-to-end suite that drives the real dashboard against live dev servers.
+
+editable_paths:
+  - e2e/**
+  - playwright.config.js
+
+protected_paths:
+  - playwright-report/**
+  - test-results/**
+  - test_screenshots/**
+
+local_evaluators:
+  # Playwright is expensive; "fast" here just means syntax-parse each spec.
+  syntax: 'node --check e2e/dispatch.spec.js'
+  flake_signals: 'python .oversight/scripts/eval_e2e_flake.py'
+  test_markers: 'python .oversight/scripts/eval_test_markers.py'
+
+cross_checks:
+  lint: 'npm run lint'
+  route_parity: 'python .oversight/scripts/eval_route_parity.py'
+
+# The only real gate for e2e is the full suite, which needs both dev servers.
+full_evaluators:
+  all: 'npm run test:e2e'
+  single: 'npx playwright test --project=chromium'
+
+success_criteria:
+  playwright_failing_specs_delta: '<=0'
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 45
+  max_files: 4
+
+risk: high
+
+notes:
+  - playwright.config.js caps workers at 2 locally; respect that.
+  - Dev servers start automatically via webServer config. They need Node 22.
+  - Env var OVERSIGHT_RATE_LIMIT=0 is used to disable rate-limits in e2e.
+  - Do NOT run the full e2e suite from the "fast" loop — only from full gate.

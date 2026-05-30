@@ -1,0 +1,53 @@
+name: backend
+purpose: Express API server, chokidar watcher, SSE stream, PTY session manager, CLI shim.
+
+editable_paths:
+  - server/index.js
+  - server/watcher.js
+  - server/sse.js
+  - server/pty-session.js
+  - server/claude-cli.js
+  - server/routes/**
+  - server/lib/**
+  - server/middleware/**
+  - server/parsers/**
+  - server/intelligence/**
+  - server/utils/**
+
+protected_paths:
+  - server/node_modules/**
+  - server/package-lock.json
+  - server/data/** # runtime JSON state; do not rewrite during improvement
+
+local_evaluators:
+  # Fast-layer evaluators: cheap, no npm / no test runner.
+  # `npm run test:server` is intentionally NOT here to keep fast-loop
+  # iterations sub-5s; use --layer medium to include it.
+  syntax_index: 'node --check server/index.js'
+  code_health: 'python .oversight/scripts/eval_code_health.py'
+  test_markers: 'python .oversight/scripts/eval_test_markers.py'
+  route_parity: 'python .oversight/scripts/eval_route_parity.py'
+
+cross_checks:
+  # Medium-layer evaluators: heavier, but still deterministic locally.
+  unit: 'npm run test:server'
+  lint: 'npm run lint'
+  security: 'python .oversight/scripts/eval_security.py'
+
+success_criteria:
+  vitest_failing_tests_delta: '<=0'
+  syntax_exit_code: '==0'
+  lint_new_failures: '==0'
+
+budget:
+  attempts: 5
+  wall_clock_minutes: 20
+  max_files: 8
+
+risk: medium
+
+notes:
+  - Server is ESM (type=module). Imports must use explicit file extensions.
+  - Tests live in server/tests/** mirroring source structure.
+  - node-pty is a native module; do not try to install/replace it.
+  - Secrets / tokens are read from env; never hard-code them in edits.

@@ -1,0 +1,9 @@
+node_modules
+.git
+.github
+docs
+e2e
+coverage
+*.md
+.env
+.env.*

@@ -1,0 +1,31 @@
+id: docs-sync-TEMPLATE
+title: 'Sync docs with <feature>'
+domain: docs
+priority: low
+
+editable_paths:
+  - README.md
+  - docs/**/*.md
+
+# change_command is usually empty for docs jobs — edits are manual/agent-driven.
+# change_command: null
+parallelizable: true
+
+goal: |
+  Update README / docs to match the current behavior of <feature>. Commands,
+  env vars, routes, and screenshots must all be accurate.
+
+rationale: |
+  Drift between docs and code creates onboarding friction.
+
+budget:
+  attempts: 2
+  wall_clock_minutes: 10
+
+success_criteria:
+  - '`python .oversight/scripts/check_docs_sanity.py` passes.'
+  - 'Every `npm run <x>` reference exists in package.json scripts.'
+  - 'No broken relative links in the edited file.'
+
+rollback_policy: |
+  Auto-revert on sanity-check regression.

@@ -1,0 +1,33 @@
+id: refactor-TEMPLATE
+title: 'Refactor <module> without behavior change'
+domain: backend
+priority: low
+
+editable_paths:
+  - server/<module>/**
+
+evaluators:
+  all_unit: 'npm run test:server'
+
+# change_command is null by default — refactors are authored by a human/agent.
+parallelizable: true
+
+goal: |
+  Restructure <module> for clarity / reuse. Public API and test assertions
+  must stay byte-identical.
+
+rationale: |
+  Reduce future maintenance cost.
+
+budget:
+  attempts: 5
+  wall_clock_minutes: 30
+
+success_criteria:
+  - 'All unit tests still pass.'
+  - 'Exported function signatures unchanged.'
+  - 'Line-count and cyclomatic-complexity improve OR stay flat.'
+
+rollback_policy: |
+  Auto-revert on ANY test regression. Refactors that reduce clarity OR
+  flatline it are a no-op and should be reverted too.

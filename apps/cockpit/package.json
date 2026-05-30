@@ -1,0 +1,37 @@
+{
+  "name": "oversight",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "test": "npm run test:server && npm run test:client",
+    "test:server": "cd server && npx vitest run",
+    "test:client": "cd client && npx vitest run",
+    "test:server:watch": "cd server && npx vitest",
+    "test:client:watch": "cd client && npx vitest",
+    "test:e2e": "npx playwright test",
+    "test:coverage": "cd server && npx vitest run --coverage && cd ../client && npx vitest run --coverage",
+    "lint": "prettier --check .",
+    "lint:fix": "prettier --write .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,jsx}": [
+      "prettier --write"
+    ],
+    "*.{json,yml,yaml,css}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "concurrently": "^8.2.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.0",
+    "prettier": "^3.8.1"
+  }
+}

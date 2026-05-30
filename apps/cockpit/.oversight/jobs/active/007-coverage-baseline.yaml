@@ -1,0 +1,40 @@
+id: 007-coverage-baseline
+title: 'Baseline: client-side test coverage'
+domain: frontend
+priority: low
+
+editable_paths: []
+
+# The coverage eval runs `cd client && npx vitest run --coverage`. That call
+# requires `@vitest/coverage-v8` (peer of vitest) to be installed. If it is
+# not present, this script reports ok:false and the loop will pause.
+change_command: 'python .oversight/scripts/eval_coverage.py --write-baseline'
+
+parallelizable: true
+
+evaluators:
+  coverage: 'python .oversight/scripts/eval_coverage.py'
+
+goal: |
+  Record current client-side coverage % (line/branch/fn/stmt) as the baseline
+  for the `coverage_line_pct` / `coverage_branch_pct` soft-ratchet signals.
+  After this wave, any job that drops coverage will take a score penalty.
+
+rationale: |
+  Without a coverage baseline, the scorer can't tell whether a small-looking
+  PR actually uncovers half the product.
+
+budget:
+  attempts: 1
+  wall_clock_minutes: 10
+
+success_criteria:
+  - 'eval_coverage.py exits 0'
+  - '.oversight/state/baselines.json contains `coverage_line_pct`'
+
+rollback_policy: |
+  N/A — audit-only. If @vitest/coverage-v8 is missing, install it via a
+  separate `dependencies` job and re-run this wave.
+
+notes:
+  - 'Coverage run is wall-clock expensive; kept out of fast layer by design.'

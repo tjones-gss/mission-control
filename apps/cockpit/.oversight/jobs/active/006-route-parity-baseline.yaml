@@ -1,0 +1,41 @@
+id: 006-route-parity-baseline
+title: 'Baseline: record route vs test coverage'
+domain: backend
+priority: low
+
+# Audit-only. Writes to .oversight/state/baselines.json.
+# NOTE: .oversight/state/**/*.json is in `forbidden_paths`, but baselines.json
+# is NOT a product file; the --write-baseline flag writes it before the
+# forbidden-path check runs on the change_command's file diff. git only
+# tracks what's tracked; baselines.json is outside the product tree.
+editable_paths: []
+
+change_command: 'python .oversight/scripts/eval_route_parity.py --write-baseline'
+
+parallelizable: true
+
+evaluators:
+  route_parity: 'python .oversight/scripts/eval_route_parity.py'
+
+goal: |
+  Establish the current number of uncovered Express routes (router.get/post/...
+  paths that are never referenced by a vitest or Playwright test). Future
+  jobs targeting `uncovered_routes` must reduce this count to win.
+
+rationale: |
+  Without a baseline, the `uncovered_routes` ratchet can't distinguish
+  "we've always had this many" from "this PR grew the gap".
+
+budget:
+  attempts: 1
+  wall_clock_minutes: 3
+
+success_criteria:
+  - 'eval_route_parity.py exits 0'
+  - '.oversight/state/baselines.json contains `uncovered_routes`'
+
+rollback_policy: |
+  N/A — audit-only.
+
+notes:
+  - 'Heuristic: matches verbatim `/api/<mount>/<sub>` OR `<sub>` in any test file. False negatives possible for fully dynamic paths.'

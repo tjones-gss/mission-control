@@ -1,0 +1,36 @@
+name: docs
+purpose: Human-facing docs — README, ARCHITECTURE, superpowers plans/specs.
+
+editable_paths:
+  - README.md
+  - docs/**/*.md
+
+protected_paths:
+  # Screenshots are binary artifacts; do not edit from a docs job.
+  - docs/screenshots/**
+
+local_evaluators:
+  # There is no docs-lint in-repo. Placeholder: confirm files exist and parse as UTF-8.
+  # INFERRED: a real evaluator would check link integrity + command parity with package.json.
+  placeholder: "python .oversight/scripts/check_docs_sanity.py"
+
+cross_checks:
+  # Docs touching source refs benefit from a code_health snapshot to catch
+  # accidental re-introduction of console logging in README code blocks.
+  code_health: 'python .oversight/scripts/eval_code_health.py'
+
+success_criteria:
+  # Pass/fail only; docs jobs must not break other domains.
+  placeholder_exit_code: "==0"
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 10
+  max_files: 6
+
+risk: low
+
+notes:
+  - *.md is in .prettierignore, so Prettier will not reformat docs.
+  - Command references in README (npm run test:server, etc.) must still match package.json scripts.
+  - check_docs_sanity.py is a starter evaluator — extend it when doing a real docs job.

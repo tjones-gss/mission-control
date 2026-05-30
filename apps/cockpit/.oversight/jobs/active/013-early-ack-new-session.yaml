@@ -1,0 +1,82 @@
+id: 013-early-ack-new-session
+title: 'Make POST /api/sessions/new return 202 as soon as the watcher sees the new JSONL file'
+domain: backend
+priority: high
+
+editable_paths:
+  - server/lib/pending-session.js
+  - server/routes/sessions.js
+  - server/claude-cli.js
+  - server/tests/lib/pending-session.test.js
+  - server/tests/routes/sessions.test.js
+  - client/src/components/NewSessionForm.jsx
+  - client/src/tests/components/NewSessionForm.test.jsx
+  - client/src/App.jsx
+
+# No change_command. The change is architectural (race + new helper +
+# response-shape handoff) and lives across server + client. Author wrote
+# it; the loop validates via the static evaluator + full test suite.
+evaluators:
+  lint: 'npm run lint'
+  test_server: 'npm run test:server'
+  test_client: 'npm run test:client'
+  spawn_quality: 'python .oversight/scripts/eval_session_spawn_quality.py'
+
+goal: |
+  Flip spawn_early_ack from 0 to 1. User-facing impact: the "Creating..."
+  spinner on POST /api/sessions/new disappears and the session card
+  appears in the sidebar in ~500 ms instead of 10-60 seconds.
+
+rationale: |
+  Today POST /new blocks for the full CLI run. The user stares at a
+  frozen spinner while Claude is already writing to a JSONL file on
+  disk. The chokidar watcher sees that file appear and emits a
+  new_session SSE event long before the CLI exits — we just never
+  acted on it in-process.
+
+  New route: Promise.race between runClaudeCancellable (the full CLI
+  run) and awaitNewSession (subscribe to the in-process SSE for a
+  matching cwd). Whichever wins decides the response shape:
+    * awaitNewSession wins  → 202 { ok, pendingSessionId, status:
+                              'streaming' }. CLI keeps running; any
+                              non-zero exit is logged warn and does
+                              NOT re-hit the client (already acked).
+    * runClaude wins first → 201 legacy shape. Only happens if the CLI
+                              exits almost-instantly (error paths).
+    * 15-second deadline   → 504 timeout, child killed.
+
+  Client:
+    * NewSessionForm parses both response shapes. 202 → passes
+      pendingSessionId to onCreated.
+    * App.jsx onCreated handler: close form, then (if pendingSessionId)
+      set it as selected session + switch to detail view. User lands
+      inside the live-streaming session.
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 45
+
+success_criteria:
+  - 'spawn_early_ack == 1'
+  - 'spawn_score strictly greater than baseline (expected 35 -> 75)'
+  - 'server vitest_failures_total unchanged (684 pass)'
+  - 'client vitest_failures_total unchanged (adds 2, should be 441 pass)'
+  - 'prettier_failures_total no worse than baseline'
+
+rollback_policy: |
+  Auto-revert on regression. The evaluator set is heavy (full server +
+  client vitest) on purpose — this is the biggest UX change in the
+  dashboard's lifetime, so correctness gates are full-weight.
+
+notes: |
+  Observations during the build:
+    * Sonnet sub-agent was delegated the server refactor and the client
+      handoff. Main thread did orientation, review, commit, and eval.
+    * Race-condition mitigation: awaitNewSession snapshots the existing
+      session IDs in the watch dir before subscribing, so if a stale
+      file is already present it won't short-circuit the new spawn.
+    * Case-insensitive cwd match on win32 because users can type
+      'C:\Users\...' or 'c:\users\...' into the folder picker.
+    * Existing client auto-select useEffect only fires when
+      selectedSessionId is null, so setting the pendingSessionId
+      immediately on form close isn't clobbered.

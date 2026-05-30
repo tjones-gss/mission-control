@@ -1,0 +1,67 @@
+id: 011-spawn-env-cache-hoist
+title: 'Hoist env cleanup in server/claude-cli.js to module scope'
+domain: backend
+priority: medium
+
+editable_paths:
+  - server/claude-cli.js
+
+# Mechanical, idempotent mutator. If the file is already hoisted, the
+# script is a no-op. If the source pattern has been refactored away, the
+# mutator refuses to run and exits 1 rather than guessing.
+change_command: 'python .oversight/scripts/fix_spawn_env_cache.py'
+
+parallelizable: true
+
+evaluators:
+  syntax: 'node --check server/claude-cli.js'
+  test_cli_unit: 'cd server && npx vitest run --no-file-parallelism tests/lib/claude-bin.test.js'
+  spawn_quality: 'python .oversight/scripts/eval_session_spawn_quality.py'
+
+goal: |
+  Move spawn_env_cache_hot from 0 -> 1. Every subsequent call to
+  runClaude() reuses the module-scope CLEANED_ENV object instead of
+  cloning process.env and filtering it each time.
+
+rationale: |
+  POST /api/sessions/new spawns the claude CLI for every new session.
+  Today the env sanitization (`{ ...process.env }` + `for..of` filter)
+  runs on every call — ~100 env keys cloned + scanned per spawn. The
+  vars it scrubs (CLAUDECODE, CLAUDE_CODE_*) are set at process startup
+  and don't change while the server runs, so the sanitization is cache-
+  friendly.
+
+  Safe because:
+    * The change is structural, not semantic. The final env passed to
+      `spawn` is identical.
+    * Mutator is idempotent and pattern-anchored — if someone has already
+      refactored the function shape, the mutator refuses to rewrite.
+    * Every existing test in server/tests/** must still pass (the loop's
+      medium layer will catch any behavior drift).
+    * The CLEANED_ENV snapshot still reads live from process.env at
+      module load, so any *legitimate* env changes (PATH edits, etc.)
+      still land — only the scrubbed keys are frozen.
+
+budget:
+  attempts: 2
+  wall_clock_minutes: 3
+
+success_criteria:
+  - 'spawn_env_cache_hot increases by at least 1'
+  - 'spawn_score strictly greater than baseline'
+  - 'no vitest failures introduced in server/tests/**'
+  - 'node --check server/claude-cli.js still passes'
+
+rollback_policy: |
+  Auto-revert on regression (run_job_loop.py default). The mutator
+  leaves no other files touched so rollback is a single-file checkout.
+
+notes: |
+  Future follow-on jobs to raise spawn_score further (not wired yet —
+  draft YAMLs in backlog/):
+
+    * 012-stream-json-support — add --output-format stream-json as an
+      opt-in for /new. Cross-client change, needs design review.
+    * 013-early-ack-new-session — ack 202 with session_id as soon as
+      the JSONL file appears in the watcher, don't block on full CLI
+      completion. High impact, architectural change.

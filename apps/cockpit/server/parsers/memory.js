@@ -1,0 +1,149 @@
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
+
+const CLAUDE_DIR = path.join(os.homedir(), '.claude')
+const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects')
+
+// Parse simple YAML-ish frontmatter from markdown (between --- delimiters).
+// Returns { frontmatter: { key: value, ... } | null, body: string }
+export function parseFrontmatter(content) {
+  if (!content || typeof content !== 'string') {
+    return { frontmatter: null, body: content || '' }
+  }
+
+  const trimmed = content.trimStart()
+  if (!trimmed.startsWith('---')) {
+    return { frontmatter: null, body: content }
+  }
+
+  // Find the closing ---
+  const endIndex = trimmed.indexOf('---', 3)
+  if (endIndex === -1) {
+    return { frontmatter: null, body: content }
+  }
+
+  const fmBlock = trimmed.slice(3, endIndex).trim()
+  const body = trimmed.slice(endIndex + 3).trimStart()
+
+  const frontmatter = {}
+  for (const line of fmBlock.split('\n')) {
+    const colonIdx = line.indexOf(':')
+    if (colonIdx === -1) continue
+    const key = line.slice(0, colonIdx).trim()
+    const value = line.slice(colonIdx + 1).trim()
+    if (key) frontmatter[key] = value
+  }
+
+  return { frontmatter, body }
+}
+
+// Find the project dir name that contains a given session JSONL file.
+function findProjectDirForSession(sessionId) {
+  if (!fs.existsSync(PROJECTS_DIR)) return null
+
+  const projectDirs = fs
+    .readdirSync(PROJECTS_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+
+  for (const dir of projectDirs) {
+    const sessionFile = path.join(PROJECTS_DIR, dir.name, `${sessionId}.jsonl`)
+    if (fs.existsSync(sessionFile)) {
+      return dir.name
+    }
+  }
+
+  return null
+}
+
+// Read the session's cwd from its JSONL file (first record with a cwd field).
+function getSessionCwd(projectDirName, sessionId) {
+  const filePath = path.join(PROJECTS_DIR, projectDirName, `${sessionId}.jsonl`)
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const lines = content.trim().split('\n').filter(Boolean)
+    for (const line of lines) {
+      try {
+        const record = JSON.parse(line)
+        if (record.cwd) return record.cwd
+      } catch {
+        /* skip unparseable lines */
+      }
+    }
+  } catch {
+    /* file unreadable */
+  }
+  return null
+}
+
+// Safely read a file and return { content, path, lastModified } or null.
+function readFileInfo(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null
+    const stat = fs.statSync(filePath)
+    const content = fs.readFileSync(filePath, 'utf-8')
+    return { content, path: filePath, lastModified: stat.mtimeMs }
+  } catch {
+    return null
+  }
+}
+
+// Get all memory/CLAUDE.md data associated with a session.
+// Returns { global, project, memories, memoryIndex }
+export function getMemoryForSession(sessionId) {
+  // 1. Find the session's project dir
+  const projectDirName = findProjectDirForSession(sessionId)
+  if (!projectDirName) return null
+
+  // 2. Read the session's cwd from the JSONL
+  const cwd = getSessionCwd(projectDirName, sessionId)
+
+  // 3. Read global CLAUDE.md
+  const globalClaudeMd = readFileInfo(path.join(CLAUDE_DIR, 'CLAUDE.md'))
+
+  // 4. Read project CLAUDE.md files
+  const project = []
+  if (cwd) {
+    const rootClaudeMd = readFileInfo(path.join(cwd, 'CLAUDE.md'))
+    if (rootClaudeMd) project.push(rootClaudeMd)
+
+    const dotClaudeMd = readFileInfo(path.join(cwd, '.claude', 'CLAUDE.md'))
+    if (dotClaudeMd) project.push(dotClaudeMd)
+  }
+
+  // 5. Read memory files
+  const memoryDir = path.join(PROJECTS_DIR, projectDirName, 'memory')
+  const memories = []
+  try {
+    if (fs.existsSync(memoryDir)) {
+      const files = fs.readdirSync(memoryDir).filter((f) => f.endsWith('.md') && f !== 'MEMORY.md')
+
+      for (const file of files) {
+        const filePath = path.join(memoryDir, file)
+        const info = readFileInfo(filePath)
+        if (info) {
+          const { frontmatter, body } = parseFrontmatter(info.content)
+          memories.push({
+            filename: file,
+            frontmatter,
+            body,
+            path: info.path,
+            lastModified: info.lastModified,
+          })
+        }
+      }
+    }
+  } catch {
+    /* memory dir unreadable */
+  }
+
+  // 6. Read memory index
+  const memoryIndex = readFileInfo(path.join(memoryDir, 'MEMORY.md'))
+
+  return {
+    global: globalClaudeMd,
+    project,
+    memories,
+    memoryIndex,
+  }
+}

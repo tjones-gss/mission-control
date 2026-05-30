@@ -1,0 +1,50 @@
+name: frontend
+purpose: React dashboard UI (Vite + Tailwind + React Testing Library).
+
+editable_paths:
+  - client/src/**
+  - client/index.html
+  - client/tailwind.config.js
+  - client/postcss.config.js
+
+protected_paths:
+  - client/node_modules/**
+  - client/dist/**
+  - client/package-lock.json
+  # Screenshots checked-in next to the client (from the git status):
+  - client/*.png
+
+local_evaluators:
+  # Fast-layer evaluators: cheap, no npm / no test runner.
+  code_health: 'python .oversight/scripts/eval_code_health.py'
+  test_markers: 'python .oversight/scripts/eval_test_markers.py'
+
+cross_checks:
+  # Medium-layer evaluators: heavier, run with --layer medium.
+  unit: 'npm run test:client'
+  build: 'cd client && npx vite build'
+  lint: 'npm run lint'
+  coverage: 'python .oversight/scripts/eval_coverage.py'
+  security: 'python .oversight/scripts/eval_security.py'
+
+success_criteria:
+  # Numeric: failing vitest count must not increase.
+  vitest_failing_tests_delta: '<=0'
+  # Pass/fail: build must succeed.
+  build_exit_code: '==0'
+  # Pass/fail: prettier --check must not newly fail scoped files.
+  lint_new_failures: '==0'
+
+budget:
+  attempts: 5
+  wall_clock_minutes: 20
+  # Rough guard when sampling model-authored changes.
+  max_files: 8
+
+risk: medium
+
+notes:
+  - Tests live in client/src/tests/** with setup.js and MSW handlers.
+  - jsdom environment; avoid importing node-only modules in client code.
+  - Tailwind classes are allowed to appear anywhere in client/src/**.
+  - Do NOT modify client/*.png (screenshots used elsewhere).

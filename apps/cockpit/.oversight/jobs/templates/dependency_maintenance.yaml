@@ -1,0 +1,40 @@
+id: deps-TEMPLATE
+title: 'Bump <package> from <a> to <b>'
+domain: dependencies
+priority: low
+
+editable_paths:
+  - package.json
+  - server/package.json
+  - client/package.json
+  - package-lock.json
+  - server/package-lock.json
+  - client/package-lock.json
+
+# change_command is typically `npm install <pkg>@<version>` — but we do NOT
+# link node_modules for these jobs because the install must be real.
+# change_command: 'npm install <package>@<version>'
+parallelizable: false
+
+goal: |
+  Bump <package> and regenerate lockfiles. Verify tests still pass.
+
+rationale: |
+  Stay current, pick up security fixes.
+
+budget:
+  attempts: 2
+  wall_clock_minutes: 30
+
+success_criteria:
+  - 'All `npm run test:*` still pass.'
+  - 'No silent dependency removals.'
+  - 'No changes to unrelated packages in package.json.'
+
+rollback_policy: |
+  Auto-revert. This domain has network requirements; if npm install fails
+  due to network, the loop exits and reverts cleanly.
+
+notes: |
+  The `dependencies` domain is the ONLY domain allowed to touch lockfiles.
+  Run `npm install` (NOT hand-edit) to regenerate the lockfile.

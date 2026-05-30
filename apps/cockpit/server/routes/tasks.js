@@ -1,0 +1,141 @@
+import { Router } from 'express'
+import { getTasksForSession, getAllTaskSessions } from '../parsers/tasks.js'
+import { promises as fs } from 'fs'
+import path from 'path'
+import os from 'os'
+import { validateSessionId } from '../utils/validate.js'
+import { atomicWriteJson } from '../lib/atomic-write.js'
+
+export const router = Router()
+
+const TASKS_DIR = path.join(os.homedir(), '.claude', 'tasks')
+const VALID_ID = /^[a-zA-Z0-9_-]+$/
+
+router.get('/', (req, res) => {
+  res.json(getAllTaskSessions())
+})
+
+router.get('/:sessionId', (req, res) => {
+  res.json(getTasksForSession(req.params.sessionId))
+})
+
+router.post('/:sessionId', async (req, res, next) => {
+  const { sessionId } = req.params
+  if (!validateSessionId(sessionId, res)) return
+
+  // Reject empty subject — without this, the user could create a task
+  // with no title that's impossible to identify in the board.
+  const subject = typeof req.body.subject === 'string' ? req.body.subject.trim() : ''
+  if (!subject) {
+    return res.status(400).json({ error: 'subject is required' })
+  }
+
+  try {
+    const sessionDir = path.join(TASKS_DIR, sessionId)
+    await fs.mkdir(sessionDir, { recursive: true })
+
+    // Find max existing id to auto-increment
+    let maxId = 0
+    try {
+      const files = await fs.readdir(sessionDir)
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          const num = parseInt(file.replace('.json', ''), 10)
+          if (!isNaN(num) && num > maxId) maxId = num
+        }
+      }
+    } catch {
+      // dir may be empty
+    }
+
+    const newId = String(maxId + 1)
+    const task = {
+      id: newId,
+      subject,
+      description: req.body.description || '',
+      activeForm: req.body.activeForm || '',
+      status: req.body.status || 'pending',
+      owner: req.body.owner || '',
+      blocks: Array.isArray(req.body.blocks) ? req.body.blocks : [],
+      blockedBy: Array.isArray(req.body.blockedBy) ? req.body.blockedBy : [],
+    }
+
+    const filePath = path.join(sessionDir, `${newId}.json`)
+    await atomicWriteJson(filePath, task)
+    res.status(201).json(task)
+  } catch (err) {
+    // Express 4 does NOT auto-catch async rejections — must call next(err)
+    // to reach the shared errorHandler. The previous `throw err` here
+    // bubbled to process.unhandledRejection and the client request hung
+    // until the 30s timeout.
+    next(err)
+  }
+})
+
+router.put('/:sessionId/:taskId', async (req, res, next) => {
+  const { sessionId, taskId } = req.params
+  if (!VALID_ID.test(sessionId) || !VALID_ID.test(taskId)) {
+    return res.status(400).json({ error: 'Invalid sessionId or taskId' })
+  }
+
+  const filePath = path.join(TASKS_DIR, sessionId, `${taskId}.json`)
+
+  // Read the existing task FIRST so missing fields in the request body
+  // fall back to the existing values instead of getting wiped to ''.
+  // The previous handler always defaulted subject/description/owner/etc.
+  // to '', which meant a partial PUT like { status: 'in_progress' } would
+  // blow away subject + description + owner — silent data loss caught
+  // by Run #29 probe. Read-modify-write isn't safe against concurrent
+  // partial PUTs (last-write-wins is still possible) but at least no
+  // single PUT destroys fields it didn't mention.
+  let existing
+  try {
+    existing = JSON.parse(await fs.readFile(filePath, 'utf8'))
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'Task not found' })
+    return next(err)
+  }
+
+  try {
+    const body = req.body || {}
+    const task = {
+      id: taskId,
+      subject: body.subject !== undefined ? body.subject : existing.subject || '',
+      description: body.description !== undefined ? body.description : existing.description || '',
+      activeForm: body.activeForm !== undefined ? body.activeForm : existing.activeForm || '',
+      status: body.status !== undefined ? body.status : existing.status || 'pending',
+      owner: body.owner !== undefined ? body.owner : existing.owner || '',
+      blocks: Array.isArray(body.blocks)
+        ? body.blocks
+        : Array.isArray(existing.blocks)
+          ? existing.blocks
+          : [],
+      blockedBy: Array.isArray(body.blockedBy)
+        ? body.blockedBy
+        : Array.isArray(existing.blockedBy)
+          ? existing.blockedBy
+          : [],
+    }
+
+    await atomicWriteJson(filePath, task)
+    res.json(task)
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.delete('/:sessionId/:taskId', async (req, res, next) => {
+  const { sessionId, taskId } = req.params
+  if (!VALID_ID.test(sessionId) || !VALID_ID.test(taskId)) {
+    return res.status(400).json({ error: 'Invalid sessionId or taskId' })
+  }
+
+  const filePath = path.join(TASKS_DIR, sessionId, `${taskId}.json`)
+  try {
+    await fs.unlink(filePath)
+    res.json({ ok: true })
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.status(404).json({ error: 'Task not found' })
+    next(err)
+  }
+})

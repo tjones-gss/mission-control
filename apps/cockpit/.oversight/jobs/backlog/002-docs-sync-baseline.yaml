@@ -1,0 +1,33 @@
+id: '002-docs-sync-baseline'
+title: 'Establish docs-sanity baseline and fix any broken references'
+domain: docs
+priority: medium
+
+editable_paths:
+  - README.md
+  - docs/**/*.md
+
+evaluators:
+  sanity: 'python .oversight/scripts/check_docs_sanity.py'
+
+goal: |
+  Run the docs sanity evaluator and resolve any failures it reports
+  (missing npm scripts, broken relative links).
+
+rationale: |
+  README references many `npm run` scripts and links. If any drift from
+  package.json or the filesystem has crept in, new contributors will bounce.
+
+budget:
+  attempts: 2
+  wall_clock_minutes: 10
+
+success_criteria:
+  - 'check_docs_sanity.py exits 0.'
+
+rollback_policy: |
+  Auto-revert on regression.
+
+notes: |
+  Run with `--oneshot` first to see the current state:
+    python .oversight/scripts/run_job_loop.py --job .oversight/jobs/backlog/002-docs-sync-baseline.yaml --oneshot

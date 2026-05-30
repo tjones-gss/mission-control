@@ -1,0 +1,33 @@
+id: e2e-stabilization-TEMPLATE
+title: 'Stabilize flaky e2e spec: <e2e/<name>.spec.js>'
+domain: e2e
+priority: medium
+
+editable_paths:
+  - e2e/<name>.spec.js
+  - playwright.config.js # only if a config change is genuinely needed
+
+evaluators:
+  targeted: 'npx playwright test e2e/<name>.spec.js --project=chromium --retries=0'
+
+# change_command is usually null — flake fixes are authored by a human/agent.
+parallelizable: true
+
+goal: |
+  Make the named spec pass three consecutive runs (retries=0) without
+  weakening assertions or adding blanket `test.skip`s.
+
+rationale: |
+  Flaky e2e specs mask regressions and waste CI time.
+
+budget:
+  attempts: 3
+  wall_clock_minutes: 30
+
+success_criteria:
+  - 'Spec passes three runs in a row with retries=0.'
+  - 'No new `test.skip` / `test.fixme` directives.'
+
+rollback_policy: |
+  Revert on regression. If the spec stays flaky, quarantine by setting
+  `retries: 2` for THAT spec only, NEVER globally.

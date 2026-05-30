@@ -1,0 +1,54 @@
+@import 'highlight.js/styles/github-dark.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .prose p {
+    @apply my-1.5;
+  }
+  .prose a {
+    @apply text-cyan-400 hover:text-cyan-300 no-underline;
+  }
+  .prose table {
+    @apply border-gray-800;
+  }
+  .prose th,
+  .prose td {
+    @apply border-gray-800;
+  }
+  .prose code:not(pre code) {
+    @apply bg-gray-800 text-gray-300 px-1 py-0.5 rounded text-xs;
+  }
+  .prose pre {
+    @apply bg-gray-900 border border-gray-800;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+body {
+  @apply bg-gray-950 text-gray-100 font-mono;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 2px;
+}
