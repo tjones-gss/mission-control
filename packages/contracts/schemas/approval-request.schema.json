@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.dev/schemas/approval-request.schema.json",
+  "title": "ApprovalRequest",
+  "description": "File the harness hook writes to .harness/approvals/pending/<uuid>.json when a command needs human approval.",
+  "type": "object",
+  "required": ["id", "schemaVersion", "projectPath", "riskLevel", "commandHash", "requestedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "schemaVersion": {
+      "type": "integer"
+    },
+    "projectPath": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string"
+    },
+    "matchedPattern": {
+      "type": "string"
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": ["SAFE_READONLY", "CODE_EXECUTION", "DESTRUCTIVE", "REQUIRES_REVIEW"]
+    },
+    "commandHash": {
+      "type": "string"
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "requestedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

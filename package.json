@@ -1,0 +1,15 @@
+{
+  "name": "mission-control",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/cockpit",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "up": "npm --prefix apps/cockpit run dev",
+    "dev": "npm run up",
+    "test:cockpit": "npm --prefix apps/cockpit test",
+    "lint": "npm --prefix apps/cockpit run lint"
+  }
+}

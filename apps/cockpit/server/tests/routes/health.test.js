@@ -17,6 +17,27 @@ describe('health routes', () => {
     expect(res.body.ts).toBeTypeOf('number')
   })
 
+  test('GET / includes a harness availability probe', async () => {
+    // Hermetic: the harness object (and its boolean `available` field) must be
+    // present whether or not python is actually installed on this machine.
+    const app = createApp()
+    const res = await request(app).get('/api/health')
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveProperty('harness')
+    expect(res.body.harness).toBeTypeOf('object')
+    expect(res.body.harness.available).toBeTypeOf('boolean')
+    expect(res.body.harness).toHaveProperty('cliPath')
+    expect(res.body.harness.cliPath).toBeTypeOf('string')
+    expect(res.body.harness).toHaveProperty('detail')
+    expect(res.body.harness).toHaveProperty('python')
+    // python is the working interpreter name, or null when unavailable
+    if (res.body.harness.available) {
+      expect(res.body.harness.python).toBeTypeOf('string')
+    } else {
+      expect(res.body.harness.python).toBeNull()
+    }
+  })
+
   test('GET /live returns ok and uptime', async () => {
     const app = createApp()
     const res = await request(app).get('/api/health/live')

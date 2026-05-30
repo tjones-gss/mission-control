@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.dev/schemas/harness-status.schema.json",
+  "title": "HarnessStatus",
+  "description": "Output of `harness status --json`, shelled out by the cockpit. Permissive on purpose: older installed harnesses may emit fewer fields.",
+  "type": "object",
+  "required": ["project", "pipeline"],
+  "additionalProperties": true,
+  "properties": {
+    "project": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "mode": { "type": "string" },
+        "stage": { "type": "string" },
+        "owner": { "type": "string" },
+        "created_at": { "type": "string" }
+      }
+    },
+    "stack": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "frontend": { "type": "string" },
+        "backend": { "type": "string" },
+        "database": { "type": "string" },
+        "auth": { "type": "string" },
+        "hosting": { "type": "string" },
+        "package_manager": { "type": "string" },
+        "test_runner": { "type": "string" },
+        "e2e_runner": { "type": "string" }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "active": { "type": "string" },
+        "phase": { "type": "string" },
+        "gate": { "type": "string" },
+        "last_completed_phase": { "type": ["string", "null"] },
+        "next_phase": { "type": ["string", "null"] }
+      }
+    },
+    "missions": {
+      "type": "object",
+      "additionalProperties": true,
+      "patternProperties": {
+        "^.+$": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "status": { "type": "string" },
+            "priority": { "type": "string" },
+            "file": { "type": "string" },
+            "adr": { "type": "string" },
+            "spec": { "type": "string" },
+            "validation": { "type": "string" },
+            "review": { "type": "string" },
+            "session_note": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "readiness_overall": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "score": { "type": "number" },
+        "mvp_ready": { "type": "boolean" }
+      }
+    },
+    "next": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "recommended_agent": { "type": "string" },
+        "recommended_action": { "type": "string" },
+        "blocked": { "type": "boolean" },
+        "blocker": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

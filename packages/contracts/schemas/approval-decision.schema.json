@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.dev/schemas/approval-decision.schema.json",
+  "title": "ApprovalDecision",
+  "description": "File written to .harness/approvals/decided/<uuid>.json. commandHash MUST equal the matching request's commandHash so a stale or replayed decision cannot unblock a different command.",
+  "type": "object",
+  "required": ["id", "schemaVersion", "decision", "approver", "commandHash", "decidedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "schemaVersion": {
+      "type": "integer"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["allow", "deny"]
+    },
+    "approver": {
+      "type": "string"
+    },
+    "commandHash": {
+      "type": "string"
+    },
+    "decidedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}
