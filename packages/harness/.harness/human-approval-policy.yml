@@ -1,0 +1,30 @@
+approval_required:
+  production:
+    - deploy_to_production
+    - modify_production_data
+    - change_production_env_vars
+
+  security:
+    - auth_model_change
+    - permission_model_change
+    - secret_rotation
+    - disable_security_control
+
+  data:
+    - destructive_migration
+    - schema_drop
+    - bulk_delete
+    - data_export
+
+  business:
+    - billing_logic_change
+    - payment_provider_change
+    - pricing_change
+    - email_blast_or_external_user_notification
+
+approval_record_template:
+  approver: unset
+  date: unset
+  scope: unset
+  risk_accepted: unset
+  rollback_plan: unset

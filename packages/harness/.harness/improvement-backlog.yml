@@ -1,0 +1,16 @@
+improvements:
+  # Example:
+  # - id: HI-001
+  #   title: Add lightweight UI-only pipeline
+  #   reason: Reduce ceremony for low-risk copy/style-only changes.
+  #   evidence:
+  #     - FL-001
+  #     - FL-004
+  #   expected_benefit: Faster small UI changes with less process overhead.
+  #   risk: low
+  #   affected_files:
+  #     - pipelines/lightweight-ui-change.yml
+  #     - .harness/context-manifest.yml
+  #   requires_human_approval: true
+  #   status: proposed # proposed | approved | rejected | implemented | measured
+  #   success_metric: fewer unnecessary_ceremony events for UI-only tasks

@@ -1,0 +1,48 @@
+name: Harness Check
+
+on:
+  push:
+    paths:
+      - '.harness/**'
+      - 'pipelines/**'
+      - 'adapters/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'sdk/**'
+      - 'harness_core/**'
+  pull_request:
+    paths:
+      - '.harness/**'
+      - 'pipelines/**'
+      - 'adapters/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'sdk/**'
+      - 'harness_core/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Install packages
+        run: |
+          pip install pyyaml
+          pip install -e harness_core
+          pip install -e "sdk/python[dev]"
+
+      - name: Hook tests
+        run: bash tests/check_hooks.sh
+
+      - name: CLI tests
+        run: python3 tests/test_cli.py
+
+      - name: Harness check strict
+        run: python3 tools/harness check --strict
+
+      - name: SDK unit tests
+        run: PYTHONPATH=harness_core:sdk/python python3 -m unittest discover sdk/python/tests -v

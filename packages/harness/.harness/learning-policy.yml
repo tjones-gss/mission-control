@@ -1,0 +1,65 @@
+learning_policy:
+  version: 1
+  mode: assisted # off | assisted | auto_propose | auto_apply_safe_only
+
+  principle: >
+    The harness may observe, log, and propose improvements automatically.
+    It may only weaken rules or safety gates with explicit human approval.
+
+  can_auto_log:
+    - missing_context
+    - missing_spec
+    - missing_adr
+    - unclear_allowed_files
+    - unnecessary_ceremony
+    - repeated_test_failure
+    - review_failure
+    - scope_drift
+    - wrong_validation_command
+    - unused_document
+    - overly_broad_mission
+    - under_scoped_mission
+
+  can_auto_propose:
+    - clarify_template
+    - add_example
+    - add_missing_reference
+    - update_stack_specific_commands
+    - suggest_lightweight_pipeline
+    - suggest_context_manifest_update
+    - suggest_new_agent_role
+    - suggest_new_checklist_item
+    - suggest_merge_or_remove_unused_docs
+
+  can_auto_apply_safe_only:
+    - typo_fixes_in_docs
+    - broken_internal_link_fixes
+    - add_examples_to_templates
+    - add_missing_file_references
+    - clarify_non_policy_docs
+
+  requires_human_approval:
+    - quality_gate_changes
+    - danger_zone_changes
+    - human_approval_policy_changes
+    - security_policy_changes
+    - testing_policy_changes
+    - removing_required_artifacts
+    - weakening_review_requirements
+    - allowing_code_edits_without_mission
+    - reducing_required_validation
+    - changing_deployment_policy
+
+  never_auto_apply:
+    - disable_tests
+    - remove_security_checks
+    - bypass_human_approval
+    - allow_production_deploy_without_gate
+    - remove_danger_zone_items
+    - remove_review_requirement_for_high_risk_changes
+
+  retrospective_cadence:
+    after_missions: 10
+    after_milestone: true
+    when_user_requests: true
+    when_repeated_failure_detected: true

@@ -1,0 +1,33 @@
+dangerous_operations:
+  require_human_approval:
+    - production_deploy
+    - destructive_database_migration
+    - database_drop
+    - production_data_update
+    - bulk_delete
+    - secret_rotation
+    - auth_model_change
+    - permission_model_change
+    - security_middleware_disable
+    - payment_or_billing_change
+    - infrastructure_change
+    - dependency_major_upgrade
+    - ci_cd_secret_change
+    - backup_policy_change
+
+blocked_command_patterns:
+  - "rm -rf"
+  - "DROP TABLE"
+  - "DELETE FROM"
+  - "terraform apply"
+  - "kubectl delete"
+  - "vercel --prod"
+  - "railway down"
+  - "stripe live"
+  - "firebase deploy --only hosting:prod"
+
+policy:
+  default_environment: local_or_staging
+  production_access: forbidden_unless_explicit
+  destructive_commands: forbidden_unless_explicit
+  external_side_effects: forbidden_unless_explicit

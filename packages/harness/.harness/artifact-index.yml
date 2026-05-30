@@ -1,0 +1,26 @@
+artifacts:
+  product:
+    product_brief: docs/product/product-brief.md
+    mvp_scope: docs/product/mvp-scope.md
+    assumptions: docs/product/assumptions.md
+    open_questions: docs/product/open-questions.md
+
+  architecture:
+    system_overview: docs/architecture/system-overview.md
+    current_system: docs/architecture/current-system.md
+    data_flow: docs/architecture/data-flow.md
+    service_boundaries: docs/architecture/service-boundaries.md
+
+  governance:
+    constitution: docs/governance/project-constitution.md
+    human_approval_policy: docs/governance/human-approval-policy.md
+
+  quality:
+    testing_strategy: docs/testing/testing-strategy.md
+    security_baseline: docs/security/security-baseline.md
+    production_readiness: docs/checklists/production-readiness-checklist.md
+
+  indexes:
+    mission_index: .harness/mission-index.yml
+    pipeline_state: .harness/pipeline-state.yml
+    project_state: .harness/project-state.yml

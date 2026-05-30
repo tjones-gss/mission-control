@@ -1,0 +1,46 @@
+metrics:
+  missions:
+    completed: 0
+    blocked: 0
+    failed_review: 0
+    required_fix_mission: 0
+    scope_drift_incidents: 0
+
+  validation:
+    test_failures: 0
+    lint_failures: 0
+    typecheck_failures: 0
+    build_failures: 0
+    commands_wrong_or_stale: 0
+
+  planning:
+    missing_context: 0
+    missing_spec: 0
+    missing_adr: 0
+    unclear_allowed_files: 0
+    unclear_acceptance_criteria: 0
+    oversized_missions: 0
+    undersized_missions: 0
+
+  friction:
+    unnecessary_ceremony: 0
+    duplicate_docs: 0
+    unused_docs: 0
+    confusing_templates: 0
+    excessive_context_loading: 0
+    repeated_user_corrections: 0
+
+  safety:
+    danger_zone_triggers: 0
+    human_approval_required: 0
+    security_review_failures: 0
+
+  usefulness:
+    docs_used:
+      AGENTS.md: 0
+      project-state.yml: 0
+      context-manifest.yml: 0
+      testing-strategy.md: 0
+      security-baseline.md: 0
+      mission-template.md: 0
+      review-checklist.md: 0

@@ -1,0 +1,5 @@
+missions:
+  MISSION-007-add-login:
+    status: in-progress
+    priority: high
+    file: runs/missions/MISSION-007-add-login.md

@@ -1,0 +1,96 @@
+pipeline: refactor
+description: Restructure code without changing observable behavior.
+
+rules:
+  broad_refactors_forbidden: true
+  behavior_change_forbidden_unless_explicit: true
+  test_coverage_required_before_refactor: true
+
+phases:
+  - id: scope
+    agent: architect
+    description: Define exactly what is being refactored and why.
+    outputs:
+      - docs/specs/SPEC-<number>-refactor-<slug>.md
+    gate:
+      required:
+        - target_module_defined
+        - non_goals_defined
+        - behavior_preservation_strategy_defined
+
+  - id: adr-if-architecture-changes
+    agent: adr-writer
+    description: Required if the refactor changes architecture.
+    outputs:
+      - docs/adrs/<adr-number>.md
+    gate:
+      required:
+        - architecture_change_decision_recorded_or_marked_none
+
+  - id: behavior-preservation-tests
+    agent: tester
+    description: Add or verify tests that pin current behavior before changing it.
+    outputs:
+      - <characterization-test-files>
+      - runs/test-reports/pre-refactor-baseline.md
+    gate:
+      required:
+        - target_module_test_coverage_sufficient
+        - baseline_test_run_green
+
+  - id: mission-planning
+    agent: mission-planner
+    description: Slice the refactor into small, reviewable steps.
+    inputs:
+      - docs/specs/SPEC-<number>-refactor-<slug>.md
+    outputs:
+      - runs/missions/MISSION-<id>-refactor-*.md
+      - .harness/mission-index.yml
+    gate:
+      required:
+        - smallest_reviewable_units_chosen
+        - allowed_files_defined
+        - forbidden_files_defined
+
+  - id: implementation
+    agent: implementer
+    description: One step at a time. Tests stay green at every step.
+    outputs:
+      - <files-per-mission-allowed-list>
+    gate:
+      required:
+        - behavior_preservation_tests_pass
+        - no_behavior_change_observable
+
+  - id: validation
+    agent: tester
+    description: Full validation suite.
+    outputs:
+      - runs/test-reports/<mission-id>.md
+    gate:
+      required:
+        - tests_pass
+        - lint_pass
+        - typecheck_pass
+        - build_pass
+
+  - id: review
+    agent: reviewer
+    description: Verify minimality, behavior preservation, and that no public APIs silently changed.
+    outputs:
+      - runs/reviews/<mission-id>-review.md
+    gate:
+      required:
+        - no_behavior_change_observable
+        - no_silent_api_changes
+        - no_unrelated_changes
+
+  - id: session-memory
+    agent: session-memory
+    description: Record what improved, what didn't, what was deferred.
+    outputs:
+      - runs/session-notes/<date>-<mission-id>.md
+    gate:
+      required:
+        - improvements_recorded
+        - follow_ups_or_marked_none

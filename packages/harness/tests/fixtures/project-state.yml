@@ -1,0 +1,6 @@
+project:
+  name: test-fixture
+  mode: feature-development
+  stage: implementation
+current:
+  mission: MISSION-007-add-login

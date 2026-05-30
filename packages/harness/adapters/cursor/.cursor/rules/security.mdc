@@ -1,0 +1,10 @@
+---
+description: Security expectations
+alwaysApply: true
+---
+
+Never commit secrets.
+
+Never log tokens, API keys, passwords, cookies, PII, or payment data.
+
+Auth and authorization must be enforced server-side.

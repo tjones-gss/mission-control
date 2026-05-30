@@ -1,0 +1,86 @@
+pipeline: bugfix
+description: Reproduce, write regression test, fix, validate, review.
+
+rules:
+  scope_strictly_bounded: true
+  no_speculative_refactors: true
+
+phases:
+  - id: reproduce
+    agent: implementer
+    description: Confirm the bug reproduces and capture minimal repro.
+    outputs:
+      - runs/missions/MISSION-<id>-bug-<slug>.md  # populated with repro
+    gate:
+      required:
+        - reproduction_steps_documented
+        - failure_observed_locally
+
+  - id: regression-test
+    agent: tester
+    description: Write a failing test that demonstrates the bug.
+    outputs:
+      - <test-file-per-mission>
+    gate:
+      required:
+        - failing_test_committed
+    rules:
+      - test_must_fail_before_fix
+      - skip_only_if_test_infeasible_with_documented_reason
+
+  - id: mission-planning
+    agent: mission-planner
+    description: Bound the fix to the smallest reviewable change.
+    inputs:
+      - runs/missions/MISSION-<id>-bug-<slug>.md
+    outputs:
+      - runs/missions/MISSION-<id>-bug-<slug>.md  # finalized
+    gate:
+      required:
+        - allowed_files_defined
+        - forbidden_files_defined
+        - acceptance_criteria_defined
+
+  - id: implementation
+    agent: implementer
+    description: Make the failing test pass with minimal change.
+    inputs:
+      - runs/missions/MISSION-<id>-bug-<slug>.md
+    outputs:
+      - <files-per-mission-allowed-list>
+    gate:
+      required:
+        - regression_test_passes
+        - existing_tests_still_pass
+
+  - id: validation
+    agent: tester
+    description: Full test/lint/typecheck/build.
+    outputs:
+      - runs/test-reports/<mission-id>.md
+    gate:
+      required:
+        - tests_pass
+        - lint_pass
+        - typecheck_pass
+        - build_pass
+
+  - id: review
+    agent: reviewer
+    description: Verify minimality and that no unrelated code changed.
+    outputs:
+      - runs/reviews/<mission-id>-review.md
+    gate:
+      required:
+        - no_unrelated_changes
+        - review_checklist_complete
+
+  - id: session-memory
+    agent: session-memory
+    description: Record root cause and prevention notes.
+    outputs:
+      - runs/session-notes/<date>-<mission-id>.md
+    gate:
+      required:
+        - root_cause_documented
+        - prevention_notes_or_marked_none

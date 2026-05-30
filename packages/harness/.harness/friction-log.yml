@@ -1,0 +1,13 @@
+friction_events:
+  # Example:
+  # - id: FL-001
+  #   date: YYYY-MM-DD
+  #   mission: MISSION-001-example
+  #   type: unnecessary_ceremony
+  #   severity: low # low | medium | high
+  #   description: ADR felt unnecessary for a copy-only UI change.
+  #   evidence:
+  #     - mission completed without architecture impact
+  #     - no source behavior changed
+  #   suggested_fix: Add lightweight UI/copy pipeline.
+  #   status: open # open | reviewed | accepted | rejected

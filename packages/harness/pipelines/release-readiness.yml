@@ -1,0 +1,69 @@
+pipeline: release-readiness
+description: Gate before any production release. Runs the MVP checklist, security review, and produces a release decision.
+
+rules:
+  human_approval_required_before_release: true
+
+phases:
+  - id: mvp-checklist
+    agent: release-readiness
+    description: Walk through .harness/mvp-checklist.yml, mark each item.
+    inputs:
+      - .harness/mvp-checklist.yml
+      - docs/checklists/production-readiness-checklist.md
+    outputs:
+      - runs/reviews/mvp-checklist-<date>.md
+    gate:
+      required:
+        - all_critical_items_satisfied_or_explained
+
+  - id: security-review
+    agent: security-reviewer
+    description: Verify auth, secrets, input validation, and any disabled controls.
+    inputs:
+      - docs/security/security-baseline.md
+    outputs:
+      - runs/reviews/security-review-<date>.md
+    gate:
+      required:
+        - no_unresolved_security_findings
+        - secrets_not_in_repo
+        - auth_model_documented
+
+  - id: production-readiness
+    agent: release-readiness
+    description: Confirm rollback, env vars, smoke tests, monitoring.
+    inputs:
+      - docs/runbooks/deployment-runbook.md
+    outputs:
+      - runs/reviews/production-readiness-<date>.md
+    gate:
+      required:
+        - rollback_plan_documented
+        - env_vars_documented
+        - smoke_tests_defined
+        - monitoring_or_logging_in_place
+
+  - id: readiness-score
+    agent: orchestrator
+    description: Update .harness/readiness-score.yml from review outputs.
+    outputs:
+      - .harness/readiness-score.yml
+    gate:
+      required:
+        - overall_score_recorded
+
+  - id: human-approval
+    agent: release-readiness
+    description: Block until a human approves with an approval record.
+    inputs:
+      - .harness/human-approval-policy.yml
+    outputs:
+      - runs/reviews/release-approval-<date>.md
+    gate:
+      required:
+        - approver_recorded
+        - risk_accepted_documented
+        - rollback_plan_referenced
+    rules:
+      - no_automated_advancement

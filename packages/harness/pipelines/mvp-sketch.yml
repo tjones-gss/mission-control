@@ -1,0 +1,113 @@
+pipeline: mvp-sketch
+description: Build a lightweight prototype or spike to decide whether an idea merits a real MVP build.
+
+purpose: Answer "is this idea worth a real build?" with a runnable or clickable prototype, demo flow, or technical spike.
+
+non_goals:
+  - production release
+  - real customer data
+  - irreversible migrations
+  - full ADR/spec/mission tree
+  - auth, billing, permissions, or production deploy unless mocked or sandboxed
+
+disposition:
+  required: true
+  allowed_values:
+    - disposable
+    - promotable
+  promotion_target: idea-to-mvp
+  note: Promotable means handoff into idea-to-mvp, not shipping.
+
+phases:
+  - id: sketch-intake
+    agent: intake
+    description: Clarify the problem or opportunity, demo flow, timebox, and prototype disposition.
+    outputs:
+      - docs/sketches/<slug>/sketch-brief.md
+      - docs/sketches/<slug>/assumptions.md
+    gate:
+      required:
+        - problem_or_opportunity_defined
+        - primary_demo_flow_defined
+        - timebox_defined
+        - prototype_disposition_declared
+
+  - id: scope-slice
+    agent: product-analyst
+    description: Select one core workflow and mark what is mocked, real, or out of scope.
+    inputs:
+      - docs/sketches/<slug>/sketch-brief.md
+      - docs/sketches/<slug>/assumptions.md
+    outputs:
+      - docs/sketches/<slug>/prototype-scope.md
+      - docs/sketches/<slug>/non-goals.md
+    gate:
+      required:
+        - single_core_workflow_selected
+        - non_goals_defined
+        - mocked_vs_real_boundaries_defined
+
+  - id: prototype-plan
+    agent: architect
+    description: Pick the fastest safe stack and record data, safety, and promotion risks.
+    inputs:
+      - docs/sketches/<slug>/prototype-scope.md
+      - docs/sketches/<slug>/non-goals.md
+    outputs:
+      - docs/sketches/<slug>/prototype-plan.md
+    gate:
+      required:
+        - stack_choice_recorded
+        - data_strategy_recorded
+        - unsafe_capabilities_mocked_or_blocked
+        - promotion_risks_listed
+
+  - id: sketch-build
+    agent: implementer
+    description: Build only enough prototype surface to run the approved demo flow.
+    inputs:
+      - docs/sketches/<slug>/prototype-plan.md
+    outputs:
+      - <prototype-files>
+    gate:
+      required:
+        - demo_flow_runs
+        - shortcuts_documented
+        - no_production_integrations_added
+        - no_unapproved_sensitive_operations
+
+  - id: demo-validation
+    agent: tester
+    description: Verify the demo script and smoke-check the prototype behavior.
+    outputs:
+      - runs/test-reports/<slug>-sketch-validation.md
+    gate:
+      required:
+        - demo_script_verified
+        - basic_smoke_check_passed_or_explained
+        - unsafe_behavior_absent_or_blocked
+
+  - id: sketch-review
+    agent: reviewer
+    description: Summarize learning and decide whether to dispose of or promote the sketch.
+    inputs:
+      - docs/sketches/<slug>/sketch-brief.md
+      - docs/sketches/<slug>/prototype-scope.md
+      - docs/sketches/<slug>/prototype-plan.md
+      - runs/test-reports/<slug>-sketch-validation.md
+    outputs:
+      - runs/reviews/<slug>-sketch-review.md
+    gate:
+      required:
+        - learning_summary_written
+        - disposable_or_promotable_decision_recorded
+        - promotion_recommendation_recorded
+
+  - id: session-memory
+    agent: session-memory
+    description: Capture what was learned and the next recommended lane before stopping.
+    outputs:
+      - runs/session-notes/<date>-mvp-sketch-<slug>.md
+    gate:
+      required:
+        - session_note_written

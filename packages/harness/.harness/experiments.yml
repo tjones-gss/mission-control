@@ -1,0 +1,17 @@
+experiments:
+  # Example:
+  # - id: EXP-001
+  #   title: Lightweight UI-only pipeline
+  #   hypothesis: UI-only missions can skip ADR/spec when no behavior or architecture changes occur.
+  #   start_date: YYYY-MM-DD
+  #   status: proposed # proposed | active | stopped | successful | failed
+  #   guardrails:
+  #     - no backend changes
+  #     - no auth changes
+  #     - no data model changes
+  #     - tests or visual check still required
+  #   metrics:
+  #     - unnecessary_ceremony
+  #     - review_failure
+  #     - scope_drift_incidents
+  #   rollback_plan: Remove lightweight pipeline and restore standard mission process.

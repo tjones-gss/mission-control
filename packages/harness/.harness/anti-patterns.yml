@@ -1,0 +1,29 @@
+anti_patterns:
+  broad_refactor:
+    signals:
+      - clean up the codebase
+      - modernize everything
+      - refactor all
+      - improve all files
+    response: require_refactor_spec
+
+  implementation_without_plan:
+    response: stop_and_create_plan
+
+  behavior_change_without_tests:
+    response: block_review_until_test_or_explanation
+
+  architecture_change_without_adr:
+    response: require_adr
+
+  hallucinated_repo_docs:
+    response: require_evidence_or_mark_assumption
+
+  context_bloat:
+    response: write_session_note_and_restart
+
+  hidden_scope_expansion:
+    response: stop_and_create_new_mission
+
+  deleting_tests:
+    response: block_unless_explicitly_approved

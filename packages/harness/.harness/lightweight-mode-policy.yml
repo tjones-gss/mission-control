@@ -1,0 +1,38 @@
+lightweight_mode_policy:
+  purpose: Reduce unnecessary ceremony for low-risk work.
+
+  eligible:
+    - copy_change
+    - documentation_change
+    - small_style_change
+    - non_behavioral_ui_tweak
+    - template_example_addition
+    - typo_fix
+    - comment_clarification
+
+  not_eligible:
+    - auth_change
+    - authorization_change
+    - database_change
+    - API_contract_change
+    - billing_or_payment_change
+    - security_sensitive_change
+    - dependency_change
+    - infrastructure_change
+    - production_deploy
+    - data_migration
+    - cross_cutting_refactor
+
+  minimum_required_artifacts:
+    - mission_or_change_note
+    - validation_or_manual_check
+    - completion_summary
+
+  optional_artifacts:
+    - ADR
+    - full_spec
+    - security_review
+
+  escalation_rule: >
+    If the task touches backend behavior, data, security, APIs, permissions,
+    billing, infrastructure, or deployment, exit lightweight mode and use the standard pipeline.

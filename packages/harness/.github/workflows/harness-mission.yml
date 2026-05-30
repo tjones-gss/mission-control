@@ -1,0 +1,51 @@
+name: Harness Cloud Mission
+
+on:
+  workflow_dispatch:
+    inputs:
+      runtime:
+        description: 'Agent runtime (local or cloud)'
+        required: true
+        default: 'cloud'
+        type: choice
+        options:
+          - cloud
+          - local
+      resume:
+        description: 'Resume existing agent (agent_id from project-state)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  mission-loop:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          pip install pyyaml
+          pip install -e harness_core
+          pip install -e "sdk/python[cursor]"
+
+      - name: Preflight
+        run: python3 tools/harness check --strict
+
+      - name: Run mission loop
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          HARNESS_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          EXTRA=""
+          if [ "${{ inputs.runtime }}" = "cloud" ]; then
+            EXTRA="--runtime cloud --auto-pr --skip-reviewer-request"
+          else
+            EXTRA="--runtime local"
+          fi
+          if [ "${{ inputs.resume }}" = "true" ]; then
+            EXTRA="$EXTRA --resume"
+          fi
+          python3 -m harness_orchestrator run-loop --cwd . $EXTRA

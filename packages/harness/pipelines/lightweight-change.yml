@@ -1,0 +1,60 @@
+pipeline: lightweight-change
+
+purpose: Handle low-risk work without unnecessary ceremony.
+
+# Eligibility, exclusions, and escalation are policy fields read by the
+# orchestrator before this pipeline is entered. They are not phases.
+eligible:
+  - docs-only changes
+  - typo fixes
+  - copy changes
+  - small visual tweaks
+  - template examples
+  - non-behavioral comments
+
+not_eligible:
+  - backend behavior
+  - auth
+  - permissions
+  - database
+  - billing
+  - API contract
+  - deployment
+  - infrastructure
+  - dependencies
+  - production data
+
+escalate_to_standard_pipeline_if:
+  - scope touches risky area
+  - agent uncertainty
+  - tests fail
+  - review finds behavior change
+
+# Minimal three-phase shape so this file conforms to the pipeline schema.
+phases:
+  - id: scope-check
+    agent: orchestrator
+    no_outputs_reason: |
+      In-memory eligibility check against the `eligible` / `not_eligible` lists
+      above. Escalates to a standard pipeline on uncertainty.
+    gate:
+      required:
+        - change_classified_as_lightweight
+        - no_risky_areas_touched
+
+  - id: change
+    agent: implementer
+    outputs:
+      - <files-per-change>
+    gate:
+      required:
+        - short_change_note_or_mission
+        - manual_check_or_validation
+
+  - id: summary
+    agent: session-memory
+    outputs:
+      - runs/session-notes/<date>-<slug>.md
+    gate:
+      required:
+        - completion_summary_written

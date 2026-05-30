@@ -1,0 +1,92 @@
+pipeline: next-mission-loop
+description: One iteration of the orchestrator's mission loop. Picks one mission, runs it, reviews it, records it, stops.
+
+rules:
+  one_unit_of_work_per_iteration: true
+  stop_after_one_iteration: true
+
+phases:
+  - id: read-state
+    agent: orchestrator
+    description: Read all state needed to choose the next action.
+    inputs:
+      - AGENTS.md
+      - .harness/project-state.yml
+      - .harness/pipeline-state.yml
+      - .harness/mission-index.yml
+      - .harness/mvp-checklist.yml
+      - .harness/quality-gates.yml
+      - .harness/danger-zone.yml
+    outputs:
+      - runs/session-notes/<date>-orchestrator-snapshot.md  # optional
+    gate:
+      required:
+        - state_read_complete
+
+  - id: select-action
+    agent: orchestrator
+    description: Apply mission-index selection_policy. Stop if nothing is ready.
+    outputs:
+      - <chosen-action-summary>
+    gate:
+      required:
+        - one_valid_next_action_chosen_or_stop_reason_documented
+    rules:
+      - prefer_critical_mvp_items
+      - prefer_blocked_by_fewest_dependencies
+      - prefer_highest_risk_reduction
+      - prefer_smallest_reviewable_unit
+      - do_not_select_blocked_or_unspecced_missions
+
+  - id: execute
+    agent: implementer
+    description: Either run a ready mission or create a missing planning artifact.
+    inputs:
+      - runs/missions/MISSION-<id>-*.md  # if implementing
+    outputs:
+      - <files-per-mission-or-new-artifact>
+    gate:
+      required:
+        - work_completed_within_scope_or_stop_reason_documented
+
+  - id: validate
+    agent: tester
+    description: Run validation if implementation occurred. Skip otherwise.
+    outputs:
+      - runs/test-reports/<mission-id>.md
+    gate:
+      required:
+        - validation_recorded_or_skip_documented
+    rules:
+      - skip_if_no_implementation_in_this_iteration
+
+  - id: review
+    agent: reviewer
+    description: Run review if implementation occurred. Skip otherwise.
+    outputs:
+      - runs/reviews/<mission-id>-review.md
+    gate:
+      required:
+        - review_recorded_or_skip_documented
+    rules:
+      - skip_if_no_implementation_in_this_iteration
+
+  - id: update-state
+    agent: orchestrator
+    description: Update mission-index, pipeline-state, project-state.
+    outputs:
+      - .harness/mission-index.yml
+      - .harness/pipeline-state.yml
+      - .harness/project-state.yml
+    gate:
+      required:
+        - state_files_consistent
+
+  - id: session-memory
+    agent: session-memory
+    description: Write a session note if meaningful work occurred.
+    outputs:
+      - runs/session-notes/<date>-<mission-id-or-action>.md
+    gate:
+      required:
+        - session_note_written_if_meaningful_work_occurred

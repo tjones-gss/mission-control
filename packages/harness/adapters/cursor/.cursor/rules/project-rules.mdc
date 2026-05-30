@@ -1,0 +1,16 @@
+---
+description: Adaptive harness project rules
+alwaysApply: true
+---
+
+Follow AGENTS.md.
+
+Do not edit application code without a mission.
+
+For behavior changes:
+- add/update tests
+- run validation
+- summarize results
+
+Do not broaden scope.
+Do not perform dangerous operations without human approval.

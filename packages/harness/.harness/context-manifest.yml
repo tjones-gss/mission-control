@@ -1,0 +1,53 @@
+context_manifest:
+  principle: Load only the context needed for the current task.
+
+always_read:
+  - AGENTS.md
+  - .harness/project-state.yml
+  - .harness/pipeline-state.yml
+  - .harness/context-manifest.yml
+  - .harness/quality-gates.yml
+
+by_mode:
+  idea-to-mvp:
+    - pipelines/idea-to-mvp.yml
+    - docs/product/product-brief.md
+    - docs/product/mvp-scope.md
+    - .harness/mvp-checklist.yml
+
+  existing-repo-retrofit:
+    - pipelines/existing-repo-retrofit.yml
+    - docs/architecture/current-system.md
+    - docs/risks/risk-register.md
+
+  feature-development:
+    - active mission
+    - related ADR
+    - related SPEC
+    - relevant architecture doc
+    - nearby tests
+
+  bugfix:
+    - active mission
+    - bug report
+    - failing test or reproduction
+    - nearby implementation and tests
+
+  refactor:
+    - active mission
+    - behavior preservation tests
+    - related architecture docs
+
+  release-readiness:
+    - .harness/mvp-checklist.yml
+    - docs/checklists/production-readiness-checklist.md
+    - docs/runbooks/deployment-runbook.md
+    - docs/security/security-baseline.md
+
+avoid_by_default:
+  - node_modules
+  - build outputs
+  - generated files
+  - lockfiles unless dependency changes are in scope
+  - entire repo dumps
+  - old session transcripts

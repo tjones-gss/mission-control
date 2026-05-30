@@ -1,0 +1,49 @@
+pipeline:
+  active: next-mission-loop
+  phase: session-memory
+  gate: session_note_written_if_meaningful_work_occurred
+  last_completed_phase: null
+  next_phase: null
+allowed_transitions:
+  intake:
+  - research
+  - product
+  - repo-discovery
+  research:
+  - product
+  - architecture
+  product:
+  - architecture
+  repo-discovery:
+  - repo-documentation
+  - risk-analysis
+  repo-documentation:
+  - adr-backfill
+  - mission-planning
+  architecture:
+  - adr-writing
+  adr-writing:
+  - spec-writing
+  spec-writing:
+  - mission-planning
+  mission-planning:
+  - implementation
+  implementation:
+  - validation
+  validation:
+  - review
+  - fix-mission
+  review:
+  - session-memory
+  - fix-mission
+  session-memory:
+  - next-mission
+  - mvp-gate
+  mvp-gate:
+  - release-readiness
+  - fix-mission
+blocked_transitions:
+  implementation_without_mission: true
+  architecture_change_without_adr: true
+  deploy_without_release_gate: true
+  dangerous_operation_without_approval: true

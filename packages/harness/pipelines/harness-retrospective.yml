@@ -1,0 +1,70 @@
+pipeline: harness-retrospective
+
+purpose: Analyze harness usage and propose safe improvements.
+
+inputs:
+  - .harness/metrics.yml
+  - .harness/friction-log.yml
+  - .harness/improvement-backlog.yml
+  - runs/session-notes/
+  - runs/reviews/
+  - docs/governance/harness-change-policy.md
+
+phases:
+  - id: gather_evidence
+    agent: harness-retrospective
+    outputs:
+      - runs/retrospectives/YYYY-MM-DD-harness-retrospective.md
+    no_gate_reason: |
+      Evidence collection has no gate of its own. The downstream
+      identify_patterns and propose_improvements phases gate on the output.
+
+  - id: identify_patterns
+    agent: harness-retrospective
+    checks:
+      - repeated friction events
+      - repeated review failures
+      - stale validation commands
+      - unused docs
+      - overused docs
+      - unnecessary ceremony
+      - missing gates
+      - scope drift incidents
+    no_outputs_reason: |
+      Pattern identification is an in-memory analysis pass over the evidence
+      written in gather_evidence; no new artifact is produced.
+    no_gate_reason: |
+      No separate gate; the propose_improvements phase consumes this directly.
+
+  - id: propose_improvements
+    agent: harness-improvement-writer
+    outputs:
+      - .harness/improvement-backlog.yml
+    gate:
+      required:
+        - improvements_proposed_or_marked_none
+        - safety_classification_attached
+
+  - id: classify_safety
+    agent: harness-improvement-writer
+    rules:
+      - safe_doc_clarifications_may_be_auto_applied_if_policy_allows
+      - safety_weakening_requires_human_approval
+      - danger_zone_changes_require_human_approval
+    no_outputs_reason: |
+      Annotates the improvement-backlog entries written in the previous phase
+      rather than creating a new file.
+    gate:
+      required:
+        - every_proposal_classified
+        - unsafe_proposals_marked_for_human_approval
+
+  - id: stop
+    agent: harness-retrospective
+    rules:
+      - do_not_apply_unapproved_policy_changes
+    no_outputs_reason: |
+      Terminal phase. The retrospective hands off to the human for approval and
+      to harness-improvement-writer for any safe auto-application.
+    no_gate_reason: |
+      Terminal phase; no further transition.

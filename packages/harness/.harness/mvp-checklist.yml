@@ -1,0 +1,75 @@
+mvp:
+  name: unset
+  ready: false
+
+definition_of_done:
+  - primary user workflow works
+  - data persists correctly
+  - auth and authorization are reviewed
+  - validation commands pass or exceptions documented
+  - release and rollback are documented
+
+items:
+  product:
+    - id: P1
+      text: product brief complete
+      status: todo
+      critical: true
+    - id: P2
+      text: MVP scope complete
+      status: todo
+      critical: true
+    - id: P3
+      text: non-goals documented
+      status: todo
+      critical: true
+
+  architecture:
+    - id: A1
+      text: system overview complete
+      status: todo
+      critical: true
+    - id: A2
+      text: core ADRs accepted
+      status: todo
+      critical: true
+
+  build:
+    - id: B1
+      text: mission index has ready missions
+      status: todo
+      critical: true
+    - id: B2
+      text: primary workflow implemented
+      status: todo
+      critical: true
+
+  quality:
+    - id: Q1
+      text: tests pass
+      status: todo
+      critical: true
+    - id: Q2
+      text: lint/typecheck/build pass
+      status: todo
+      critical: true
+
+  security:
+    - id: S1
+      text: security review complete
+      status: todo
+      critical: true
+    - id: S2
+      text: secrets/env vars documented
+      status: todo
+      critical: true
+
+  release:
+    - id: R1
+      text: deployment runbook complete
+      status: todo
+      critical: true
+    - id: R2
+      text: rollback plan complete
+      status: todo
+      critical: true

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "harness-orchestrator"
+version = "0.1.0"
+description = "Cursor SDK orchestrator for the Adaptive Agentic Engineering Harness"
+requires-python = ">=3.10"
+dependencies = [
+  "pyyaml>=6.0",
+  "harness-core>=0.1.0",
+]
+
+[project.optional-dependencies]
+cursor = ["cursor-sdk>=0.1.0"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+harness-orchestrator = "harness_orchestrator.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["harness_orchestrator*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

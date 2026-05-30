@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "bash .cursor/hooks/session-start-load-state.sh"
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "bash .cursor/hooks/block-danger.sh",
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "bash .cursor/hooks/require-mission.sh",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "failClosed": false
+      }
+    ],
+    "stop": [
+      {
+        "command": "bash .cursor/hooks/stop-session-note-reminder.sh"
+      }
+    ]
+  }
+}

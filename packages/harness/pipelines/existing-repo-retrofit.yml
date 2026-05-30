@@ -1,0 +1,82 @@
+pipeline: existing-repo-retrofit
+description: Onboard an existing repo into the harness without changing behavior first.
+
+rules:
+  observe_before_edit: true
+  no_behavior_changes_until_phase: controlled-implementation
+
+phases:
+  - id: repo-discovery
+    agent: repo-analyzer
+    description: Inspect the repo without touching it.
+    outputs:
+      - docs/architecture/current-system.md
+      - docs/architecture/file-map.md
+      - docs/testing/testing-inventory.md
+      - docs/risks/risk-register.md
+    gate:
+      required:
+        - framework_identified_or_unknown_marked
+        - commands_inventoried
+        - risks_documented
+    rules:
+      - read_only
+      - no_dependency_installs
+
+  - id: harness-writing
+    agent: harness-writer
+    description: Generate AGENTS.md and .harness/ state for this repo.
+    inputs:
+      - docs/architecture/current-system.md
+    outputs:
+      - AGENTS.md
+      - CLAUDE.md
+      - .harness/project-state.yml
+      - .harness/context-manifest.yml
+      - .claude/settings.json
+    gate:
+      required:
+        - repo_instructions_updated
+        - context_manifest_updated
+        - hooks_wired
+
+  - id: adr-backfill
+    agent: adr-writer
+    description: Record existing architecture decisions with evidence.
+    inputs:
+      - docs/architecture/current-system.md
+    outputs:
+      - docs/adrs/backfilled/
+    gate:
+      required:
+        - core_decisions_recorded
+    rules:
+      - only_record_evidence_based_decisions
+      - mark_inferences_as_inferences
+
+  - id: mission-planning
+    agent: mission-planner
+    description: Plan the first controlled missions.
+    inputs:
+      - docs/risks/risk-register.md
+      - docs/adrs/backfilled/
+    outputs:
+      - runs/missions/
+      - .harness/mission-index.yml
+    gate:
+      required:
+        - ready_missions_exist
+        - smallest_reviewable_units_chosen
+
+  - id: controlled-implementation
+    agent: orchestrator
+    description: Begin behavior changes via the next-mission loop.
+    outputs:
+      - runs/missions/
+      - runs/reviews/
+      - runs/session-notes/
+    gate:
+      required:
+        - first_mission_complete
+    loop:
+      pipeline: pipelines/next-mission-loop.yml

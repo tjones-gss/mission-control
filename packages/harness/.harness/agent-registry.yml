@@ -1,0 +1,31 @@
+# Agent registry — maps agent role names referenced in pipelines/*.yml to
+# concrete files on disk. `tools/harness check` uses this for validation.
+#
+# Resolution order, highest priority first:
+#   1. Explicit alias in `aliases:` below (e.g. for cross-tool naming differences)
+#   2. agents/roles/<name>.md (the cross-tool, adapter-neutral role definition)
+#   3. adapters/claude-code/.claude/agents/<name>.md (Claude Code subagent)
+#
+# If none of those resolve, `harness check` warns (or fails under --strict).
+#
+# Add an alias when a pipeline references a name that doesn't match a file on
+# disk under the default rules. The most common case: when the Claude Code
+# adapter uses a `harness-` prefix and a pipeline references the bare name.
+
+aliases:
+  # Examples (uncomment / extend as needed):
+  #
+  # If a pipeline says `agent: orchestrator` and you want it to resolve to
+  # the Claude Code subagent file too:
+  #   orchestrator: adapters/claude-code/.claude/agents/harness-orchestrator.md
+  #
+  # If a pipeline references a custom team-specific agent:
+  #   gss-cobol-tester: agents/roles/tester.md
+  {}
+
+# Notes:
+# - Aliases are file paths relative to the harness root.
+# - Aliases override default resolution — use sparingly to avoid hiding what
+#   actually runs.
+# - When adding a new agent name to a pipeline, prefer creating
+#   agents/roles/<name>.md first (no alias needed).

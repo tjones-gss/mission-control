@@ -1,0 +1,102 @@
+pipeline: feature-development
+description: Add a feature to an existing harness-equipped project.
+
+phases:
+  - id: classify-feature
+    agent: product-analyst
+    description: Decide whether the change is a feature, bugfix, or refactor.
+    inputs:
+      - docs/product/mvp-scope.md
+    outputs:
+      - docs/specs/next-work/<feature-slug>.md
+    gate:
+      required:
+        - feature_classified
+        - mvp_scope_impact_assessed
+
+  - id: adr-if-architecture-changes
+    agent: adr-writer
+    description: Required only if the feature changes architecture.
+    inputs:
+      - docs/architecture/system-overview.md
+    outputs:
+      - docs/adrs/<adr-number>.md
+    gate:
+      required:
+        - architecture_change_decision_recorded_or_marked_none
+    rules:
+      - skip_unless_architecture_changes
+
+  - id: spec
+    agent: spec-writer
+    description: Spec the feature so it can be sliced into missions.
+    inputs:
+      - docs/specs/next-work/<feature-slug>.md
+    outputs:
+      - docs/specs/SPEC-<number>-<feature-slug>.md
+    gate:
+      required:
+        - acceptance_criteria_defined
+        - non_goals_defined
+
+  - id: mission-planning
+    agent: mission-planner
+    description: Slice the spec into bounded missions.
+    inputs:
+      - docs/specs/SPEC-<number>-<feature-slug>.md
+    outputs:
+      - runs/missions/MISSION-<id>-*.md
+      - .harness/mission-index.yml
+    gate:
+      required:
+        - allowed_files_defined
+        - forbidden_files_defined
+        - acceptance_criteria_defined
+        - validation_commands_defined
+        - stop_conditions_defined
+
+  - id: implementation
+    agent: implementer
+    description: Execute one mission per session.
+    inputs:
+      - runs/missions/MISSION-<id>-*.md
+    outputs:
+      - <files-per-mission-allowed-list>
+    gate:
+      required:
+        - mission_acceptance_criteria_met
+        - no_unrelated_changes
+
+  - id: validation
+    agent: tester
+    description: Run validation commands, capture results.
+    outputs:
+      - runs/test-reports/<mission-id>.md
+    gate:
+      required:
+        - tests_pass_or_explained
+        - lint_pass_or_explained
+        - typecheck_pass_or_explained
+        - build_pass_or_explained
+
+  - id: review
+    agent: reviewer
+    description: Strict production PR review.
+    inputs:
+      - runs/missions/MISSION-<id>-*.md
+      - runs/test-reports/<mission-id>.md
+    outputs:
+      - runs/reviews/<mission-id>-review.md
+    gate:
+      required:
+        - review_checklist_complete
+        - blocker_findings_resolved_or_explained
+
+  - id: session-memory
+    agent: session-memory
+    description: Write the session note before stopping.
+    outputs:
+      - runs/session-notes/<date>-<mission-id>.md
+    gate:
+      required:
+        - session_note_written

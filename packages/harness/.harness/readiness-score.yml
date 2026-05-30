@@ -1,0 +1,46 @@
+readiness:
+  product:
+    score: 0
+    blockers:
+      - product brief missing
+      - MVP scope missing
+
+  architecture:
+    score: 0
+    blockers:
+      - architecture overview missing
+      - ADR baseline missing
+
+  engineering:
+    score: 0
+    blockers:
+      - specs missing
+      - missions missing
+
+  testing:
+    score: 0
+    blockers:
+      - test commands unverified
+      - critical tests missing
+
+  security:
+    score: 0
+    blockers:
+      - security baseline incomplete
+      - auth review incomplete
+
+  release:
+    score: 0
+    blockers:
+      - deployment runbook missing
+      - rollback plan missing
+
+  overall:
+    score: 0
+    mvp_ready: false
+
+scoring_policy:
+  90_100: ready
+  75_89: nearly_ready
+  50_74: needs_work
+  0_49: not_ready

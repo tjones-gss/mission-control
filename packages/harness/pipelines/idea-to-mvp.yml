@@ -1,0 +1,121 @@
+pipeline: idea-to-mvp
+description: Take a raw idea to a release-ready MVP, gate by gate.
+
+phases:
+  - id: intake
+    agent: intake
+    description: Clarify the idea, the user, and the primary workflow.
+    outputs:
+      - docs/product/product-brief.md
+      - docs/product/assumptions.md
+      - docs/product/open-questions.md
+    gate:
+      required:
+        - product_problem_defined
+        - target_user_defined
+        - primary_workflow_defined
+
+  - id: research
+    agent: researcher
+    description: Compare relevant options and surface risks.
+    inputs:
+      - docs/product/product-brief.md
+    outputs:
+      - docs/research/research-brief.md
+    gate:
+      required:
+        - relevant_options_compared
+        - risks_identified
+
+  - id: product
+    agent: product-analyst
+    description: Lock MVP scope and explicit non-goals.
+    inputs:
+      - docs/product/product-brief.md
+      - docs/research/research-brief.md
+    outputs:
+      - docs/product/mvp-scope.md
+      - docs/product/user-stories.md
+      - docs/product/non-goals.md
+    gate:
+      required:
+        - mvp_scope_defined
+        - non_goals_defined
+
+  - id: architecture
+    agent: architect
+    description: Define the system at a level that supports ADRs and specs.
+    inputs:
+      - docs/product/mvp-scope.md
+    outputs:
+      - docs/architecture/system-overview.md
+      - docs/architecture/data-flow.md
+      - docs/architecture/service-boundaries.md
+    gate:
+      required:
+        - architecture_overview_complete
+        - core_boundaries_defined
+
+  - id: adr-writing
+    agent: adr-writer
+    description: Record core architecture decisions.
+    inputs:
+      - docs/architecture/system-overview.md
+    outputs:
+      - docs/adrs/
+    gate:
+      required:
+        - tech_stack_adr
+        - data_model_adr
+        - auth_adr_if_needed
+
+  - id: spec-writing
+    agent: spec-writer
+    description: Write specs for each MVP feature.
+    inputs:
+      - docs/product/mvp-scope.md
+      - docs/adrs/
+    outputs:
+      - docs/specs/
+    gate:
+      required:
+        - specs_for_mvp_features
+
+  - id: mission-planning
+    agent: mission-planner
+    description: Slice specs into bounded, reviewable missions.
+    inputs:
+      - docs/specs/
+    outputs:
+      - runs/missions/
+      - .harness/mission-index.yml
+    gate:
+      required:
+        - ready_missions_exist
+
+  - id: build-loop
+    agent: orchestrator
+    description: Run the next-mission loop until MVP gate.
+    outputs:
+      - runs/missions/
+      - runs/reviews/
+      - runs/session-notes/
+    gate:
+      required:
+        - mvp_checklist_satisfied
+    loop:
+      pipeline: pipelines/next-mission-loop.yml
+
+  - id: mvp-gate
+    agent: release-readiness
+    description: Confirm MVP is releasable.
+    inputs:
+      - .harness/mvp-checklist.yml
+      - docs/checklists/production-readiness-checklist.md
+    outputs:
+      - runs/reviews/mvp-readiness-review.md
+    gate:
+      required:
+        - mvp_ready
+        - rollback_plan_documented
+        - human_approval_for_release

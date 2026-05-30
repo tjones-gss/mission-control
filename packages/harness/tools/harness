@@ -1,0 +1,1931 @@
+#!/usr/bin/env python3
+"""
+harness — Control plane CLI for the Adaptive Agentic Engineering Harness.
+
+Usage:
+  harness status                 Show project state, pipeline, mission, blockers, next action
+  harness check                  Verify harness is installed and wired correctly
+  harness next                   Run mission-selection algorithm, suggest next action (no edits)
+  harness init <mode>            Bootstrap project-state.yml + pipeline-state.yml for a mode
+                                   modes: idea-to-mvp, mvp-sketch, existing-repo-retrofit,
+                                          feature-development, bugfix, refactor, release-readiness
+                                   (installs Cursor hooks unless --skip-cursor)
+  harness install cursor           Install Cursor adapter hooks + SDK pip packages
+  harness install claude           Install Claude Code adapter (.claude/ + CLAUDE.md)
+  harness setup                    Wire core harness on this machine (Cursor + Claude hooks)
+  harness validate               Run validation commands from active mission, write report
+  harness handoff [--mission ID] Generate a session note skeleton from current state
+  harness dashboard [--open]     Render runs/dashboard/index.html from harness state files
+
+Options:
+  -C <path>     Run as if in <path> instead of the cwd
+  --json        Emit machine-readable JSON output (status, check, next)
+  --strict      Exit non-zero on warnings (check)
+  -h, --help    Show this message
+"""
+
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+# Shared control-plane library (harness_core/)
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+try:
+    import yaml
+except ImportError:
+    # `harness setup` bootstraps a fresh machine, so it must be able to install
+    # PyYAML itself. The import runs before any command code, so the install has
+    # to happen here — otherwise setup would exit before it could ever fix this.
+    if "setup" in sys.argv:
+        print("Installing PyYAML (required for harness CLI)...", file=sys.stderr)
+        subprocess.run([sys.executable, "-m", "pip", "install", "pyyaml"])
+    try:
+        import yaml
+    except ImportError:
+        print("error: PyYAML is required. install with: pip install pyyaml", file=sys.stderr)
+        sys.exit(2)
+
+def load_yaml(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+        return data if isinstance(data, dict) else {}
+    except yaml.YAMLError as e:
+        raise SystemExit(f"error: failed to parse {path}: {e}") from e
+
+
+from harness_core.missions import list_ready_missions, select_next_mission
+from harness_core.yaml_utils import find_harness_root, get, save_yaml
+
+def _run_cursor_adapter_install(root: Path, *, hooks_only: bool = True) -> int:
+    """Run tools/install-cursor-adapter.py for the given harness root."""
+    script = root / "tools" / "install-cursor-adapter.py"
+    if not script.is_file():
+        print(f"warning: Cursor adapter installer missing: {script}", file=sys.stderr)
+        return 0
+    cmd = [sys.executable, str(script), "--root", str(root)]
+    if hooks_only:
+        cmd.append("--hooks-only")
+    result = subprocess.run(cmd, cwd=str(root))
+    return result.returncode
+
+
+def _run_claude_adapter_install(root: Path) -> int:
+    """Run tools/install-claude-adapter.py for the given harness root."""
+    script = root / "tools" / "install-claude-adapter.py"
+    if not script.is_file():
+        print(f"error: Claude adapter installer missing: {script}", file=sys.stderr)
+        return 2
+    result = subprocess.run([sys.executable, str(script), "--root", str(root)], cwd=str(root))
+    return result.returncode
+
+
+
+def colorize(text: str, color: str) -> str:
+    if not sys.stdout.isatty():
+        return text
+    codes = {"red": 31, "green": 32, "yellow": 33, "blue": 34, "cyan": 36, "bold": 1, "dim": 2}
+    return f"\033[{codes.get(color, 0)}m{text}\033[0m"
+
+
+def emoji_or_ascii(emoji: str, ascii_: str) -> str:
+    """Use ascii fallback if stdout is not a TTY (better in CI logs)."""
+    if not sys.stdout.isatty():
+        return ascii_
+    return emoji
+
+
+def _allowed_patterns(mission_path: Path) -> list[str]:
+    """Return bullet entries under `## Allowed Files` in a mission markdown.
+
+    Mirrors the strip logic in adapters/claude-code/.claude/hooks/require-mission.sh
+    so the lint sees what the hook sees. Tolerant: returns [] on read errors.
+    """
+    patterns: list[str] = []
+    in_sec = False
+    try:
+        for line in mission_path.read_text().splitlines():
+            if line.startswith("##"):
+                in_sec = line.strip().lower().startswith("## allowed files")
+                continue
+            if in_sec:
+                m = re.match(r"^\s*-\s+(.+?)\s*$", line)
+                if m:
+                    p = m.group(1).strip()
+                    # Strip a single layer of surrounding ", ', or `
+                    if len(p) >= 2 and p[0] in "\"'`" and p[-1] == p[0]:
+                        p = p[1:-1]
+                    if p:
+                        patterns.append(p)
+    except OSError:
+        pass
+    return patterns
+
+
+# ---------- commands ----------
+
+def cmd_status(args, root: Path) -> int:
+    project = load_yaml(root / ".harness/project-state.yml")
+    pipeline = load_yaml(root / ".harness/pipeline-state.yml")
+    missions = load_yaml(root / ".harness/mission-index.yml")
+    readiness = load_yaml(root / ".harness/readiness-score.yml")
+
+    if args.json:
+        out = {
+            "project": project.get("project", {}),
+            "stack": project.get("stack", {}),
+            "pipeline": pipeline.get("pipeline", {}),
+            "missions": missions.get("missions", {}),
+            "readiness_overall": get(readiness, "readiness", "overall", default={}),
+            "next": project.get("next", {}),
+        }
+        print(json.dumps(out, indent=2, default=str))
+        return 0
+
+    name = get(project, "project", "name", default="(unset)")
+    mode = get(project, "project", "mode", default="(unset)")
+    stage = get(project, "project", "stage", default="(unset)")
+
+    print(colorize(f"{emoji_or_ascii('📁', '[project]')} {name}", "bold"))
+    print(f"   Mode:    {colorize(str(mode), 'cyan')}")
+    print(f"   Stage:   {stage}")
+
+    pl_active = get(pipeline, "pipeline", "active", default="(unset)")
+    pl_phase = get(pipeline, "pipeline", "phase", default="(unset)")
+    pl_gate = get(pipeline, "pipeline", "gate", default="(unset)")
+
+    print()
+    print(colorize(f"{emoji_or_ascii('🚦', '[pipeline]')} {pl_active}", "bold"))
+    print(f"   Phase:  {pl_phase}")
+    print(f"   Gate:   {pl_gate}")
+
+    current_mission = get(project, "current", "mission")
+    if current_mission:
+        print()
+        print(colorize(f"{emoji_or_ascii('🎯', '[mission]')} {current_mission}", "bold"))
+
+    # Mission summary
+    mission_dict = missions.get("missions") or {}
+    if isinstance(mission_dict, dict) and mission_dict:
+        counts = {}
+        for m, data in mission_dict.items():
+            if not isinstance(data, dict):
+                continue
+            s = data.get("status", "unknown")
+            counts[s] = counts.get(s, 0) + 1
+        print()
+        print(colorize(f"{emoji_or_ascii('📋', '[missions]')} {sum(counts.values())} total", "bold"))
+        for status, n in sorted(counts.items()):
+            print(f"   {status}: {n}")
+
+    # Readiness
+    overall = get(readiness, "readiness", "overall", default={})
+    if overall:
+        score = overall.get("score", 0)
+        mvp_ready = overall.get("mvp_ready", False)
+        color = "green" if mvp_ready else "yellow"
+        ready_mark = emoji_or_ascii("✓", "yes") if mvp_ready else emoji_or_ascii("✗", "no")
+        print()
+        print(colorize(f"{emoji_or_ascii('📊', '[readiness]')} {score}/100  (MVP ready: {ready_mark})", color))
+
+        # Blockers per area
+        blockers = []
+        for area, data in (readiness.get("readiness") or {}).items():
+            if area == "overall" or not isinstance(data, dict):
+                continue
+            for b in data.get("blockers", []) or []:
+                blockers.append((area, b))
+        if blockers:
+            print()
+            print(colorize(f"{emoji_or_ascii('⚠️', '[blockers]')}", "yellow"))
+            for area, b in blockers:
+                print(f"   • [{area}] {b}")
+
+    # Next action
+    nxt = project.get("next") or {}
+    if nxt:
+        print()
+        agent = nxt.get("recommended_agent", "?")
+        action = nxt.get("recommended_action", "?")
+        print(colorize(f"{emoji_or_ascii('➡️', '->')}  next: {colorize(agent, 'cyan')} → {action}", "bold"))
+        if nxt.get("blocked"):
+            print(colorize(f"   BLOCKED: {nxt.get('blocker', '(unknown)')}", "red"))
+
+    return 0
+
+
+def cmd_check(args, root: Path) -> int:
+    """Verify harness install. Three layers: control plane, adapter, functional."""
+    failures = []
+    warnings = []
+
+    def ok(msg):
+        print(f"  {colorize(emoji_or_ascii('✓', '[ok]'), 'green')} {msg}")
+
+    def fail(msg):
+        print(f"  {colorize(emoji_or_ascii('✗', '[FAIL]'), 'red')} {msg}")
+        failures.append(msg)
+
+    def warn(msg):
+        print(f"  {colorize(emoji_or_ascii('⚠', '[warn]'), 'yellow')} {msg}")
+        warnings.append(msg)
+
+    # --- Layer 1: control plane ---
+    print(colorize("Control plane", "bold"))
+    required = [
+        ".harness/project-state.yml",
+        ".harness/pipeline-state.yml",
+        ".harness/mission-index.yml",
+        ".harness/context-manifest.yml",
+        ".harness/quality-gates.yml",
+        ".harness/danger-zone.yml",
+        ".harness/human-approval-policy.yml",
+        ".harness/anti-patterns.yml",
+        ".harness/artifact-index.yml",
+        ".harness/mvp-checklist.yml",
+        ".harness/readiness-score.yml",
+        "AGENTS.md",
+    ]
+    for rel in required:
+        p = root / rel
+        if not p.exists():
+            fail(f"missing: {rel}")
+            continue
+        if rel.endswith(".yml"):
+            try:
+                yaml.safe_load(p.read_text())
+                ok(f"{rel} parses")
+            except yaml.YAMLError as e:
+                fail(f"{rel} invalid YAML: {e}")
+        else:
+            ok(f"{rel} present")
+
+    # mode set?
+    project = load_yaml(root / ".harness/project-state.yml")
+    mode = get(project, "project", "mode")
+    if mode in (None, "unset", ""):
+        warn("project.mode is 'unset' — run `harness init <mode>`")
+    else:
+        ok(f"project.mode = {mode}")
+
+    # active pipeline exists?
+    pipeline_state = load_yaml(root / ".harness/pipeline-state.yml")
+    active = get(pipeline_state, "pipeline", "active")
+    if active and active != "unset":
+        pp = root / "pipelines" / f"{active}.yml"
+        if pp.exists():
+            ok(f"active pipeline file present: pipelines/{active}.yml")
+        else:
+            fail(f"active pipeline references missing file: pipelines/{active}.yml")
+
+    # --- Layer 2: Claude Code adapter ---
+    print()
+    print(colorize("Claude Code adapter", "bold"))
+    settings_path = root / ".claude/settings.json"
+    if not settings_path.exists():
+        warn("no .claude/settings.json — adapter not installed (skip if not using Claude Code)")
+    else:
+        try:
+            settings = json.loads(settings_path.read_text())
+            ok(".claude/settings.json parses")
+
+            # walk every hook entry, verify scripts exist + executable
+            hooks_section = settings.get("hooks", {})
+            for event, groups in hooks_section.items():
+                for group in groups:
+                    for h in group.get("hooks", []):
+                        if h.get("type") != "command":
+                            continue
+                        cmd = h.get("command", "")
+                        rp = resolve_claude_hook_script(cmd, root)
+                        if not rp.exists():
+                            fail(f"hook script missing for {event}: {rp}")
+                            continue
+                        if not os.access(rp, os.X_OK):
+                            warn(f"hook script not executable: {rp.relative_to(root)} — run chmod +x")
+                        else:
+                            ok(f"{event} hook: {rp.name}")
+        except json.JSONDecodeError as e:
+            fail(f".claude/settings.json invalid JSON: {e}")
+
+    # CLAUDE.md
+    if (root / "CLAUDE.md").exists():
+        ok("CLAUDE.md present")
+    else:
+        warn("CLAUDE.md missing — Claude Code won't auto-load harness context")
+
+    # Subagents
+    agents_dir = root / ".claude/agents"
+    if agents_dir.is_dir():
+        agents = list(agents_dir.glob("*.md"))
+        if not agents:
+            warn(".claude/agents/ is empty")
+        for a in agents:
+            content = a.read_text()
+            m = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+            if not m:
+                fail(f"subagent missing YAML frontmatter: {a.name}")
+                continue
+            fm = m.group(1)
+            if "name:" not in fm or "description:" not in fm:
+                fail(f"subagent frontmatter incomplete: {a.name}")
+            else:
+                ok(f"subagent: {a.name}")
+
+    # --- Layer 2b: Cursor adapter ---
+    print()
+    print(colorize("Cursor adapter", "bold"))
+    cursor_hooks_json = root / ".cursor/hooks.json"
+    cursor_adapter_hooks = root / "adapters/cursor/.cursor/hooks.json"
+    if not cursor_hooks_json.exists() and not cursor_adapter_hooks.exists():
+        warn("no .cursor/hooks.json — Cursor adapter not installed (copy adapters/cursor/.cursor/)")
+    else:
+        hooks_json_path = cursor_hooks_json if cursor_hooks_json.exists() else cursor_adapter_hooks
+        try:
+            cursor_cfg = json.loads(hooks_json_path.read_text())
+            ok(f"{hooks_json_path.relative_to(root)} parses")
+            adapter_hooks_dir = root / "adapters/cursor/.cursor/hooks"
+            installed_hooks_dir = root / ".cursor/hooks"
+            hooks_dir_for_scripts = (
+                installed_hooks_dir
+                if installed_hooks_dir.is_dir()
+                else adapter_hooks_dir
+            )
+            cursor_hooks = cursor_cfg.get("hooks", {})
+            for event, entries in cursor_hooks.items():
+                if not isinstance(entries, list):
+                    continue
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    cmd = entry.get("command", "")
+                    if not cmd:
+                        continue
+                    parts = cmd.strip().split()
+                    script_name = Path(parts[-1]).name if parts else Path(cmd).name
+                    rp = hooks_dir_for_scripts / script_name
+                    if not rp.exists():
+                        rp = root / cmd if not Path(cmd).is_absolute() else Path(cmd)
+                    if not rp.exists():
+                        fail(f"Cursor hook script missing for {event}: {cmd}")
+                        continue
+                    if os.name != "nt" and not os.access(rp, os.X_OK):
+                        warn(f"Cursor hook not executable: {rp.relative_to(root)} — run chmod +x")
+                    else:
+                        ok(f"Cursor {event} hook: {rp.name}")
+        except json.JSONDecodeError as e:
+            fail(f"{hooks_json_path} invalid JSON: {e}")
+
+    cursor_rules = root / ".cursor/rules"
+    if cursor_rules.is_dir() and list(cursor_rules.glob("*.mdc")):
+        ok(f".cursor/rules/ ({len(list(cursor_rules.glob('*.mdc')))} rules)")
+    elif (root / "adapters/cursor/.cursor/rules").is_dir():
+        ok("adapters/cursor/.cursor/rules/ present (copy to project root to install)")
+
+    # jq available?
+    jq_path = shutil_which("jq")
+    if jq_path:
+        ok(f"jq available at {jq_path}")
+    else:
+        warn("jq not installed — hooks degrade to pass-through (no enforcement)")
+
+    # --- Layer 3: functional smoke tests ---
+    print()
+    print(colorize("Functional smoke tests", "bold"))
+    hooks_dir = root / ".claude/hooks"
+    if hooks_dir.is_dir() and jq_path:
+        # 1. block-danger denies rm -rf
+        block_danger = hooks_dir / "block-danger.sh"
+        if block_danger.exists():
+            out = run_with_stdin(block_danger, '{"tool_input":{"command":"rm -rf /tmp/test"}}', root)
+            if '"permissionDecision": "deny"' in out:
+                ok("block-danger.sh denies dangerous command")
+            else:
+                fail("block-danger.sh did NOT deny `rm -rf` — got: " + (out[:120] or "(empty)"))
+
+            out = run_with_stdin(block_danger, '{"tool_input":{"command":"ls -la"}}', root)
+            if out.strip() == "":
+                ok("block-danger.sh allows safe command")
+            else:
+                fail(f"block-danger.sh produced unexpected output for safe command: {out[:120]}")
+
+        require_mission = hooks_dir / "require-mission.sh"
+        if require_mission.exists():
+            test_path = str(root / ".harness/project-state.yml")
+            out = run_with_stdin(require_mission, json.dumps({"tool_input": {"file_path": test_path}}), root)
+            if out.strip() == "":
+                ok("require-mission.sh allows edits to .harness/")
+            else:
+                fail(f"require-mission.sh should allow .harness/ edits, got: {out[:120]}")
+
+    elif hooks_dir.is_dir() and not jq_path:
+        warn("skipping Claude functional smoke tests — jq not installed")
+
+    # Cursor hook smoke tests (adapter source or installed copy)
+    cursor_hooks_dir = root / ".cursor/hooks"
+    if not cursor_hooks_dir.is_dir():
+        cursor_hooks_dir = root / "adapters/cursor/.cursor/hooks"
+    bash_available = bool(shutil_which("bash"))
+    if cursor_hooks_dir.is_dir() and jq_path:
+        c_block = cursor_hooks_dir / "block-danger.sh"
+        if c_block.exists():
+            out = run_with_stdin(c_block, '{"command":"rm -rf /tmp/test"}', root, cursor=True)
+            if '"permission": "deny"' in out:
+                ok("Cursor block-danger.sh denies dangerous command")
+            elif not bash_available:
+                warn("Cursor block-danger.sh smoke test skipped — bash not in PATH (install Git Bash on Windows)")
+            else:
+                fail("Cursor block-danger.sh did NOT deny rm -rf — got: " + (out[:120] or "(empty)"))
+
+            out = run_with_stdin(c_block, '{"command":"ls -la"}', root, cursor=True)
+            if '"permission": "allow"' in out:
+                ok("Cursor block-danger.sh allows safe command")
+            elif not bash_available:
+                warn("Cursor block-danger.sh safe-command smoke test skipped — bash not in PATH")
+            elif out.strip() == "" or "(error:" in out:
+                fail(f"Cursor block-danger.sh unexpected safe output: {out[:120]}")
+
+        c_require = cursor_hooks_dir / "require-mission.sh"
+        if c_require.exists():
+            test_path = str(root / ".harness/project-state.yml")
+            out = run_with_stdin(
+                c_require, json.dumps({"tool_input": {"file_path": test_path}}), root, cursor=True
+            )
+            if '"permission": "allow"' in out:
+                ok("Cursor require-mission.sh allows .harness/ edits (bootstrap/no mission)")
+            elif not bash_available:
+                warn("Cursor require-mission.sh smoke test skipped — bash not in PATH (install Git Bash on Windows)")
+            else:
+                fail(f"Cursor require-mission.sh unexpected: {out[:120]}")
+    elif cursor_hooks_dir.is_dir() and not jq_path:
+        warn("skipping Cursor functional smoke tests — jq not installed")
+
+    # --- Layer 4: pipelines ---
+    print()
+    print(colorize("Pipelines", "bold"))
+    pipelines_dir = root / "pipelines"
+    referenced_agents = set()
+    if not pipelines_dir.is_dir():
+        warn("no pipelines/ directory")
+    else:
+        for pp in sorted(pipelines_dir.glob("*.yml")):
+            try:
+                d = yaml.safe_load(pp.read_text())
+            except yaml.YAMLError as e:
+                fail(f"{pp.name}: invalid YAML: {e}")
+                continue
+            if "pipeline" not in d or "phases" not in d:
+                fail(f"{pp.name}: missing top-level `pipeline` or `phases`")
+                continue
+            phase_problems = []
+            for i, ph in enumerate(d.get("phases") or []):
+                if not isinstance(ph, dict):
+                    phase_problems.append(f"phase {i}: not an object (bare string?)")
+                    continue
+                pid = ph.get("id", f"#{i}")
+                # Required: id, agent
+                for required_key in ("id", "agent"):
+                    if required_key not in ph:
+                        phase_problems.append(f"phase {pid}: missing `{required_key}`")
+                if "agent" in ph and ph["agent"]:
+                    referenced_agents.add(ph["agent"])
+                # Outputs OR explicit no_outputs_reason
+                if "outputs" not in ph and "no_outputs_reason" not in ph:
+                    phase_problems.append(
+                        f"phase {pid}: missing `outputs` (or declare `no_outputs_reason: <why>`)"
+                    )
+                # Gate.required OR explicit no_gate_reason
+                if "gate" not in ph and "no_gate_reason" not in ph:
+                    phase_problems.append(
+                        f"phase {pid}: missing `gate` (or declare `no_gate_reason: <why>`)"
+                    )
+                if "gate" in ph:
+                    gate = ph.get("gate") or {}
+                    if "required" not in gate and "no_gate_reason" not in ph:
+                        phase_problems.append(
+                            f"phase {pid}: gate has no `required` list"
+                        )
+            if phase_problems:
+                fail(f"{pp.name}: {len(phase_problems)} issue(s)")
+                for pb in phase_problems:
+                    print(f"      - {pb}")
+            else:
+                ok(f"{pp.name}: {len(d.get('phases', []))} phases, schema valid")
+
+    # --- Layer 5: agent reference resolution ---
+    print()
+    print(colorize("Agent references", "bold"))
+    registry_path = root / ".harness/agent-registry.yml"
+    aliases = {}
+    if registry_path.exists():
+        registry = load_yaml(registry_path)
+        aliases = (registry.get("aliases") or {}) if isinstance(registry, dict) else {}
+        ok(f".harness/agent-registry.yml present ({len(aliases)} alias(es))")
+    else:
+        warn(".harness/agent-registry.yml missing — using default resolution rules only")
+
+    role_dir = root / "agents/roles"
+    adapter_dir = root / "adapters/claude-code/.claude/agents"
+    for agent in sorted(referenced_agents):
+        # 1) alias hit
+        if agent in aliases:
+            target = aliases[agent]
+            if (root / target).exists():
+                ok(f"agent `{agent}` -> alias -> {target}")
+            else:
+                fail(f"agent `{agent}` aliased to {target} but file missing")
+            continue
+        # 2) agents/roles/<name>.md
+        role_file = role_dir / f"{agent}.md"
+        # 3) claude-code subagent
+        adapter_file = adapter_dir / f"{agent}.md"
+        if role_file.exists():
+            ok(f"agent `{agent}` -> agents/roles/{agent}.md")
+        elif adapter_file.exists():
+            ok(f"agent `{agent}` -> adapters/claude-code/.claude/agents/{agent}.md")
+        else:
+            warn(
+                f"agent `{agent}` unresolved — no agents/roles/{agent}.md, "
+                f"no claude-code subagent, no alias in agent-registry.yml"
+            )
+
+    # --- Layer 6: mission index + current mission ---
+    print()
+    print(colorize("Missions", "bold"))
+    current_mission = get(project, "current", "mission")
+    if current_mission and current_mission not in (None, "null", "unset"):
+        mi = load_yaml(root / ".harness/mission-index.yml")
+        entry = (mi.get("missions") or {}).get(current_mission)
+        if not entry:
+            fail(
+                f"current.mission = `{current_mission}` but no matching entry in "
+                f".harness/mission-index.yml"
+            )
+        else:
+            mission_file_rel = entry.get("file")
+            if not mission_file_rel:
+                fail(
+                    f"mission `{current_mission}` has no `file:` field in mission-index.yml"
+                )
+            elif not (root / mission_file_rel).exists():
+                fail(
+                    f"mission `{current_mission}` file does not exist: {mission_file_rel}"
+                )
+            else:
+                ok(f"current mission `{current_mission}` -> {mission_file_rel}")
+    else:
+        ok("no current.mission set (orchestrator/bootstrap state)")
+
+    # Every mission-index entry should point to a real file
+    mi = load_yaml(root / ".harness/mission-index.yml")
+    for mid, data in (mi.get("missions") or {}).items():
+        if not isinstance(data, dict):
+            continue
+        f_rel = data.get("file")
+        if not f_rel:
+            warn(f"mission `{mid}`: no `file:` field")
+            continue
+        if not (root / f_rel).exists():
+            fail(f"mission `{mid}`: file does not exist: {f_rel}")
+        else:
+            # v5.1.1: catch-all Allowed patterns (`*` or `**`) defeat mission
+            # scope. Warn so authors either tighten the glob or acknowledge it
+            # explicitly. Forbidden Files still apply, so this is a warning,
+            # not a failure.
+            for pat in _allowed_patterns(root / f_rel):
+                if pat in ("*", "**"):
+                    warn(
+                        f"mission `{mid}`: Allowed Files pattern `{pat}` is "
+                        f"a catch-all — any path under the project root "
+                        f"matches. Tighten the glob or split the mission."
+                    )
+
+    # --- Layer 7: danger-zone readable + non-empty ---
+    print()
+    print(colorize("Danger zone", "bold"))
+    dz_path = root / ".harness/danger-zone.yml"
+    if not dz_path.exists():
+        fail(".harness/danger-zone.yml missing — block-danger.sh will use built-in fallback")
+    else:
+        dz = load_yaml(dz_path)
+        patterns = dz.get("blocked_command_patterns") or []
+        if not patterns:
+            warn(".harness/danger-zone.yml has no `blocked_command_patterns` list")
+        else:
+            ok(f"danger-zone has {len(patterns)} blocked pattern(s)")
+        if not (dz.get("dangerous_operations") or {}).get("require_human_approval"):
+            warn(".harness/danger-zone.yml has no `dangerous_operations.require_human_approval`")
+
+    # --- Verdict ---
+    print()
+    if failures:
+        print(colorize(f"{emoji_or_ascii('✗', '[BROKEN]')} BROKEN — {len(failures)} failure(s), {len(warnings)} warning(s)", "red"))
+        return 1
+    if warnings and args.strict:
+        print(colorize(f"{emoji_or_ascii('⚠', '[DEGRADED]')} DEGRADED (strict) — {len(warnings)} warning(s)", "yellow"))
+        return 1
+    if warnings:
+        print(colorize(f"{emoji_or_ascii('⚠', '[DEGRADED]')} DEGRADED — {len(warnings)} warning(s), 0 failures", "yellow"))
+        return 0
+    print(colorize(f"{emoji_or_ascii('✓', '[HEALTHY]')} HEALTHY — all checks passed", "green"))
+    return 0
+
+
+def cmd_next(args, root: Path) -> int:
+    """Apply the mission selection policy and report the next action."""
+    project = load_yaml(root / ".harness/project-state.yml")
+    pipeline = load_yaml(root / ".harness/pipeline-state.yml")
+    missions = load_yaml(root / ".harness/mission-index.yml")
+
+    mode = get(project, "project", "mode")
+    if mode in (None, "unset", ""):
+        print("project mode is unset. run: harness init <mode>", file=sys.stderr)
+        return 2
+
+    # Apply selection policy
+    selection = missions.get("selection_policy", {}) or {}
+    do_not_select = set(missions.get("do_not_select", []) or [])
+
+    mission_dict = (missions.get("missions") or {})
+    if not isinstance(mission_dict, dict):
+        mission_dict = {}
+
+    ready = []
+    for mid, data in mission_dict.items():
+        if not isinstance(data, dict):
+            continue
+        status = data.get("status", "")
+        if status in ("ready",) and status not in do_not_select:
+            ready.append((mid, data))
+
+    if args.json:
+        print(json.dumps({
+            "mode": mode,
+            "phase": get(pipeline, "pipeline", "phase"),
+            "ready_missions": [m[0] for m in ready],
+            "recommended": ready[0][0] if ready else None,
+        }, indent=2))
+        return 0
+
+    print(colorize(f"Mode: {mode}", "bold"))
+    print(f"Phase: {get(pipeline, 'pipeline', 'phase', default='(unset)')}")
+
+    if not ready:
+        print()
+        print(colorize("No ready missions in mission-index.yml.", "yellow"))
+        print()
+        print("Next action depends on phase:")
+        recommended_action = get(project, "next", "recommended_action", default="(none)")
+        recommended_agent = get(project, "next", "recommended_agent", default="(none)")
+        print(f"  agent:  {recommended_agent}")
+        print(f"  action: {recommended_action}")
+        return 0
+
+    # Sort by priority hint (high > medium > low)
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    ready.sort(key=lambda kv: priority_order.get(kv[1].get("priority", "medium"), 1))
+
+    print()
+    print(colorize(f"Ready missions ({len(ready)}):", "bold"))
+    for mid, data in ready:
+        prio = data.get("priority", "medium")
+        f = data.get("file", "?")
+        print(f"  [{prio:6s}] {mid}  →  {f}")
+
+    print()
+    chosen = ready[0]
+    print(colorize(f"Recommended: {chosen[0]}", "green"))
+    print(f"  spec: {chosen[1].get('spec', '?')}")
+    print(f"  adr:  {chosen[1].get('adr', '?')}")
+    print(f"  file: {chosen[1].get('file', '?')}")
+    return 0
+
+
+def cmd_init(args, root: Path) -> int:
+    """Bootstrap project-state.yml and pipeline-state.yml for a mode."""
+    valid_modes = {"idea-to-mvp", "mvp-sketch", "existing-repo-retrofit", "feature-development",
+                   "bugfix", "refactor", "release-readiness"}
+    if args.mode not in valid_modes:
+        print(f"error: mode must be one of: {', '.join(sorted(valid_modes))}", file=sys.stderr)
+        return 2
+
+    project_path = root / ".harness/project-state.yml"
+    pipeline_path = root / ".harness/pipeline-state.yml"
+
+    project = load_yaml(project_path)
+    pipeline_state = load_yaml(pipeline_path)
+    pipeline_file = root / "pipelines" / f"{args.mode}.yml"
+
+    if not pipeline_file.exists():
+        print(f"error: pipeline file missing: {pipeline_file}", file=sys.stderr)
+        return 2
+
+    pipeline_def = load_yaml(pipeline_file)
+    first_phase = (pipeline_def.get("phases") or [{}])[0]
+    first_phase_id = first_phase.get("id", "unset")
+    first_phase_agent = first_phase.get("agent", "unset")
+    first_phase_gate = first_phase.get("gate", {}).get("required", ["unset"])[0]
+
+    # Decide stage based on mode
+    stage_map = {
+        "idea-to-mvp": "intake",
+        "mvp-sketch": "sketch-intake",
+        "existing-repo-retrofit": "repo-discovery",
+        "feature-development": "classify-feature",
+        "bugfix": "reproduce",
+        "refactor": "scope",
+        "release-readiness": "mvp-checklist",
+    }
+
+    # Update project-state
+    project.setdefault("project", {})
+    project["project"]["mode"] = args.mode
+    project["project"]["stage"] = stage_map[args.mode]
+    if project["project"].get("created_at", "unset") == "unset":
+        project["project"]["created_at"] = dt.date.today().isoformat()
+    if project["project"].get("name", "unset") == "unset":
+        project["project"]["name"] = root.name
+
+    project.setdefault("next", {})
+    project["next"]["recommended_agent"] = first_phase_agent
+    project["next"]["recommended_action"] = f"begin {first_phase_id} phase"
+    project["next"]["blocked"] = False
+
+    # Update pipeline-state
+    pipeline_state.setdefault("pipeline", {})
+    pipeline_state["pipeline"]["active"] = args.mode
+    pipeline_state["pipeline"]["phase"] = first_phase_id
+    pipeline_state["pipeline"]["gate"] = first_phase_gate
+
+    if args.dry_run:
+        print("--- project-state.yml (preview) ---")
+        print(yaml.safe_dump(project, sort_keys=False))
+        print("--- pipeline-state.yml (preview) ---")
+        print(yaml.safe_dump(pipeline_state, sort_keys=False))
+        print("(dry-run — nothing written)")
+        return 0
+
+    project_path.write_text(yaml.safe_dump(project, sort_keys=False))
+    pipeline_path.write_text(yaml.safe_dump(pipeline_state, sort_keys=False))
+
+    print(colorize(f"{emoji_or_ascii('✓', '[ok]')} initialized harness for mode: {args.mode}", "green"))
+    print(f"  active pipeline: {args.mode}")
+    print(f"  phase:           {first_phase_id}")
+    print(f"  next agent:      {first_phase_agent}")
+    print()
+    print("run `harness status` to see the full state, or `harness next` to pick a mission.")
+
+    if not getattr(args, "skip_cursor", False):
+        code = _run_cursor_adapter_install(root, hooks_only=True)
+        if code != 0:
+            print(
+                colorize(
+                    f"{emoji_or_ascii('⚠', '[warn]')} Cursor hook install exited {code} (init state was written)",
+                    "yellow",
+                ),
+                file=sys.stderr,
+            )
+    return 0
+
+
+def cmd_install_cursor(args, root: Path) -> int:
+    """Install Cursor adapter hooks and SDK packages."""
+    return _run_cursor_adapter_install(root, hooks_only=False)
+
+
+def cmd_install_claude(args, root: Path) -> int:
+    """Install Claude Code adapter (.claude/ + CLAUDE.md)."""
+    return _run_claude_adapter_install(root)
+
+
+def cmd_setup(args, root: Path) -> int:
+    """Wire harness core on this machine: Cursor hooks + Claude adapter + check."""
+    print(colorize(f"{emoji_or_ascii('⚙', '[setup]')} Harness workstation setup (core only)", "bold"))
+    print("  Skips SDK, MCP, and orchestrator packages unless you install those separately.")
+    print()
+
+    exit_code = 0
+    if not getattr(args, "skip_cursor", False):
+        print(colorize("-> Cursor adapter (hooks only)", "cyan"))
+        code = _run_cursor_adapter_install(root, hooks_only=True)
+        if code != 0:
+            print(colorize(f"  warning: Cursor install exited {code}", "yellow"), file=sys.stderr)
+            exit_code = code
+
+    if not getattr(args, "skip_claude", False):
+        print(colorize("-> Claude Code adapter", "cyan"))
+        code = _run_claude_adapter_install(root)
+        if code != 0:
+            exit_code = code
+
+    print()
+    print(colorize("-> Verify install", "cyan"))
+    check_args = argparse.Namespace(strict=False, json=False, cwd=None)
+    check_code = cmd_check(check_args, root)
+    if check_code != 0 and exit_code == 0:
+        exit_code = check_code
+
+    print()
+    print(colorize("Next steps", "bold"))
+    print("  1. Restart Cursor and/or Claude Code; open this folder as the project root.")
+    print("  2. Claude: run /hooks  |  Cursor: trust workspace if prompted.")
+    print("  3. python tools/harness status")
+    print()
+    print("  Agent bootstrap: paste the block in prompts/setup-workstation.md")
+    print("  Human guide:     docs/setup/quick-start.md")
+    print()
+    print(colorize("Out of scope for setup:", "dim"))
+    print("  sdk/python orchestrator, MCP, pip install -e sdk/...  see docs/setup/cursor-sdk.md")
+    return exit_code
+
+
+def cmd_validate(args, root: Path) -> int:
+    """Run validation commands extracted from the active mission file."""
+    project = load_yaml(root / ".harness/project-state.yml")
+    current_mission_id = get(project, "current", "mission")
+
+    if not current_mission_id:
+        # try to find a single ready or in-progress mission
+        missions = load_yaml(root / ".harness/mission-index.yml")
+        candidates = []
+        for mid, data in (missions.get("missions") or {}).items():
+            if not isinstance(data, dict):
+                continue
+            if data.get("status") in ("ready", "in-progress", "review"):
+                candidates.append((mid, data))
+        if len(candidates) != 1:
+            print(f"error: no current mission set in project-state.current.mission, "
+                  f"and {len(candidates)} candidates found in mission-index. "
+                  f"set current.mission or pass --mission <id>", file=sys.stderr)
+            return 2
+        current_mission_id, mission_data = candidates[0]
+        mission_path = root / mission_data.get("file", "")
+    else:
+        missions = load_yaml(root / ".harness/mission-index.yml")
+        mission_data = (missions.get("missions") or {}).get(current_mission_id, {})
+        mission_path = root / mission_data.get("file", "")
+
+    if not mission_path.exists():
+        print(f"error: mission file not found: {mission_path}", file=sys.stderr)
+        return 2
+
+    # Extract validation commands from the mission file
+    mission_text = mission_path.read_text()
+    cmds = extract_validation_commands(mission_text)
+    if not cmds:
+        print(f"error: no validation commands found in {mission_path}", file=sys.stderr)
+        print("       expected a `## Validation Commands` section with a fenced bash block.", file=sys.stderr)
+        return 2
+
+    # Run each command, capture output, write a report
+    report_dir = root / "runs/test-reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / f"{current_mission_id}.md"
+
+    lines = [
+        f"# Validation Report: {current_mission_id}",
+        f"",
+        f"Date: {dt.datetime.now().isoformat(timespec='seconds')}",
+        f"Mission: {mission_path}",
+        f"",
+    ]
+    all_ok = True
+    for cmd in cmds:
+        print(colorize(f"$ {cmd}", "cyan"))
+        try:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                                    cwd=str(root), timeout=600)
+        except subprocess.TimeoutExpired:
+            lines.append(f"## `{cmd}`\n\n**TIMEOUT after 600s**\n")
+            print(colorize("  TIMEOUT", "red"))
+            all_ok = False
+            continue
+        status = "✓ pass" if result.returncode == 0 else "✗ fail"
+        if result.returncode != 0:
+            all_ok = False
+        print(colorize(f"  {status} (exit {result.returncode})", "green" if result.returncode == 0 else "red"))
+        lines.append(f"## `{cmd}`\n\n**Status:** {status} (exit {result.returncode})\n")
+        if result.stdout.strip():
+            lines.append("**stdout:**\n```\n" + result.stdout.rstrip() + "\n```\n")
+        if result.stderr.strip():
+            lines.append("**stderr:**\n```\n" + result.stderr.rstrip() + "\n```\n")
+        lines.append("")
+
+    report_path.write_text("\n".join(lines))
+    print()
+    print(f"report: {report_path.relative_to(root)}")
+    return 0 if all_ok else 1
+
+
+def extract_validation_commands(mission_text: str) -> list[str]:
+    """Find the ## Validation Commands section and extract bash-block commands."""
+    # Find the section
+    m = re.search(r"^##\s+Validation Commands\s*$(.*?)(?=^##\s|\Z)",
+                  mission_text, re.MULTILINE | re.DOTALL)
+    if not m:
+        return []
+    section = m.group(1)
+    # Find fenced bash/sh blocks
+    cmds = []
+    for block in re.findall(r"```(?:bash|sh|shell)?\n(.*?)\n```", section, re.DOTALL):
+        for line in block.split("\n"):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                cmds.append(line)
+    return cmds
+
+
+def cmd_handoff(args, root: Path) -> int:
+    """Generate a session note skeleton."""
+    today = dt.date.today().isoformat()
+    project = load_yaml(root / ".harness/project-state.yml")
+    mission_id = args.mission or get(project, "current", "mission")
+    label = mission_id or "no-mission"
+    note_path = root / "runs/session-notes" / f"{today}-{label}.md"
+    note_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if note_path.exists():
+        print(f"error: {note_path} already exists. edit it directly or pass --mission "
+              f"to differentiate.", file=sys.stderr)
+        return 2
+
+    # Get git info if available
+    branch = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root).strip() or "(none)"
+    changed = run_cmd(["git", "diff", "--name-only", "HEAD"], cwd=root).strip()
+    if not changed:
+        changed = run_cmd(["git", "diff", "--name-only", "--cached"], cwd=root).strip()
+
+    content = f"""# Session Note
+
+Date: {today}
+Mission: {mission_id or '(none)'}
+Agent: (fill in)
+Branch: {branch}
+
+## Summary
+
+- (what you did, 3-5 bullets)
+
+## Files Changed
+
+{format_file_list(changed) if changed else '- (none — read-only session)'}
+
+## Validation
+
+```text
+command: (e.g. npm test)
+result:  (e.g. 142 passing, 0 failing)
+```
+
+## Evidence
+
+Facts:
+- (things you directly verified, with file:line if applicable)
+
+Inferences:
+- (things you concluded but didn't directly verify, with reasoning)
+
+Assumptions:
+- (things you assumed without verification, with what would falsify each)
+
+## Risks
+
+- (what could go wrong from here)
+
+## Follow-Ups
+
+- (work deferred or surfaced)
+
+## Recommended Next Mission
+
+- (what should be picked up next)
+"""
+    note_path.write_text(content)
+    print(colorize(f"{emoji_or_ascii('✓', '[ok]')} session note skeleton written:", "green"))
+    print(f"  {note_path.relative_to(root)}")
+    print()
+    print("fill in the (placeholder) sections before closing.")
+    return 0
+
+
+# ---------- utilities ----------
+
+def run_cmd(args_list, cwd):
+    try:
+        return subprocess.run(args_list, capture_output=True, text=True,
+                              cwd=str(cwd), timeout=10).stdout
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return ""
+
+
+def find_git_bash_windows() -> Path | None:
+    """Return Git Bash on Windows; ignore WSL stub at System32."""
+    import shutil
+
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    candidates = [
+        Path(program_files) / "Git" / "bin" / "bash.exe",
+        Path(program_files_x86) / "Git" / "bin" / "bash.exe",
+    ]
+    which_bash = shutil.which("bash")
+    if which_bash:
+        p = Path(which_bash)
+        if p.exists() and "system32" not in str(p).lower() and "windowsapps" not in str(p).lower():
+            candidates.insert(0, p)
+
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def resolve_claude_hook_script(cmd: str, root: Path) -> Path:
+    """Return the hook .sh path from a Claude settings.json command."""
+    expanded = cmd.replace("${CLAUDE_PROJECT_DIR}", str(root))
+    quoted_scripts = re.findall(r'"([^"]+\.sh)"', expanded)
+    if quoted_scripts:
+        return Path(quoted_scripts[-1])
+    single_quoted = re.findall(r"'([^']+\.sh)'", expanded)
+    if single_quoted:
+        return Path(single_quoted[-1])
+    return Path(expanded)
+
+
+def hook_bash_command() -> list[str]:
+    """Return argv prefix for running harness hook scripts."""
+    if os.name == "nt":
+        git_bash = find_git_bash_windows()
+        if git_bash is not None:
+            return [str(git_bash)]
+    return ["bash"]
+
+
+def run_with_stdin(script_path: Path, stdin_text: str, root: Path, *, cursor: bool = False) -> str:
+    env = os.environ.copy()
+    env["CLAUDE_PROJECT_DIR"] = str(root)
+    env["CURSOR_PROJECT_DIR"] = str(root)
+    try:
+        result = subprocess.run(
+            hook_bash_command() + [str(script_path)],
+            input=stdin_text,
+            capture_output=True,
+            text=True,
+            cwd=str(root),
+            env=env,
+            timeout=10,
+        )
+        return result.stdout
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        return f"(error: {e})"
+
+
+def shutil_which(name: str) -> str | None:
+    import shutil
+    return shutil.which(name)
+
+
+def format_file_list(files: str) -> str:
+    return "\n".join(f"- {f}" for f in files.split("\n") if f)
+
+
+# ---------- dashboard (v5.1.2) ----------
+#
+# `harness dashboard` renders runs/dashboard/index.html from the harness state
+# files already on disk. It is a read-only renderer: it does not edit, infer,
+# or supplement state. Every panel handles missing or empty source files
+# gracefully (panel either renders an empty-state hint or hides itself).
+#
+# Single self-contained HTML file. No external CSS/JS/fonts. No network.
+# PyYAML is the only dependency, and tools/harness already requires it.
+
+import html as _html  # noqa: E402  (kept local to dashboard block)
+
+
+_DASH_DEFAULT_CONFIG = {
+    "title": None,           # falls back to f"{project.name} — Harness Dashboard"
+    "theme": "dark",         # "dark" or "light"
+    "recent_notes": 5,
+    "output": "runs/dashboard/index.html",
+    "panels": {
+        "project": True,
+        "current_mission": True,
+        "next_action": True,
+        "readiness": True,
+        "mvp": True,
+        "mission_board": True,
+        "risks": True,
+        "questions": True,
+        "session_notes": True,
+        "improvements": True,
+        "tests": True,
+    },
+}
+
+
+def _dash_load_config(root: Path) -> dict:
+    """Load dashboard-config.yml if present; merge over defaults."""
+    cfg_path = root / ".harness" / "dashboard-config.yml"
+    cfg = dict(_DASH_DEFAULT_CONFIG)
+    cfg["panels"] = dict(_DASH_DEFAULT_CONFIG["panels"])
+    if cfg_path.exists():
+        loaded = load_yaml(cfg_path).get("dashboard") or {}
+        for k, v in loaded.items():
+            if k == "panels" and isinstance(v, dict):
+                cfg["panels"].update(v)
+            else:
+                cfg[k] = v
+    return cfg
+
+
+def _dash_parse_md_section(md_text: str, header: str) -> list[str]:
+    """Return non-empty bullet/line entries under a `## <header>` section."""
+    items: list[str] = []
+    in_sec = False
+    target = header.strip().lower()
+    for line in md_text.splitlines():
+        if line.startswith("##"):
+            in_sec = line.lstrip("#").strip().lower() == target
+            continue
+        if not in_sec:
+            continue
+        m = re.match(r"^\s*-\s+(.+?)\s*$", line)
+        if m:
+            entry = m.group(1).strip()
+            if entry:
+                items.append(entry)
+        elif line.strip() and not line.startswith(" "):
+            # plain paragraph content (e.g. ## Goal: one-paragraph description)
+            items.append(line.strip())
+    return items
+
+
+def _dash_load_data(root: Path) -> dict:
+    """Pull everything the dashboard needs into one dict. Missing files = empty."""
+    ps    = load_yaml(root / ".harness/project-state.yml")
+    mi    = load_yaml(root / ".harness/mission-index.yml")
+    mvp   = load_yaml(root / ".harness/mvp-checklist.yml")
+    rs    = load_yaml(root / ".harness/readiness-score.yml")
+    fl    = load_yaml(root / ".harness/friction-log.yml")
+    ib    = load_yaml(root / ".harness/improvement-backlog.yml")
+
+    # Current mission markdown (optional)
+    mission_id = get(ps, "current", "mission")
+    mission_md = ""
+    mission_meta: dict = {}
+    if mission_id:
+        # Look up file via mission-index, then fall back to a conventional path
+        mi_entry = (get(mi, "missions") or {}).get(mission_id) or {}
+        rel = mi_entry.get("file") if isinstance(mi_entry, dict) else None
+        candidates = []
+        if rel:
+            candidates.append(root / rel)
+        candidates.append(root / "runs/missions" / f"{mission_id}.md")
+        for c in candidates:
+            if c.exists():
+                try:
+                    mission_md = c.read_text()
+                    mission_meta = {"path": str(c.relative_to(root))}
+                except OSError:
+                    pass
+                break
+
+    # Recent session notes (by mtime)
+    notes_dir = root / "runs/session-notes"
+    notes: list[dict] = []
+    if notes_dir.is_dir():
+        for f in sorted(notes_dir.glob("*.md"),
+                        key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                first = f.read_text().splitlines()[:8]
+            except OSError:
+                continue
+            title = next((ln.lstrip("# ").strip() for ln in first
+                          if ln.startswith("#")), f.stem)
+            mission_ref = ""
+            for ln in first:
+                m = re.match(r"^\s*Mission:\s*(.+?)\s*$", ln)
+                if m:
+                    mission_ref = m.group(1).strip()
+                    break
+            notes.append({
+                "file": str(f.relative_to(root)),
+                "title": title,
+                "mission": mission_ref,
+                "mtime": dt.datetime.fromtimestamp(f.stat().st_mtime),
+            })
+
+    # Test/validation reports (most recent file under runs/test-reports)
+    reports_dir = root / "runs/test-reports"
+    tests: list[dict] = []
+    if reports_dir.is_dir():
+        for f in sorted(reports_dir.glob("*"),
+                        key=lambda p: p.stat().st_mtime, reverse=True):
+            if f.name.startswith(".") or f.is_dir():
+                continue
+            tests.append({
+                "file": str(f.relative_to(root)),
+                "mtime": dt.datetime.fromtimestamp(f.stat().st_mtime),
+            })
+
+    return {
+        "project_state": ps,
+        "mission_index": mi,
+        "mvp": mvp,
+        "readiness": rs,
+        "friction": fl,
+        "improvements": ib,
+        "mission_id": mission_id,
+        "mission_md": mission_md,
+        "mission_meta": mission_meta,
+        "notes": notes,
+        "tests": tests,
+    }
+
+
+# ---------- HTML helpers ----------
+
+def _h(s) -> str:
+    """HTML-escape a value (None → empty string)."""
+    if s is None:
+        return ""
+    return _html.escape(str(s), quote=True)
+
+
+def _dash_pill(text: str, kind: str = "neutral") -> str:
+    """Render a status pill. kind ∈ ok|warn|fail|info|neutral."""
+    return f'<span class="pill pill-{_h(kind)}">{_h(text)}</span>'
+
+
+def _dash_progress(percent: float, label: str = "") -> str:
+    pct = max(0, min(100, int(round(percent))))
+    return (
+        f'<div class="progress" role="progressbar" aria-valuenow="{pct}" '
+        f'aria-valuemin="0" aria-valuemax="100">'
+        f'<div class="progress-bar" style="width:{pct}%"></div>'
+        f'<div class="progress-label">{_h(label) or f"{pct}%"}</div>'
+        f'</div>'
+    )
+
+
+def _dash_empty(message: str) -> str:
+    return f'<p class="empty">{_h(message)}</p>'
+
+
+# ---------- panel renderers ----------
+# Each returns (heading, html_body) or None to suppress the panel.
+
+def _panel_current_mission(data: dict):
+    mid = data["mission_id"]
+    if not mid or mid == "null":
+        return ("Current Mission",
+                _dash_empty("No mission selected. Run `harness next` to pick one."))
+    md = data["mission_md"]
+    goal = " ".join(_dash_parse_md_section(md, "Goal")) if md else ""
+    acc = _dash_parse_md_section(md, "Acceptance Criteria") if md else []
+    done = sum(1 for a in acc if a.lower().startswith("[x]"))
+    total = len(acc)
+    pct = (done / total * 100) if total else 0
+    rows = []
+    for a in acc:
+        if a.lower().startswith("[x]"):
+            rows.append(f'<li class="acc done">{_dash_pill("done", "ok")} '
+                        f'{_h(a[3:].strip())}</li>')
+        elif a.lower().startswith("[ ]"):
+            rows.append(f'<li class="acc open">{_dash_pill("open", "warn")} '
+                        f'{_h(a[3:].strip())}</li>')
+        else:
+            rows.append(f'<li class="acc">{_h(a)}</li>')
+
+    path_link = ""
+    if data["mission_meta"].get("path"):
+        path_link = (f'<div class="muted small">'
+                     f'<code>{_h(data["mission_meta"]["path"])}</code></div>')
+
+    body = [
+        f'<div class="mission-id">{_h(mid)}</div>',
+        path_link,
+    ]
+    if goal:
+        body.append(f'<p class="goal">{_h(goal)}</p>')
+    if total:
+        body.append(_dash_progress(pct, f"Acceptance: {done}/{total}"))
+        body.append(f'<ul class="acc-list">{"".join(rows)}</ul>')
+    else:
+        body.append(_dash_empty("No acceptance criteria found in mission."))
+    return ("Current Mission", "\n".join(body))
+
+
+def _panel_project(data: dict):
+    ps = data["project_state"]
+    rows = [
+        ("Mode",  get(ps, "project", "mode") or "unset"),
+        ("Stage", get(ps, "project", "stage") or "unset"),
+        ("Owner", get(ps, "project", "owner") or "unset"),
+        ("Pipeline", get(ps, "current", "pipeline") or "—"),
+        ("Branch",   get(ps, "current", "branch") or "—"),
+    ]
+    body = '<dl class="kv">' + "".join(
+        f'<dt>{_h(k)}</dt><dd>{_h(v)}</dd>' for k, v in rows
+    ) + '</dl>'
+    return ("Project", body)
+
+
+def _panel_next_action(data: dict):
+    nxt = get(data["project_state"], "next") or {}
+    action = nxt.get("recommended_action") or "—"
+    agent  = nxt.get("recommended_agent")  or "—"
+    blocked = bool(nxt.get("blocked"))
+    blocker = nxt.get("blocker")
+    body = [
+        f'<div class="next-action">{_h(action)}</div>',
+        f'<div class="muted small">recommended agent: <code>{_h(agent)}</code></div>',
+    ]
+    if blocked:
+        body.append(f'<div class="callout warn">Blocked: {_h(blocker or "see project-state.yml")}</div>')
+    return ("Next Recommended Action", "\n".join(body))
+
+
+def _panel_readiness(data: dict):
+    rs = get(data["readiness"], "readiness") or {}
+    if not rs:
+        return ("Readiness", _dash_empty("No readiness-score.yml data."))
+    overall = get(rs, "overall", "score") or 0
+    mvp_ready = bool(get(rs, "overall", "mvp_ready"))
+    pill = _dash_pill("MVP READY", "ok") if mvp_ready else _dash_pill("not yet", "warn")
+    rows = []
+    for cat in ("product", "architecture", "engineering", "testing", "security", "release"):
+        score = get(rs, cat, "score")
+        if score is None:
+            continue
+        blockers = get(rs, cat, "blockers") or []
+        rows.append(
+            f'<div class="readiness-row">'
+            f'  <div class="readiness-cat">{_h(cat)}</div>'
+            f'  <div class="readiness-bar">{_dash_progress(score, f"{score}/100")}</div>'
+            f'  <div class="readiness-blockers muted small">'
+            f'{_h("; ".join(blockers[:2])) if blockers else ""}</div>'
+            f'</div>'
+        )
+    body = [
+        f'<div class="readiness-overall">'
+        f'<span class="readiness-score">{_h(overall)}</span>'
+        f'<span class="readiness-of">/100</span> {pill}</div>',
+        _dash_progress(overall, ""),
+        '<div class="readiness-grid">' + "".join(rows) + '</div>',
+    ]
+    return ("Readiness", "\n".join(body))
+
+
+def _panel_mvp(data: dict):
+    items_by_cat = get(data["mvp"], "items") or {}
+    if not items_by_cat:
+        return ("MVP Checklist", _dash_empty("No mvp-checklist.yml items."))
+    groups_html = []
+    total = 0
+    done = 0
+    for cat, items in items_by_cat.items():
+        if not isinstance(items, list):
+            continue
+        rows = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            total += 1
+            status = (it.get("status") or "todo").lower()
+            kind = {"done": "ok", "in_progress": "info",
+                    "blocked": "fail", "todo": "neutral"}.get(status, "neutral")
+            if status == "done":
+                done += 1
+            crit = " (critical)" if it.get("critical") else ""
+            rows.append(
+                f'<li>{_dash_pill(status, kind)} '
+                f'<span class="mvp-id">{_h(it.get("id") or "")}</span> '
+                f'{_h(it.get("text") or "")}<span class="muted small">{_h(crit)}</span></li>'
+            )
+        if rows:
+            groups_html.append(
+                f'<div class="mvp-group"><h3>{_h(cat)}</h3>'
+                f'<ul class="mvp-list">{"".join(rows)}</ul></div>'
+            )
+    pct = (done / total * 100) if total else 0
+    header = _dash_progress(pct, f"{done}/{total} complete")
+    return ("MVP Checklist", header + "".join(groups_html))
+
+
+def _panel_mission_board(data: dict):
+    missions = get(data["mission_index"], "missions") or {}
+    real = {k: v for k, v in missions.items()
+            if isinstance(v, dict) and not k.startswith("_")}
+    if not real:
+        return ("Mission Board",
+                _dash_empty("No missions in mission-index.yml. "
+                            "Add entries when ready."))
+    rows = []
+    for mid, m in real.items():
+        status = (m.get("status") or "draft").lower()
+        kind = {"complete": "ok", "in-progress": "info",
+                "ready": "info", "blocked": "fail",
+                "review": "warn", "draft": "neutral"}.get(status, "neutral")
+        priority = m.get("priority") or ""
+        validation = m.get("validation") or ""
+        rows.append(
+            f'<tr><td><code>{_h(mid)}</code></td>'
+            f'<td>{_dash_pill(status, kind)}</td>'
+            f'<td>{_h(priority)}</td>'
+            f'<td class="muted small">{_h(validation)}</td></tr>'
+        )
+    body = (
+        '<table class="board"><thead><tr>'
+        '<th>Mission</th><th>Status</th><th>Priority</th><th>Validation</th>'
+        '</tr></thead><tbody>' + "".join(rows) + '</tbody></table>'
+    )
+    return ("Mission Board", body)
+
+
+def _panel_risks(data: dict):
+    if data["mission_md"]:
+        risks = _dash_parse_md_section(data["mission_md"], "Risks")
+        if risks:
+            return ("Risks",
+                    "<ul class='bullets'>" +
+                    "".join(f'<li>{_h(r)}</li>' for r in risks) +
+                    "</ul>")
+    return ("Risks", _dash_empty("No `## Risks` section in current mission."))
+
+
+def _panel_questions(data: dict):
+    if data["mission_md"]:
+        for h in ("Open Questions", "Questions"):
+            qs = _dash_parse_md_section(data["mission_md"], h)
+            if qs:
+                return ("Open Questions",
+                        "<ul class='bullets'>" +
+                        "".join(f'<li>{_h(q)}</li>' for q in qs) +
+                        "</ul>")
+    return ("Open Questions",
+            _dash_empty("No `## Open Questions` section in current mission."))
+
+
+def _panel_session_notes(data: dict, limit: int):
+    notes = data["notes"][:limit]
+    if not notes:
+        return ("Recent Session Notes",
+                _dash_empty("No session notes yet under runs/session-notes/."))
+    rows = []
+    for n in notes:
+        when = n["mtime"].strftime("%Y-%m-%d %H:%M")
+        miss = f' <span class="muted small">· {_h(n["mission"])}</span>' if n["mission"] else ""
+        rows.append(
+            f'<li><div>{_h(n["title"])}{miss}</div>'
+            f'<div class="muted small"><code>{_h(n["file"])}</code> · {_h(when)}</div></li>'
+        )
+    return ("Recent Session Notes",
+            "<ul class='note-list'>" + "".join(rows) + "</ul>")
+
+
+def _panel_improvements(data: dict):
+    friction = get(data["friction"], "friction_events") or []
+    improvements = get(data["improvements"], "improvements") or []
+    # YAML comment-only files load as [] (or None) so these are robust
+    fr_open = [f for f in friction
+               if isinstance(f, dict) and (f.get("status") or "open") == "open"]
+    imp_open = [i for i in improvements
+                if isinstance(i, dict) and (i.get("status") or "proposed")
+                in ("proposed", "approved")]
+    if not fr_open and not imp_open:
+        return ("Friction & Improvements",
+                _dash_empty("No open friction events or improvements."))
+    blocks = []
+    if fr_open:
+        rows = "".join(
+            f'<li>{_dash_pill(f.get("severity") or "low", "warn")} '
+            f'<strong>{_h(f.get("id") or "")}</strong> '
+            f'{_h(f.get("description") or f.get("type") or "")}</li>'
+            for f in fr_open[:8]
+        )
+        blocks.append(f'<h3>Friction ({len(fr_open)})</h3>'
+                      f'<ul class="bullets">{rows}</ul>')
+    if imp_open:
+        rows = "".join(
+            f'<li>{_dash_pill(i.get("status") or "proposed", "info")} '
+            f'<strong>{_h(i.get("id") or "")}</strong> '
+            f'{_h(i.get("title") or "")}</li>'
+            for i in imp_open[:8]
+        )
+        blocks.append(f'<h3>Improvements ({len(imp_open)})</h3>'
+                      f'<ul class="bullets">{rows}</ul>')
+    return ("Friction & Improvements", "".join(blocks))
+
+
+def _panel_tests(data: dict):
+    tests = data["tests"]
+    if not tests:
+        return ("Validation / Tests",
+                _dash_empty("No reports under runs/test-reports/ yet. "
+                            "Run `harness validate` to generate one."))
+    rows = []
+    for t in tests[:5]:
+        when = t["mtime"].strftime("%Y-%m-%d %H:%M")
+        rows.append(
+            f'<li><code>{_h(t["file"])}</code>'
+            f'<span class="muted small"> · {_h(when)}</span></li>'
+        )
+    return ("Validation / Tests",
+            "<ul class='bullets'>" + "".join(rows) + "</ul>")
+
+
+# ---------- CSS (inlined; two themes) ----------
+
+_DASH_CSS_COMMON = """
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               Oxygen, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
+  font-size: 14px;
+  padding: 0 0 4rem 0;
+}
+header.top {
+  padding: 1.5rem 2rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+header.top h1 { margin: 0 0 0.25rem 0; font-size: 1.5rem; }
+header.top .meta { color: var(--muted); font-size: 0.85rem; }
+main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 1rem;
+  padding: 1.5rem 2rem;
+}
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  overflow: hidden;
+}
+.panel.span-2 { grid-column: span 2; }
+.panel h2 {
+  margin: 0 0 1rem 0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.panel h3 {
+  margin: 1rem 0 0.5rem 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.muted { color: var(--muted); }
+.small { font-size: 0.8rem; }
+.empty { color: var(--muted); font-style: italic; margin: 0; }
+code {
+  background: var(--code-bg);
+  padding: 0.05em 0.4em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.pill {
+  display: inline-block;
+  padding: 0.1em 0.55em;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 0.4rem;
+  vertical-align: 0.05em;
+}
+.pill-ok      { background: var(--ok-bg);      color: var(--ok-fg); }
+.pill-warn    { background: var(--warn-bg);    color: var(--warn-fg); }
+.pill-fail    { background: var(--fail-bg);    color: var(--fail-fg); }
+.pill-info    { background: var(--info-bg);    color: var(--info-fg); }
+.pill-neutral { background: var(--neutral-bg); color: var(--neutral-fg); }
+.progress {
+  position: relative;
+  height: 22px;
+  background: var(--code-bg);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0.5rem 0 0.75rem;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.progress-label {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg);
+  text-shadow: 0 0 4px var(--surface);
+}
+.mission-id { font-family: ui-monospace, monospace; font-size: 1rem; font-weight: 600; }
+.goal { margin: 0.5rem 0 1rem; }
+.acc-list { list-style: none; padding: 0; margin: 0; }
+.acc { padding: 0.3rem 0; border-top: 1px solid var(--border); }
+.acc:first-child { border-top: none; }
+.acc.done { color: var(--muted); }
+.acc.done > span:last-child, .acc.done { text-decoration: none; }
+.kv { display: grid; grid-template-columns: 1fr 2fr; gap: 0.4rem 1rem; margin: 0; }
+.kv dt { color: var(--muted); font-size: 0.8rem; }
+.kv dd { margin: 0; }
+.next-action { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.4rem; }
+.callout { padding: 0.5rem 0.75rem; border-radius: 4px; margin-top: 0.75rem; }
+.callout.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.readiness-overall {
+  display: flex; align-items: baseline; gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.readiness-score { font-size: 2rem; font-weight: 700; }
+.readiness-of { color: var(--muted); }
+.readiness-grid { margin-top: 1rem; }
+.readiness-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--border);
+}
+.readiness-row:first-child { border-top: none; }
+.readiness-cat { font-weight: 500; text-transform: capitalize; }
+.readiness-blockers { grid-column: 2; }
+.mvp-group { margin-top: 1rem; }
+.mvp-group:first-child { margin-top: 0; }
+.mvp-list { list-style: none; padding: 0; margin: 0; }
+.mvp-list li { padding: 0.25rem 0; }
+.mvp-id { font-family: ui-monospace, monospace; color: var(--muted); margin-right: 0.4rem; font-size: 0.8rem; }
+table.board { width: 100%; border-collapse: collapse; }
+table.board th, table.board td {
+  text-align: left;
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+table.board th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.bullets { padding-left: 1.25rem; margin: 0; }
+.bullets li { margin-bottom: 0.35rem; }
+.note-list { list-style: none; padding: 0; margin: 0; }
+.note-list li { padding: 0.5rem 0; border-top: 1px solid var(--border); }
+.note-list li:first-child { border-top: none; }
+footer.bottom {
+  padding: 1rem 2rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+"""
+
+_DASH_THEME_DARK = """
+:root {
+  --bg: #0e1014;
+  --surface: #181b22;
+  --border: #262b35;
+  --fg: #e6e9ef;
+  --muted: #8b94a7;
+  --code-bg: #11141a;
+  --accent: #5b8def;
+  --accent-2: #7aa7ff;
+  --ok-bg:   #14361f; --ok-fg:   #4ade80;
+  --warn-bg: #3a2b0a; --warn-fg: #fbbf24;
+  --fail-bg: #3a1414; --fail-fg: #f87171;
+  --info-bg: #122a3a; --info-fg: #60a5fa;
+  --neutral-bg: #1f242e; --neutral-fg: #b6bcc8;
+}
+body { background: var(--bg); color: var(--fg); }
+"""
+
+_DASH_THEME_LIGHT = """
+:root {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --border: #e3e6eb;
+  --fg: #1a1d24;
+  --muted: #6c7280;
+  --code-bg: #f0f2f5;
+  --accent: #2f6df1;
+  --accent-2: #5b8def;
+  --ok-bg:   #e5f6ec; --ok-fg:   #138a3a;
+  --warn-bg: #fdf3dc; --warn-fg: #8a5a00;
+  --fail-bg: #fce5e5; --fail-fg: #b1281f;
+  --info-bg: #e2eefd; --info-fg: #1b56b8;
+  --neutral-bg: #eef1f5; --neutral-fg: #475066;
+}
+body { background: var(--bg); color: var(--fg); }
+"""
+
+
+def _dash_render_html(data: dict, cfg: dict) -> str:
+    """Assemble the full HTML document from panel renderers."""
+    ps = data["project_state"]
+    project_name = get(ps, "project", "name") or "Project"
+    title = cfg.get("title") or f"{project_name} — Harness Dashboard"
+    mode = get(ps, "project", "mode") or "unset"
+    stage = get(ps, "project", "stage") or "unset"
+    generated = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    panel_funcs = [
+        ("project",         _panel_project),
+        ("current_mission", _panel_current_mission),
+        ("next_action",     _panel_next_action),
+        ("readiness",       _panel_readiness),
+        ("mvp",             _panel_mvp),
+        ("mission_board",   _panel_mission_board),
+        ("risks",           _panel_risks),
+        ("questions",       _panel_questions),
+        ("session_notes",   lambda d: _panel_session_notes(d, cfg.get("recent_notes", 5))),
+        ("improvements",    _panel_improvements),
+        ("tests",           _panel_tests),
+    ]
+    panels_html = []
+    for key, fn in panel_funcs:
+        if not cfg["panels"].get(key, True):
+            continue
+        try:
+            result = fn(data)
+        except Exception as e:  # never let a single panel kill the page
+            result = (key.replace("_", " ").title(),
+                      _dash_empty(f"Panel error: {_h(e)}"))
+        if result is None:
+            continue
+        heading, body = result
+        extra = " span-2" if key in ("current_mission", "readiness", "mvp") else ""
+        panels_html.append(
+            f'<section class="panel{extra}">'
+            f'<h2>{_h(heading)}</h2>{body}</section>'
+        )
+
+    theme_css = _DASH_THEME_LIGHT if cfg.get("theme") == "light" else _DASH_THEME_DARK
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en"><head>'
+        '<meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'<title>{_h(title)}</title>'
+        f'<style>{theme_css}{_DASH_CSS_COMMON}</style>'
+        '</head><body>'
+        '<header class="top">'
+        f'<h1>{_h(title)}</h1>'
+        f'<div class="meta">Mode: <code>{_h(mode)}</code> · '
+        f'Stage: <code>{_h(stage)}</code> · '
+        f'Generated {_h(generated)}</div>'
+        '</header>'
+        f'<main>{"".join(panels_html)}</main>'
+        '<footer class="bottom">'
+        'Read-only dashboard rendered from harness state files. '
+        'Not a source of truth — edit the underlying YAML / markdown to change anything here.'
+        '</footer>'
+        '</body></html>\n'
+    )
+
+
+def cmd_dashboard(args, root: Path) -> int:
+    """Render runs/dashboard/index.html from harness state files."""
+    cfg = _dash_load_config(root)
+    output = Path(args.output) if getattr(args, "output", None) else Path(cfg["output"])
+    if not output.is_absolute():
+        output = root / output
+
+    data = _dash_load_data(root)
+    html_doc = _dash_render_html(data, cfg)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(html_doc, encoding="utf-8")
+    rel = output.relative_to(root) if output.is_relative_to(root) else output
+
+    panels_on = sum(1 for v in cfg["panels"].values() if v)
+    print(f"wrote {rel}  ({panels_on} panel(s), theme={cfg.get('theme')})")
+
+    if getattr(args, "open", False):
+        import webbrowser
+        webbrowser.open(output.as_uri())
+
+    return 0
+
+
+# ---------- main ----------
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="harness",
+        description="Control plane CLI for the Adaptive Agentic Engineering Harness.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("-C", "--cwd", help="Run as if in this path", default=None)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_status = sub.add_parser("status", help="Show project state, pipeline, missions, blockers")
+    p_status.add_argument("--json", action="store_true", help="Machine-readable JSON output")
+
+    p_check = sub.add_parser("check", help="Verify harness is installed and wired correctly")
+    p_check.add_argument("--strict", action="store_true", help="Exit non-zero on warnings")
+
+    p_next = sub.add_parser("next", help="Apply mission selection policy")
+    p_next.add_argument("--json", action="store_true", help="Machine-readable JSON output")
+
+    p_init = sub.add_parser("init", help="Bootstrap project-state for a mode")
+    p_init.add_argument("mode", help="One of: idea-to-mvp, mvp-sketch, existing-repo-retrofit, "
+                                     "feature-development, bugfix, refactor, release-readiness")
+    p_init.add_argument("--dry-run", action="store_true", help="Show what would change, do not write")
+    p_init.add_argument(
+        "--skip-cursor",
+        action="store_true",
+        help="Do not install Cursor adapter hooks after writing state",
+    )
+
+    p_install = sub.add_parser("install", help="Install harness adapters or extras")
+    p_install_sub = p_install.add_subparsers(dest="install_target", required=True)
+    p_install_sub.add_parser("cursor", help="Install Cursor hooks + SDK pip packages")
+    p_install_sub.add_parser("claude", help="Install Claude Code adapter (.claude/ + CLAUDE.md)")
+
+    p_setup = sub.add_parser(
+        "setup",
+        help="Wire core harness on this machine (Cursor hooks + Claude adapter + check)",
+    )
+    p_setup.add_argument(
+        "--skip-cursor",
+        action="store_true",
+        help="Do not install Cursor adapter hooks",
+    )
+    p_setup.add_argument(
+        "--skip-claude",
+        action="store_true",
+        help="Do not install Claude Code adapter",
+    )
+
+    sub.add_parser("validate", help="Run validation commands from active mission, write report")
+
+    p_handoff = sub.add_parser("handoff", help="Generate a session note skeleton")
+    p_handoff.add_argument("--mission", help="Mission ID (defaults to project.current.mission)")
+
+    p_dashboard = sub.add_parser(
+        "dashboard",
+        help="Generate a local HTML dashboard at runs/dashboard/index.html",
+    )
+    p_dashboard.add_argument(
+        "--output",
+        help="Override output path (default: runs/dashboard/index.html or "
+             ".harness/dashboard-config.yml `output:`)",
+    )
+    p_dashboard.add_argument(
+        "--open", action="store_true",
+        help="Open the generated dashboard in the default browser",
+    )
+
+    args = parser.parse_args()
+
+    start = Path(args.cwd) if args.cwd else Path.cwd()
+    root = find_harness_root(start)
+    if not root:
+        print(f"error: not in a harness project (no .harness/ directory found from {start})",
+              file=sys.stderr)
+        return 2
+
+    handlers = {
+        "status": cmd_status,
+        "check": cmd_check,
+        "next": cmd_next,
+        "init": cmd_init,
+        "setup": cmd_setup,
+        "validate": cmd_validate,
+        "handoff": cmd_handoff,
+        "dashboard": cmd_dashboard,
+    }
+    if args.cmd == "install":
+        if args.install_target == "cursor":
+            return cmd_install_cursor(args, root)
+        if args.install_target == "claude":
+            return cmd_install_claude(args, root)
+        print(f"error: unknown install target: {args.install_target}", file=sys.stderr)
+        return 2
+    return handlers[args.cmd](args, root)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

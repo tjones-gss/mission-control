@@ -1,0 +1,11 @@
+dangerous_operations:
+  require_human_approval:
+    - production_deploy
+blocked_command_patterns:
+  - "rm -rf"
+  - "DROP TABLE"
+  - "DELETE FROM"
+  - "TRUNCATE"
+  - "terraform apply"
+policy:
+  default_environment: local_or_staging

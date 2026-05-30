@@ -1,0 +1,42 @@
+quality_gates:
+  before_code_edit:
+    required:
+      - mission_exists
+      - allowed_files_defined
+      - forbidden_files_defined
+      - acceptance_criteria_defined
+      - validation_commands_defined
+    block_if_missing: true
+
+  before_review:
+    required:
+      - change_summary
+      - validation_attempted_or_explained
+      - risks_documented
+      - assumptions_documented
+
+  before_pr:
+    required:
+      - tests_pass_or_explained
+      - lint_pass_or_explained
+      - typecheck_pass_or_explained
+      - build_pass_or_explained
+      - review_checklist_complete
+      - session_note_written
+      - no_unrelated_changes
+
+  before_deploy:
+    required:
+      - release_readiness_review
+      - rollback_plan
+      - env_vars_documented
+      - smoke_tests_defined
+      - human_approval
+
+failure_policy:
+  missing_mission: create_mission
+  missing_adr_for_architecture_change: create_adr
+  tests_fail: create_fix_mission
+  scope_unclear: stop_and_create_open_question
+  danger_detected: require_human_approval
+  context_bloat: write_session_note_and_restart

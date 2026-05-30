@@ -1,0 +1,6 @@
+project:
+  name: test-fixture
+  mode: idea-to-mvp
+  stage: intake
+current:
+  mission: MISSION-007-add-login

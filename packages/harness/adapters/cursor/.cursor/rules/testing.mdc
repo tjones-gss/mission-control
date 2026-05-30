@@ -1,0 +1,10 @@
+---
+description: Testing expectations
+alwaysApply: true
+---
+
+Behavior changes require tests.
+
+Report exact commands and results.
+
+Do not delete or weaken tests to pass.

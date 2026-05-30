@@ -1,0 +1,32 @@
+missions:
+  MISSION-001-example-adapt-harness:
+    status: ready
+    priority: high
+    file: runs/missions/MISSION-001-example-adapt-harness.md
+    validation: pending
+    review: pending
+    session_note: null
+
+  # Example:
+  # MISSION-001-bootstrap-project:
+  #   status: ready # draft | ready | in-progress | blocked | review | complete
+  #   priority: high
+  #   adr: docs/adrs/ADR-001-example.md
+  #   spec: docs/specs/SPEC-001-example.md
+  #   file: runs/missions/MISSION-001-bootstrap-project.md
+  #   validation: pending
+  #   review: pending
+  #   session_note: null
+
+selection_policy:
+  prefer:
+    - critical_mvp_items
+    - blocked_by_fewest_dependencies
+    - highest_risk_reduction
+    - smallest_reviewable_unit
+
+do_not_select:
+  - blocked
+  - missing_spec
+  - missing_acceptance_criteria
+  - dangerous_without_approval

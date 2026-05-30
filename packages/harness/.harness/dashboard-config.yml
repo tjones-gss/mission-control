@@ -1,0 +1,29 @@
+# Optional config for `harness dashboard`. Delete this file to use defaults.
+# The dashboard is a read-only renderer over existing harness state files.
+# This file controls presentation only; never source of truth.
+dashboard:
+  # Page title. null → "{project.name} — Harness Dashboard"
+  title: null
+
+  # "dark" or "light"
+  theme: dark
+
+  # How many session notes to surface in the Recent Session Notes panel
+  recent_notes: 5
+
+  # Where to write the generated file (relative to harness root)
+  output: runs/dashboard/index.html
+
+  # Panels — set to false to hide. All default to true.
+  panels:
+    project: true            # name, mode, stage, pipeline, branch
+    current_mission: true    # active mission + acceptance progress
+    next_action: true        # project-state.yml `next.*`
+    readiness: true          # readiness-score.yml per-category + overall
+    mvp: true                # mvp-checklist.yml grouped progress
+    mission_board: true      # mission-index.yml summary table
+    risks: true              # `## Risks` section of current mission
+    questions: true          # `## Open Questions` of current mission
+    session_notes: true      # runs/session-notes/*.md (newest first)
+    improvements: true       # friction-log.yml + improvement-backlog.yml
+    tests: true              # runs/test-reports/* (newest first)
