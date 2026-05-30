@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { config } from './lib/config.js'
-import { securityMiddleware, getCorsOrigin } from './middleware/security.js'
+import { securityMiddleware, getCorsOrigin, hostCheck } from './middleware/security.js'
 import { requestLogger } from './middleware/requestLogger.js'
 import { performanceMiddleware } from './middleware/performance.js'
 import { registerShutdown } from './lib/lifecycle.js'
@@ -29,6 +29,9 @@ import './intelligence/triggers.js'
 const app = express()
 
 // Middleware stack (order matters)
+// DNS-rebinding guard runs FIRST — before CORS, routes, and everything else —
+// so a request with a foreign Host is rejected before any handler can see it.
+app.use(hostCheck)
 app.use(cors({ origin: getCorsOrigin() }))
 app.use(...securityMiddleware)
 app.use(requestLogger)
@@ -73,8 +76,8 @@ process.on('unhandledRejection', (err) => {
   logger.error({ err: err?.message || err }, 'unhandled rejection (server stayed alive)')
 })
 
-const server = app.listen(config.port, () => {
-  logger.info(`Server → http://localhost:${config.port}`)
+const server = app.listen(config.port, config.host, () => {
+  logger.info(`Server → http://${config.host}:${config.port}`)
   const watcher = startWatcher()
   setHealthReady()
   registerShutdown({ server, watcher })

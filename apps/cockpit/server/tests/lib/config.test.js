@@ -5,8 +5,10 @@ describe('config', () => {
     expect(config.port).toBe(3001)
   })
 
-  test('host defaults to 0.0.0.0', () => {
-    expect(config.host).toBe('0.0.0.0')
+  test('host defaults to loopback (127.0.0.1), not 0.0.0.0', () => {
+    // Loopback-only bind by default — no LAN exposure out of the box.
+    // Operators opt into wider binding via OVERSIGHT_HOST.
+    expect(config.host).toBe('127.0.0.1')
   })
 
   test('logLevel defaults to info', () => {

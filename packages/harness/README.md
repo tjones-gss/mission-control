@@ -1,8 +1,19 @@
 # Adaptive Agentic Engineering Harness v5.3.0
 
-A control plane for AI coding agents. It gives the agent clear rails — what to
-read, what to write, when to stop, when to ask a human — without dictating
+An opt-in control plane for AI coding agents. It gives the agent clear rails — what
+to read, what to write, when to stop, when to ask a human — without dictating
 *how* to write code.
+
+These rails are **best-effort accident-prevention, not an adversary-proof security
+boundary.** They catch common mistakes (a stray `rm -rf`, an edit outside mission
+scope) at the tool-call boundary and feed the reason back to the model. They are
+not a sandbox and will not stop a determined or adversarial agent. The real control
+for destructive operations is OS-level sandboxing — containers, VMs, restricted
+users, scoped credentials. The harness complements that; it does not replace it.
+
+The rails are also progressive disclosure: in Mission Control, the cockpit (the
+window) is the front door and works with zero harness setup. You adopt these rails
+per project when you feel the pain of ungoverned agent runs — not before.
 
 v5.1 is a hardening pass on v5. It does not redesign anything. It tightens
 enforcement, plugs validation gaps, and ships the test/setup scaffolding v5
@@ -24,13 +35,17 @@ The harness enforces five things:
    layer before the model sees them succeed.
 2. **Dangerous commands**. A configurable block-list (rm -rf, DROP TABLE,
    prod deploys, etc.) denies destructive shell commands case-insensitively,
-   with the policy file named in the denial message.
+   with the policy file named in the denial message. This is accident-prevention,
+   not a security sandbox — it catches the obvious mistakes, not a determined
+   adversary. Pair it with OS-level sandboxing for anything truly destructive.
 3. **Quality gates**. Every phase of every pipeline has explicit `required`
    conditions before transitioning. The CLI validates the schema; the
    reviewer subagent validates the work.
 4. **Human approval**. Production operations, schema-breaking changes, and
    safety-weakening edits all require explicit human approval via
-   `.harness/human-approval-policy.yml`.
+   `.harness/human-approval-policy.yml`. Approval lives in the harness/CLI layer:
+   browser-side (cockpit) approval of destructive commands is deliberately **not
+   shipped yet**, pending a hardened trust model.
 5. **Session memory**. Each meaningful session ends with a note tied to the
    active mission, scaffolded by `tools/harness handoff`.
 
@@ -143,10 +158,12 @@ applying them requires explicit human approval per
 `docs/governance/harness-change-policy.md`.
 
 The Stop hook, the danger-zone hook, and the mission hook are the **three
-layers that catch most failure modes**. They are not the only line of defense
-— the reviewer subagent (`harness-reviewer`) does a strict PR-grade review
-before any mission completes — but they're the cheapest layer to enforce
-mechanically.
+layers that catch most accidental failure modes**. They are not the only line
+of defense — the reviewer subagent (`harness-reviewer`) does a strict PR-grade
+review before any mission completes — but they're the cheapest layer to enforce
+mechanically. They are not a security boundary: for operations that would be
+genuinely destructive if a hook were bypassed, rely on OS-level sandboxing
+rather than these rails alone.
 
 ## Self-improvement (v4.1 layer)
 

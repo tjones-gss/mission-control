@@ -1,6 +1,10 @@
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
-  host: process.env.HOST || '0.0.0.0',
+  // Bind to loopback only by default — the cockpit should not be reachable from
+  // the LAN out of the box. Operators who knowingly want LAN exposure can set
+  // OVERSIGHT_HOST=0.0.0.0 (or a specific interface). HOST is still honored as a
+  // legacy/compat fallback.
+  host: process.env.OVERSIGHT_HOST || process.env.HOST || '127.0.0.1',
   logLevel: process.env.LOG_LEVEL || 'info',
   corsOrigin: process.env.OVERSIGHT_CORS_ORIGIN || null,
   apiKey: process.env.OVERSIGHT_API_KEY || null,

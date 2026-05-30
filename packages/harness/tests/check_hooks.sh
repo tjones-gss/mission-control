@@ -61,6 +61,17 @@ run_hook() {
   echo "$3" | bash "$1/$2"
 }
 
+# A PATH with the jq directory removed, used to simulate a machine without jq
+# (the Windows default). The hooks must FAIL CLOSED — still block dangerous
+# commands and still allow benign ones — when jq is unavailable.
+JQ_DIR="$(dirname "$(command -v jq)")"
+NOJQ_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$JQ_DIR" | paste -sd: -)"
+
+run_hook_nojq() {
+  # run_hook_nojq <hook_dir> <hook> <stdin-json>  -> stdout (jq stripped from PATH)
+  echo "$3" | PATH="$NOJQ_PATH" bash "$1/$2"
+}
+
 HOOK_DIR="$CLAUDE_HOOK_DIR"
 
 # -------- 4. block-danger.sh --------
@@ -78,6 +89,85 @@ OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"rm     -r
 
 OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"ls -la"}}')"
 [[ -z "$OUT" ]] && ok "ls -la → allow (empty)" || bad "ls -la produced output: $OUT"
+
+# -------- 4b. block-danger.sh: stronger matcher (variant bypasses) --------
+# Flat substring lists miss these; the regex rules must catch them.
+echo
+echo "block-danger.sh variant bypasses (now caught):"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"rm --recursive --force /"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "rm --recursive --force → deny" || bad "rm --recursive --force not denied: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"rm -r -f build"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "rm -r -f → deny" || bad "rm -r -f not denied: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"rm -fr build"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "rm -fr → deny" || bad "rm -fr not denied: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"find . -name x -delete"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "find ... -delete → deny" || bad "find -delete not denied: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"git clean -fdx"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "git clean -fdx → deny" || bad "git clean -fdx not denied: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"dd if=/dev/zero of=/dev/sda"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "dd of=/dev/sda → deny" || bad "dd of=/dev not denied: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"mkfs.ext4 /dev/sdb1"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "mkfs.ext4 → deny" || bad "mkfs not denied: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"chmod -R 777 /"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "chmod -R 777 / → deny" || bad "chmod -R 777 / not denied: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":":(){ :|:& };:"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "fork bomb → deny" || bad "fork bomb not denied: $OUT"
+
+# Benign near-misses must STILL pass (no over-blocking).
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"rm -r build"}}')"
+[[ -z "$OUT" ]] && ok "rm -r (no force) → allow" || bad "rm -r over-blocked: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"find . -name x"}}')"
+[[ -z "$OUT" ]] && ok "find without -delete → allow" || bad "find over-blocked: $OUT"
+
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"git clean -n"}}')"
+[[ -z "$OUT" ]] && ok "git clean -n (dry run) → allow" || bad "git clean -n over-blocked: $OUT"
+
+# -------- 4c. block-danger.sh: FAIL CLOSED without jq --------
+# Simulate a jq-less machine (Windows default). The hook must still enforce.
+echo
+echo "block-danger.sh FAIL CLOSED (jq absent):"
+
+OUT="$(run_hook_nojq "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"rm -rf /tmp/x"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "no-jq: rm -rf → deny" || bad "no-jq: rm -rf not denied: $OUT"
+
+OUT="$(run_hook_nojq "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"DROP TABLE users"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "no-jq: DROP TABLE → deny" || bad "no-jq: DROP TABLE not denied: $OUT"
+
+OUT="$(run_hook_nojq "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"rm --recursive --force /"}}')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "no-jq: rm --recursive --force → deny" || bad "no-jq: variant not denied: $OUT"
+
+# Emitted deny JSON without jq must still be valid JSON (validate WITH jq here).
+OUT="$(run_hook_nojq "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"rm -rf /tmp/x \"q\" path"}}')"
+echo "$OUT" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1 \
+  && ok "no-jq: emitted deny JSON is valid + escaped" || bad "no-jq: emitted deny JSON invalid: $OUT"
+
+OUT="$(run_hook_nojq "$HOOK_DIR" block-danger.sh '{"tool_input":{"command":"ls -la"}}')"
+[[ -z "$OUT" ]] && ok "no-jq: ls -la → allow (empty)" || bad "no-jq: benign produced output: $OUT"
+
+# Unparseable / empty input must DENY (fail closed), not silently allow.
+OUT="$(run_hook_nojq "$HOOK_DIR" block-danger.sh 'this is not json')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "no-jq: unparseable input → deny (fail closed)" || bad "no-jq: unparseable input not denied: $OUT"
+
+OUT="$(printf '' | PATH="$NOJQ_PATH" bash "$HOOK_DIR/block-danger.sh")"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "no-jq: empty input → deny (fail closed)" || bad "no-jq: empty input not denied: $OUT"
+
+# With jq present, unparseable input must ALSO fail closed.
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh 'not json at all')"
+[[ "$OUT" == *'"permissionDecision": "deny"'* ]] && ok "jq: unparseable input → deny (fail closed)" || bad "jq: unparseable input not denied: $OUT"
+
+# Well-formed JSON with no command field is not dangerous → allow.
+OUT="$(run_hook "$HOOK_DIR" block-danger.sh '{"tool_input":{}}')"
+[[ -z "$OUT" ]] && ok "valid JSON, no command field → allow (empty)" || bad "no-command over-blocked: $OUT"
 
 # -------- 5. require-mission.sh --------
 echo
@@ -214,6 +304,35 @@ OUT="$(run_hook "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"rm -rf /tmp/x"}'
 
 OUT="$(run_hook "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"ls -la"}')"
 [[ "$OUT" == *'"permission": "allow"'* ]] && ok "cursor ls -la → allow" || bad "cursor ls -la: $OUT"
+
+# Cursor variant bypasses (now caught by regex rules)
+OUT="$(run_hook "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"rm --recursive --force /"}')"
+[[ "$OUT" == *'"permission": "deny"'* ]] && ok "cursor rm --recursive --force → deny" || bad "cursor variant not denied: $OUT"
+
+OUT="$(run_hook "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"rm -r -f build"}')"
+[[ "$OUT" == *'"permission": "deny"'* ]] && ok "cursor rm -r -f → deny" || bad "cursor rm -r -f not denied: $OUT"
+
+OUT="$(run_hook "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"find . -delete"}')"
+[[ "$OUT" == *'"permission": "deny"'* ]] && ok "cursor find . -delete → deny" || bad "cursor find -delete not denied: $OUT"
+
+# Cursor FAIL CLOSED without jq
+OUT="$(run_hook_nojq "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"rm -rf /tmp/x"}')"
+[[ "$OUT" == *'"permission": "deny"'* ]] && ok "cursor no-jq: rm -rf → deny" || bad "cursor no-jq: rm -rf not denied: $OUT"
+
+OUT="$(run_hook_nojq "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"find . -delete"}')"
+[[ "$OUT" == *'"permission": "deny"'* ]] && ok "cursor no-jq: find . -delete → deny" || bad "cursor no-jq: find -delete not denied: $OUT"
+
+OUT="$(run_hook_nojq "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"ls -la"}')"
+[[ "$OUT" == *'"permission": "allow"'* ]] && ok "cursor no-jq: ls -la → allow" || bad "cursor no-jq: benign: $OUT"
+
+# Cursor no-jq emitted deny JSON must be valid JSON (validate WITH jq).
+OUT="$(run_hook_nojq "$CURSOR_HOOK_DIR" block-danger.sh '{"command":"rm -rf /tmp/x \"q\" path"}')"
+echo "$OUT" | jq -e '.permission == "deny"' >/dev/null 2>&1 \
+  && ok "cursor no-jq: emitted deny JSON is valid + escaped" || bad "cursor no-jq: deny JSON invalid: $OUT"
+
+# Cursor unparseable input must DENY (fail closed).
+OUT="$(run_hook_nojq "$CURSOR_HOOK_DIR" block-danger.sh 'not json')"
+[[ "$OUT" == *'"permission": "deny"'* ]] && ok "cursor no-jq: unparseable → deny (fail closed)" || bad "cursor no-jq: unparseable not denied: $OUT"
 
 echo
 echo "Cursor require-mission.sh:"

@@ -1,15 +1,25 @@
 # Mission Control — Agent Guide
 
-This monorepo unifies two halves. Know which one you are touching.
+This monorepo is a live cockpit for people already running multiple Claude Code
+(and Cursor/Codex) agents who want to see and steer them in one place. It unifies
+two halves. Know which one you are touching.
+
+The honest framing: the cockpit (the window) is the front door and works with zero
+harness setup. The harness (the rails) is **opt-in** accident-prevention you adopt
+per project when you feel the pain — not a prerequisite. The rails are best-effort
+accident-prevention, **not** an adversary-proof security boundary; the real control
+for destructive operations is OS-level sandboxing.
 
 ## The two halves
 
 - **`apps/cockpit`** — the Oversight dashboard, "the window." A Node + React app
-  (Express server + Vite/React client) that visualizes agent runs live. It is the
-  global runtime you look *at*. It manages its own `client/` and `server/` via
-  `cd` scripts — do NOT restructure it into workspaces.
-- **`packages/harness`** — the harness control plane, "the rails." Python. It is
-  the per-project governance layer that agents run *inside*. Not an npm workspace.
+  (Express server + Vite/React client) that gives a live, multi-project mission
+  view across running agents. It is the global runtime you look *at* and the front
+  door. It manages its own `client/` and `server/` via `cd` scripts — do NOT
+  restructure it into workspaces.
+- **`packages/harness`** — the harness control plane, "the rails." Python. An
+  opt-in, per-project guardrail layer that agents can run *inside*. Not an npm
+  workspace.
 
 ## How they talk
 
