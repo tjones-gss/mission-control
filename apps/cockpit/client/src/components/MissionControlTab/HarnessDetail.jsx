@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Circle } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Circle, GitBranch, Loader2, Play } from 'lucide-react'
+import { CompileRoadmapDialog } from './CompileRoadmapDialog.jsx'
+import { Toast } from './Toast.jsx'
 
 const STATUS_BADGE = {
   done: 'bg-green-900/60 text-green-200',
@@ -17,6 +19,21 @@ const PRIORITY_BADGE = {
   high: 'bg-red-900/60 text-red-200',
   medium: 'bg-amber-900/60 text-amber-200',
   low: 'bg-gray-700 text-gray-300',
+}
+
+// Statuses for which the mission is settled or already running — Run on-rails
+// should not be offered.
+const NON_RUNNABLE = new Set([
+  'in_progress',
+  'active',
+  'running',
+  'done',
+  'complete',
+  'completed',
+])
+
+function normalizeStatus(value) {
+  return value == null ? '' : String(value).toLowerCase()
 }
 
 function Card({ label, value, hint }) {
@@ -55,15 +72,72 @@ function normalizeMissions(status) {
   return []
 }
 
-function MissionRow({ mission }) {
+function MissionRow({ mission, projectKey, projectLabel, onToast }) {
   const validation = mission.validation ?? mission.validated
   const review = mission.review ?? mission.reviewed
+  const status = normalizeStatus(mission.status)
+  const isDraft = status === 'draft'
+  const runnable = !NON_RUNNABLE.has(status)
+
+  const [confirming, setConfirming] = useState(false)
+  const [starting, setStarting] = useState(false)
+
+  const execute = useCallback(async () => {
+    setStarting(true)
+    try {
+      // projectKey is ALREADY encodeURIComponent(projectPath) — use it bare (double
+      // -encoding would 404 the whitelist). mission.id is raw, so it still needs encoding.
+      const res = await fetch(
+        `/api/harness/${projectKey}/missions/${encodeURIComponent(mission.id)}/execute`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.ok === false) {
+        onToast?.({
+          tone: 'error',
+          message: `Could not start ${mission.id}: ${
+            data.error || data.detail || `HTTP ${res.status}`
+          }`,
+        })
+        return
+      }
+      setConfirming(false)
+      onToast?.({
+        tone: 'success',
+        message: `${mission.id} started — watch it in the Agents tab.`,
+      })
+    } catch (e) {
+      onToast?.({ tone: 'error', message: `Could not start ${mission.id}: ${e.message}` })
+    } finally {
+      setStarting(false)
+    }
+  }, [projectKey, mission.id, onToast])
+
   return (
     <li className="bg-gray-900 border border-gray-800 rounded px-3 py-2">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="font-mono text-xs text-gray-200 truncate">{mission.id}</span>
         <StatusPill value={mission.status} map={STATUS_BADGE} />
+        {isDraft && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-amber-600/70 text-amber-300 bg-amber-950/30">
+            DRAFT · review before running
+          </span>
+        )}
         {mission.priority != null && <StatusPill value={mission.priority} map={PRIORITY_BADGE} />}
+        {runnable && !confirming && (
+          <button
+            onClick={() => setConfirming(true)}
+            className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30 transition-colors"
+            title={`Run ${mission.id} on-rails`}
+          >
+            <Play size={11} />
+            Run on-rails
+          </button>
+        )}
       </div>
       <div className="mt-1.5 flex items-center gap-4 text-[10px] text-gray-500">
         <span className="flex items-center gap-1">
@@ -83,6 +157,34 @@ function MissionRow({ mission }) {
           review
         </span>
       </div>
+
+      {confirming && (
+        <div className="mt-2 px-2.5 py-2 bg-gray-950 border border-gray-700 rounded space-y-2">
+          <div className="text-[11px] text-gray-300">
+            This spawns an agent that will execute{' '}
+            <span className="font-mono text-gray-100">{mission.id}</span> inside{' '}
+            <span className="font-mono text-gray-100">{projectLabel}</span>. It runs under the
+            harness rails.
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={starting}
+              className="px-2 py-1 rounded text-[11px] text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={execute}
+              disabled={starting}
+              className="ml-auto flex items-center gap-1 px-2 py-1 rounded bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {starting ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+              {starting ? 'Starting…' : 'Run on-rails'}
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   )
 }
@@ -91,6 +193,10 @@ export function HarnessDetail({ project, harnessVersion }) {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [showCompile, setShowCompile] = useState(false)
+  const [toast, setToast] = useState(null)
+
+  const pushToast = useCallback((t) => setToast({ ...t, _id: Date.now() }), [])
 
   // Fetch the full status for the selected project; refetch on project change
   // or harnessVersion bumps so SSE-driven updates refresh the view.
@@ -143,7 +249,7 @@ export function HarnessDetail({ project, harnessVersion }) {
   const blocker = status?.next?.blocker ?? project.blocker
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="relative h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div className="shrink-0 px-4 py-3 border-b border-gray-800 space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -154,6 +260,16 @@ export function HarnessDetail({ project, harnessVersion }) {
             </span>
           )}
           <span className="text-xs text-gray-500 truncate">{project.projectPath}</span>
+          {project.available && (
+            <button
+              onClick={() => setShowCompile(true)}
+              className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30 transition-colors"
+              title="Compile a plain-language roadmap into sequenced draft missions"
+            >
+              <GitBranch size={12} />
+              Compile roadmap → missions
+            </button>
+          )}
         </div>
         {blocked && (
           <div className="flex items-start gap-2 px-3 py-2 bg-amber-950/40 border border-amber-900/60 rounded">
@@ -208,13 +324,36 @@ export function HarnessDetail({ project, harnessVersion }) {
             ) : (
               <ul className="space-y-2">
                 {missions.map((mission) => (
-                  <MissionRow key={mission.id} mission={mission} />
+                  <MissionRow
+                    key={mission.id}
+                    mission={mission}
+                    projectKey={project.projectKey}
+                    projectLabel={project.projectLabel}
+                    onToast={pushToast}
+                  />
                 ))}
               </ul>
             )}
           </div>
         </>
       )}
+
+      {showCompile && (
+        <CompileRoadmapDialog
+          project={project}
+          onClose={() => setShowCompile(false)}
+          onCompiled={() => {
+            setShowCompile(false)
+            pushToast({
+              tone: 'success',
+              message:
+                'Roadmap compiled — new draft missions will appear as the list refreshes.',
+            })
+          }}
+        />
+      )}
+
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }
