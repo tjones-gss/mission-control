@@ -1,0 +1,19 @@
+# PRD index — registry of phased plans (PRDs) and their review status.
+#
+# Parallel to mission-index.yml. The plan-review pipeline writes here; the
+# `human_approval_for_plan` gate reads it; `harness plan` manages it. Approval
+# is NOT set by hand — it is projected from the approval contract
+# (.harness/approvals/) by `harness plan sync`, so status: approved always has
+# a matching approval-decision behind it.
+#
+# Entry shape:
+#   PRD-<slug>:
+#     file: docs/plans/PRD-<slug>.md
+#     status: draft        # draft | in-review | approved | rejected
+#     approved_by: null    # from the approval-decision (approver)
+#     approved_at: null    # from the approval-decision (decidedAt)
+#     missions: []         # mission ids sliced from this PRD's phases
+#     request_id: null     # approval-request uuid (set by `harness plan request`)
+#     command_hash: null   # hash bound into the request, matched on decision
+
+plans: {}

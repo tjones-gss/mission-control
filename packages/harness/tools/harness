@@ -26,11 +26,13 @@ Options:
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 # Shared control-plane library (harness_core/)
@@ -1049,6 +1051,176 @@ Assumptions:
     return 0
 
 
+# ---------- plan (PRD) ----------
+#
+# A PRD is a reviewed, phased plan produced before missions are written. The
+# plan-review pipeline registers it here; the `human_approval_for_plan` gate
+# reads `status: approved`. Approval is NOT hand-set — it is projected from the
+# approval contract (.harness/approvals/) by `harness plan sync`, so an approved
+# plan always has a matching approval-decision behind it.
+
+# Mirror of packages/contracts SCHEMA_VERSION (approval-request/decision).
+APPROVAL_SCHEMA_VERSION = 2
+
+
+def _plan_index_path(root: Path) -> Path:
+    return root / ".harness/plan-index.yml"
+
+
+def _load_plan_index(root: Path) -> dict:
+    data = load_yaml(_plan_index_path(root))
+    if not isinstance(data.get("plans"), dict):
+        data["plans"] = {}
+    return data
+
+
+def _command_hash(plan_id: str, file_rel: str) -> str:
+    return hashlib.sha256(f"{plan_id}:{file_rel}".encode()).hexdigest()
+
+
+def cmd_plan(args, root: Path) -> int:
+    action = getattr(args, "plan_action", None) or "list"
+    if action == "list":
+        return _plan_list(args, root)
+    if action == "show":
+        return _plan_show(args, root)
+    if action == "register":
+        return _plan_register(args, root)
+    if action == "request":
+        return _plan_request(args, root)
+    if action == "sync":
+        return _plan_sync(args, root)
+    print(f"error: unknown plan action: {action}", file=sys.stderr)
+    return 2
+
+
+def _plan_list(args, root: Path) -> int:
+    plans = _load_plan_index(root).get("plans") or {}
+    if getattr(args, "json", False):
+        print(json.dumps(plans, indent=2, default=str))
+        return 0
+    if not plans:
+        print("no PRDs registered. run: harness plan register <id> --file <path>")
+        return 0
+    print(colorize(f"{emoji_or_ascii('📑', '[plans]')} {len(plans)} PRD(s)", "bold"))
+    for pid, data in plans.items():
+        if not isinstance(data, dict):
+            continue
+        status = data.get("status", "unknown")
+        color = {"approved": "green", "rejected": "red", "in-review": "yellow"}.get(status, "cyan")
+        approver = data.get("approved_by")
+        suffix = f"  (approved by {approver})" if approver else ""
+        print(f"  {colorize(status, color):20s} {pid}  →  {data.get('file', '?')}{suffix}")
+    return 0
+
+
+def _plan_show(args, root: Path) -> int:
+    plans = _load_plan_index(root).get("plans") or {}
+    entry = plans.get(args.id)
+    if not entry:
+        print(f"error: no PRD `{args.id}` in plan-index.yml", file=sys.stderr)
+        return 2
+    print(json.dumps(entry, indent=2, default=str))
+    file_rel = entry.get("file")
+    if file_rel and not (root / file_rel).exists():
+        print(f"warning: PRD file does not exist: {file_rel}", file=sys.stderr)
+    return 0
+
+
+def _plan_register(args, root: Path) -> int:
+    if not args.file:
+        print("error: register requires --file <path>", file=sys.stderr)
+        return 2
+    index = _load_plan_index(root)
+    entry = index["plans"].get(args.id) or {}
+    entry.setdefault("status", "draft")
+    entry.setdefault("approved_by", None)
+    entry.setdefault("approved_at", None)
+    entry.setdefault("missions", [])
+    entry.setdefault("request_id", None)
+    entry.setdefault("command_hash", None)
+    entry["file"] = args.file
+    index["plans"][args.id] = entry
+    save_yaml(_plan_index_path(root), index)
+    print(colorize(f"{emoji_or_ascii('✓', '[ok]')} registered PRD {args.id} ({entry['status']})", "green"))
+    return 0
+
+
+def _plan_request(args, root: Path) -> int:
+    index = _load_plan_index(root)
+    entry = index["plans"].get(args.id)
+    if not entry:
+        print(f"error: no PRD `{args.id}` — register it first", file=sys.stderr)
+        return 2
+    file_rel = entry.get("file", "")
+    req_id = str(uuid.uuid4())
+    chash = _command_hash(args.id, file_rel)
+    request = {
+        "id": req_id,
+        "schemaVersion": APPROVAL_SCHEMA_VERSION,
+        "projectPath": str(root),
+        "tool": "harness-plan",
+        "command": f"approve-plan:{args.id}",
+        "matchedPattern": "plan-review",
+        "riskLevel": "REQUIRES_REVIEW",
+        "commandHash": chash,
+        "requestedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+    pending = root / ".harness/approvals/pending"
+    pending.mkdir(parents=True, exist_ok=True)
+    (pending / f"{req_id}.json").write_text(json.dumps(request, indent=2) + "\n")
+
+    entry["status"] = "in-review"
+    entry["request_id"] = req_id
+    entry["command_hash"] = chash
+    save_yaml(_plan_index_path(root), index)
+    print(colorize(f"{emoji_or_ascii('⏳', '[in-review]')} approval requested for {args.id}", "yellow"))
+    print(f"  request: .harness/approvals/pending/{req_id}.json")
+    print("  a human decides via the cockpit approval UI, then run: harness plan sync")
+    return 0
+
+
+def _plan_sync(args, root: Path) -> int:
+    """Project approval-decision files into plan-index status (allow→approved,
+    deny→rejected). Only honors a decision whose commandHash matches the request."""
+    index = _load_plan_index(root)
+    decided_dir = root / ".harness/approvals/decided"
+    changed = 0
+    for pid, entry in index["plans"].items():
+        if not isinstance(entry, dict) or entry.get("status") != "in-review":
+            continue
+        req_id = entry.get("request_id")
+        if not req_id:
+            continue
+        decision_path = decided_dir / f"{req_id}.json"
+        if not decision_path.exists():
+            continue
+        try:
+            decision = json.loads(decision_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"warning: cannot read decision for {pid}: {e}", file=sys.stderr)
+            continue
+        if decision.get("commandHash") != entry.get("command_hash"):
+            print(f"warning: {pid} decision commandHash mismatch — ignoring (stale/replayed)", file=sys.stderr)
+            continue
+        verdict = decision.get("decision")
+        if verdict == "allow":
+            entry["status"] = "approved"
+            entry["approved_by"] = decision.get("approver")
+            entry["approved_at"] = decision.get("decidedAt")
+            changed += 1
+            print(colorize(f"{emoji_or_ascii('✓', '[ok]')} {pid} approved by {entry['approved_by']}", "green"))
+        elif verdict == "deny":
+            entry["status"] = "rejected"
+            changed += 1
+            print(colorize(f"{emoji_or_ascii('✗', '[rejected]')} {pid} rejected", "red"))
+    if changed:
+        save_yaml(_plan_index_path(root), index)
+    else:
+        print("no pending decisions to apply")
+    return 0
+
+
 # ---------- utilities ----------
 
 def run_cmd(args_list, cwd):
@@ -1916,6 +2088,19 @@ def main():
     p_handoff = sub.add_parser("handoff", help="Generate a session note skeleton")
     p_handoff.add_argument("--mission", help="Mission ID (defaults to project.current.mission)")
 
+    p_plan = sub.add_parser("plan", help="Manage PRDs (phased plans) and their approval")
+    p_plan_sub = p_plan.add_subparsers(dest="plan_action")
+    pl_list = p_plan_sub.add_parser("list", help="List registered PRDs and their status")
+    pl_list.add_argument("--json", action="store_true", help="Machine-readable JSON output")
+    pl_show = p_plan_sub.add_parser("show", help="Show one PRD's index entry")
+    pl_show.add_argument("id", help="PRD id (e.g. PRD-<slug>)")
+    pl_reg = p_plan_sub.add_parser("register", help="Add/update a PRD entry (status: draft)")
+    pl_reg.add_argument("id", help="PRD id (e.g. PRD-<slug>)")
+    pl_reg.add_argument("--file", required=True, help="Path to the PRD markdown")
+    pl_req = p_plan_sub.add_parser("request", help="Open a human-approval request for a PRD")
+    pl_req.add_argument("id", help="PRD id (e.g. PRD-<slug>)")
+    p_plan_sub.add_parser("sync", help="Project approval decisions into PRD status")
+
     p_dashboard = sub.add_parser(
         "dashboard",
         help="Generate a local HTML dashboard at runs/dashboard/index.html",
@@ -1947,6 +2132,7 @@ def main():
         "setup": cmd_setup,
         "validate": cmd_validate,
         "handoff": cmd_handoff,
+        "plan": cmd_plan,
         "dashboard": cmd_dashboard,
     }
     if args.cmd == "install":

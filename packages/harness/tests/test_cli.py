@@ -220,6 +220,62 @@ class TestModelTiersCheck(unittest.TestCase):
         self.assertIn("not a defined tier", r.stdout)
 
 
+class TestPlanCli(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-test-"))
+        make_minimal_project(self.tmpdir)
+        (self.tmpdir / ".harness/plan-index.yml").write_text("plans: {}\n")
+        (self.tmpdir / "docs/plans").mkdir(parents=True)
+        (self.tmpdir / "docs/plans/PRD-demo.md").write_text("# PRD: demo\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _decide(self, request_path: Path, *, decision: str, command_hash: str):
+        req = json.loads(request_path.read_text())
+        decided = self.tmpdir / ".harness/approvals/decided"
+        decided.mkdir(parents=True, exist_ok=True)
+        (decided / f"{req['id']}.json").write_text(
+            json.dumps(
+                {
+                    "id": req["id"],
+                    "schemaVersion": req["schemaVersion"],
+                    "decision": decision,
+                    "approver": "tester",
+                    "commandHash": command_hash,
+                    "decidedAt": "2026-05-31T00:00:00+00:00",
+                }
+            )
+        )
+
+    def _pending(self) -> Path:
+        return next((self.tmpdir / ".harness/approvals/pending").glob("*.json"))
+
+    def test_register_request_sync_approves(self):
+        r = run_cli("-C", str(self.tmpdir), "plan", "register", "PRD-demo",
+                    "--file", "docs/plans/PRD-demo.md")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        r = run_cli("-C", str(self.tmpdir), "plan", "request", "PRD-demo")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        req = self._pending()
+        chash = json.loads(req.read_text())["commandHash"]
+        self._decide(req, decision="allow", command_hash=chash)
+        r = run_cli("-C", str(self.tmpdir), "plan", "sync")
+        self.assertIn("approved", r.stdout)
+        r = run_cli("-C", str(self.tmpdir), "plan", "list", "--json")
+        self.assertEqual(json.loads(r.stdout)["PRD-demo"]["status"], "approved")
+
+    def test_sync_ignores_hash_mismatch(self):
+        run_cli("-C", str(self.tmpdir), "plan", "register", "PRD-demo",
+                "--file", "docs/plans/PRD-demo.md")
+        run_cli("-C", str(self.tmpdir), "plan", "request", "PRD-demo")
+        self._decide(self._pending(), decision="allow", command_hash="tampered")
+        r = run_cli("-C", str(self.tmpdir), "plan", "sync")
+        self.assertIn("mismatch", (r.stdout + r.stderr).lower())
+        r = run_cli("-C", str(self.tmpdir), "plan", "list", "--json")
+        self.assertEqual(json.loads(r.stdout)["PRD-demo"]["status"], "in-review")
+
+
 class TestWindowsGitBash(unittest.TestCase):
     @unittest.skipUnless(sys.platform == "win32", "Windows only")
     def test_find_git_bash_windows_prefers_git_over_wsl(self):

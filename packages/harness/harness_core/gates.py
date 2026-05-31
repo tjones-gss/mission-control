@@ -127,6 +127,26 @@ def _review_recorded(ctx: GateContext) -> bool:
     return any(mid in p.name for p in reviews.glob("*.md"))
 
 
+@register_gate("human_approval_for_plan")
+def _plan_approved(ctx: GateContext) -> bool:
+    """True when at least one PRD in plan-index.yml is approved.
+
+    What this verifies: a human approval was recorded for a plan. `status:
+    approved` is only written by `harness plan sync`, which projects it from a
+    matching approval-decision (decision == allow) in .harness/approvals/ — so
+    the projection, not a hand-edited field, is what flips this gate. What it
+    CANNOT verify: that the approved plan is the *right* plan.
+    """
+    index = load_yaml(ctx.root / ".harness/plan-index.yml")
+    plans = index.get("plans")
+    if not isinstance(plans, dict):
+        return False
+    return any(
+        isinstance(data, dict) and data.get("status") == "approved"
+        for data in plans.values()
+    )
+
+
 @register_gate("state_files_consistent")
 def _state_consistent(ctx: GateContext) -> bool:
     return _state_read_complete(ctx)

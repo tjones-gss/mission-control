@@ -39,10 +39,26 @@ phases:
         - acceptance_criteria_defined
         - non_goals_defined
 
+  - id: plan-review
+    agent: prd-writer
+    description: Produce a reviewed, phased PRD and gate on human approval before missions.
+    inputs:
+      - docs/specs/SPEC-<number>-<feature-slug>.md
+    outputs:
+      - docs/plans/PRD-<feature-slug>.md
+      - .harness/plan-index.yml
+    gate:
+      required:
+        - phased_plan_defined
+        - human_approval_for_plan
+    loop:
+      pipeline: pipelines/plan-review.yml
+
   - id: mission-planning
     agent: mission-planner
-    description: Slice the spec into bounded missions.
+    description: Slice the approved PRD into bounded missions (one per PRD phase).
     inputs:
+      - docs/plans/PRD-<feature-slug>.md
       - docs/specs/SPEC-<number>-<feature-slug>.md
     outputs:
       - runs/missions/MISSION-<id>-*.md
