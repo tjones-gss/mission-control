@@ -21,6 +21,13 @@ const PRIORITY_BADGE = {
   low: 'bg-gray-700 text-gray-300',
 }
 
+const PLAN_STATUS_BADGE = {
+  approved: 'bg-green-900/60 text-green-200',
+  rejected: 'bg-red-900/60 text-red-200',
+  'in-review': 'bg-amber-900/60 text-amber-200',
+  draft: 'bg-gray-700 text-gray-200',
+}
+
 // Statuses for which the mission is settled or already running — Run on-rails
 // should not be offered.
 const NON_RUNNABLE = new Set([
@@ -70,6 +77,17 @@ function normalizeMissions(status) {
     }))
   }
   return []
+}
+
+// PRDs (phased plans) ride along in the raw status under `plans` (see
+// packages/contracts/schemas/harness-status.schema.json). Normalize to a list.
+function normalizePlans(status) {
+  const plans = status?.plans
+  if (!plans || typeof plans !== 'object') return []
+  return Object.entries(plans).map(([id, p]) => ({
+    id,
+    ...(p && typeof p === 'object' ? p : {}),
+  }))
 }
 
 function MissionRow({ mission, projectKey, projectLabel, onToast }) {
@@ -293,6 +311,7 @@ export function HarnessDetail({ project, harnessVersion }) {
   }, [project.projectKey, project.available, harnessVersion])
 
   const missions = useMemo(() => normalizeMissions(status), [status])
+  const plans = useMemo(() => normalizePlans(status), [status])
 
   const phase = status?.pipeline?.phase ?? project.pipeline?.phase
   const gate = status?.pipeline?.gate ?? project.pipeline?.gate
@@ -372,6 +391,44 @@ export function HarnessDetail({ project, harnessVersion }) {
             />
             <Card label="Missions" value={missions.length} />
           </div>
+
+          {/* Plans / PRDs — only shown when the project has registered any. A
+              PRD is a reviewed, phased plan that gates mission-planning. */}
+          {plans.length > 0 && (
+            <div className="shrink-0 px-4 pt-1 pb-3">
+              <h3 className="text-[10px] uppercase tracking-wider text-gray-600 mb-2">
+                Plans / PRDs
+              </h3>
+              <ul className="space-y-2">
+                {plans.map((plan) => (
+                  <li
+                    key={plan.id}
+                    className="bg-gray-900 border border-gray-800 rounded px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs text-gray-200 truncate">{plan.id}</span>
+                      <StatusPill value={plan.status} map={PLAN_STATUS_BADGE} />
+                      {plan.approved_by && (
+                        <span className="text-[10px] text-gray-500">
+                          approved by {plan.approved_by}
+                        </span>
+                      )}
+                      {Array.isArray(plan.missions) && plan.missions.length > 0 && (
+                        <span className="ml-auto text-[10px] text-gray-500">
+                          {plan.missions.length} mission{plan.missions.length === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
+                    {plan.file && (
+                      <div className="mt-1 text-[10px] text-gray-600 font-mono truncate">
+                        {plan.file}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Missions list */}
           <div className="flex-1 min-h-0 overflow-auto px-4 py-3">

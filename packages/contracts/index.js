@@ -22,7 +22,10 @@ export const harnessStatusSchema = loadSchema("harness-status.schema.json");
 export const approvalRequestSchema = loadSchema("approval-request.schema.json");
 export const approvalDecisionSchema = loadSchema("approval-decision.schema.json");
 
-export const SCHEMA_VERSION = 1;
+// 2: additive — harness-status gained optional `plans` + `pipeline.plan_status`
+// (PRD planning layer). Non-breaking: the schema is additionalProperties:true,
+// so peers on v1 still validate.
+export const SCHEMA_VERSION = 2;
 
 export const schemas = {
   harnessStatus: harnessStatusSchema,

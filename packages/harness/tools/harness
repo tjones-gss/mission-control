@@ -140,6 +140,7 @@ def cmd_status(args, root: Path) -> int:
     pipeline = load_yaml(root / ".harness/pipeline-state.yml")
     missions = load_yaml(root / ".harness/mission-index.yml")
     readiness = load_yaml(root / ".harness/readiness-score.yml")
+    plans = load_yaml(root / ".harness/plan-index.yml")
 
     if args.json:
         out = {
@@ -147,6 +148,7 @@ def cmd_status(args, root: Path) -> int:
             "stack": project.get("stack", {}),
             "pipeline": pipeline.get("pipeline", {}),
             "missions": missions.get("missions", {}),
+            "plans": plans.get("plans", {}),
             "readiness_overall": get(readiness, "readiness", "overall", default={}),
             "next": project.get("next", {}),
         }
