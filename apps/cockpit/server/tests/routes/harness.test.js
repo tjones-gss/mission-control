@@ -181,8 +181,14 @@ describe('POST /:projectKey/roadmap/compile', () => {
 
   it('uses a timestamp slug when no title is given', async () => {
     getKnownHarnessRoots.mockReturnValue([PROJECT])
-    runClaude.mockResolvedValue({ stdout: '{"type":"result","result":"ok"}\n', stderr: '', exitCode: 0 })
-    const res = await request(app).post(`/${KEY}/roadmap/compile`).send({ roadmap: 'Do the thing.' })
+    runClaude.mockResolvedValue({
+      stdout: '{"type":"result","result":"ok"}\n',
+      stderr: '',
+      exitCode: 0,
+    })
+    const res = await request(app)
+      .post(`/${KEY}/roadmap/compile`)
+      .send({ roadmap: 'Do the thing.' })
     expect(res.status).toBe(200)
     expect(res.body.specPath).toMatch(/SPEC-\d{4}-\d{2}-\d{2}T/)
   })
@@ -221,9 +227,7 @@ describe('POST /:projectKey/roadmap/compile', () => {
         stderrOutput: 'boom',
       }),
     )
-    const res = await request(app)
-      .post(`/${KEY}/roadmap/compile`)
-      .send({ roadmap: 'Build it.' })
+    const res = await request(app).post(`/${KEY}/roadmap/compile`).send({ roadmap: 'Build it.' })
     expect(res.status).toBe(502)
     expect(res.body.ok).toBe(false)
     expect(res.body.error).toMatch(/code=1/)
@@ -252,7 +256,10 @@ describe('POST /:projectKey/roadmap/compile', () => {
     const body = { roadmap: 'Build auth.', title: 'Same Plan' }
     // supertest dispatches lazily on .then — kick the request off and capture
     // its eventual response.
-    const first = request(app).post(`/${KEY}/roadmap/compile`).send(body).then((r) => r)
+    const first = request(app)
+      .post(`/${KEY}/roadmap/compile`)
+      .send(body)
+      .then((r) => r)
     // Wait until the first request has entered runClaude (lock held) before the
     // second arrives — deterministic, no reliance on tick counts.
     await entered
@@ -272,7 +279,11 @@ describe('POST /:projectKey/roadmap/compile', () => {
 
   it('releases the lock after settle — a later compile of the same spec succeeds', async () => {
     getKnownHarnessRoots.mockReturnValue([PROJECT])
-    runClaude.mockResolvedValue({ stdout: '{"type":"result","result":"ok"}\n', stderr: '', exitCode: 0 })
+    runClaude.mockResolvedValue({
+      stdout: '{"type":"result","result":"ok"}\n',
+      stderr: '',
+      exitCode: 0,
+    })
     const body = { roadmap: 'Build it.', title: 'Sequential Plan' }
     const first = await request(app).post(`/${KEY}/roadmap/compile`).send(body)
     expect(first.status).toBe(200)

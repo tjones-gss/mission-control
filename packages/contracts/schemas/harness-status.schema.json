@@ -40,7 +40,25 @@
         "phase": { "type": "string" },
         "gate": { "type": "string" },
         "last_completed_phase": { "type": ["string", "null"] },
-        "next_phase": { "type": ["string", "null"] }
+        "next_phase": { "type": ["string", "null"] },
+        "plan_status": { "type": ["string", "null"] }
+      }
+    },
+    "plans": {
+      "type": "object",
+      "additionalProperties": true,
+      "patternProperties": {
+        "^.+$": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "status": { "type": "string" },
+            "file": { "type": "string" },
+            "approved_by": { "type": ["string", "null"] },
+            "approved_at": { "type": ["string", "null"] },
+            "missions": { "type": "array", "items": { "type": "string" } }
+          }
+        }
       }
     },
     "missions": {

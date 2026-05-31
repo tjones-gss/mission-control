@@ -58,10 +58,7 @@ vi.mock('node:child_process', () => {
 })
 
 // Import AFTER the mocks are registered.
-import {
-  getHarnessProjects,
-  getHarnessProjectByPath,
-} from '../../parsers/harness.js'
+import { getHarnessProjects, getHarnessProjectByPath } from '../../parsers/harness.js'
 
 beforeEach(() => {
   vi.clearAllMocks()

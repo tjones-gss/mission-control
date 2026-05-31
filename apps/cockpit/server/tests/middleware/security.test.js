@@ -162,7 +162,11 @@ describe('security middleware', () => {
 
   describe('hostCheck (DNS-rebinding guard)', () => {
     function makeReq(hostHeader, overrides = {}) {
-      return { headers: hostHeader === undefined ? {} : { host: hostHeader }, path: '/api/sessions', ...overrides }
+      return {
+        headers: hostHeader === undefined ? {} : { host: hostHeader },
+        path: '/api/sessions',
+        ...overrides,
+      }
     }
 
     function makeRes() {
@@ -368,7 +372,11 @@ describe('security middleware', () => {
       const res = makeRes()
       const next = vi.fn()
       originGuard(
-        { method: 'POST', path: '/api/sessions/abc/tool-approval', headers: { 'x-api-key': 'secret-key-123' } },
+        {
+          method: 'POST',
+          path: '/api/sessions/abc/tool-approval',
+          headers: { 'x-api-key': 'secret-key-123' },
+        },
         res,
         next,
       )
@@ -382,7 +390,11 @@ describe('security middleware', () => {
       const res = makeRes()
       const next = vi.fn()
       originGuard(
-        { method: 'POST', path: '/api/sessions/abc/tool-approval', headers: { origin: 'https://evil.example.com', 'content-type': 'application/json' } },
+        {
+          method: 'POST',
+          path: '/api/sessions/abc/tool-approval',
+          headers: { origin: 'https://evil.example.com', 'content-type': 'application/json' },
+        },
         res,
         next,
       )
@@ -403,11 +415,7 @@ describe('security middleware', () => {
     it('rejects when Referer origin is foreign', () => {
       const res = makeRes()
       const next = vi.fn()
-      originGuard(
-        makeReq({ origin: undefined, referer: 'https://evil.example.com/x' }),
-        res,
-        next,
-      )
+      originGuard(makeReq({ origin: undefined, referer: 'https://evil.example.com/x' }), res, next)
       expect(next).not.toHaveBeenCalled()
       expect(res.status).toHaveBeenCalledWith(403)
     })
@@ -416,7 +424,12 @@ describe('security middleware', () => {
       const res = makeRes()
       const next = vi.fn()
       originGuard(
-        makeReq({ method: 'GET', path: '/api/sessions', origin: 'https://evil.example.com', contentType: undefined }),
+        makeReq({
+          method: 'GET',
+          path: '/api/sessions',
+          origin: 'https://evil.example.com',
+          contentType: undefined,
+        }),
         res,
         next,
       )
@@ -428,7 +441,11 @@ describe('security middleware', () => {
       const res = makeRes()
       const next = vi.fn()
       originGuard(
-        makeReq({ path: '/api/stream', origin: 'https://evil.example.com', contentType: undefined }),
+        makeReq({
+          path: '/api/stream',
+          origin: 'https://evil.example.com',
+          contentType: undefined,
+        }),
         res,
         next,
       )
@@ -439,7 +456,11 @@ describe('security middleware', () => {
     it('exempts /api/health from the guard', () => {
       const next = vi.fn()
       originGuard(
-        makeReq({ path: '/api/health', origin: 'https://evil.example.com', contentType: undefined }),
+        makeReq({
+          path: '/api/health',
+          origin: 'https://evil.example.com',
+          contentType: undefined,
+        }),
         makeRes(),
         next,
       )

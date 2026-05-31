@@ -144,10 +144,7 @@ router.post('/:projectKey/roadmap/compile', async (req, res) => {
   const specFileName = `SPEC-${slug}.md`
   const specPath = path.join(specsDir, specFileName)
   // Relative path (POSIX-style) for the prompt so the skill resolves it from cwd.
-  const relSpecPath = path
-    .join('docs', 'specs', specFileName)
-    .split(path.sep)
-    .join('/')
+  const relSpecPath = path.join('docs', 'specs', specFileName).split(path.sep).join('/')
 
   // Concurrency guard, keyed on the resolved specPath: a double-submit for the
   // same spec must not overwrite the file mid-write or spawn a second
@@ -251,10 +248,8 @@ router.post('/:projectKey/missions/:missionId/execute', async (req, res) => {
   // unknown / unavailable project.
   const detail = await getHarnessProjectByPath(projectPath)
   const missions = detail && typeof detail === 'object' ? detail.missions : null
-  const mission =
-    missions && typeof missions === 'object' ? missions[missionId] : undefined
-  const missionFile =
-    mission && typeof mission === 'object' ? mission.file : undefined
+  const mission = missions && typeof missions === 'object' ? missions[missionId] : undefined
+  const missionFile = mission && typeof mission === 'object' ? mission.file : undefined
 
   if (!missionFile || typeof missionFile !== 'string') {
     return res.status(404).json({ error: 'not_found' })

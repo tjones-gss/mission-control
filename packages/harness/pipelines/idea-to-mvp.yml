@@ -81,10 +81,27 @@ phases:
       required:
         - specs_for_mvp_features
 
+  - id: plan-review
+    agent: prd-writer
+    description: Produce a reviewed, phased PRD and gate on human approval before missions.
+    inputs:
+      - docs/specs/
+      - docs/product/mvp-scope.md
+    outputs:
+      - docs/plans/
+      - .harness/plan-index.yml
+    gate:
+      required:
+        - phased_plan_defined
+        - human_approval_for_plan
+    loop:
+      pipeline: pipelines/plan-review.yml
+
   - id: mission-planning
     agent: mission-planner
-    description: Slice specs into bounded, reviewable missions.
+    description: Slice the approved PRD into bounded, reviewable missions.
     inputs:
+      - docs/plans/
       - docs/specs/
     outputs:
       - runs/missions/

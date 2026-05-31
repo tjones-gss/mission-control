@@ -15,10 +15,7 @@ export function setHealthReady() {
 // it stays correct regardless of the process working directory:
 // apps/cockpit/server/routes/ → packages/harness/tools/harness
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const HARNESS_CLI_PATH = path.resolve(
-  __dirname,
-  '../../../../packages/harness/tools/harness'
-)
+const HARNESS_CLI_PATH = path.resolve(__dirname, '../../../../packages/harness/tools/harness')
 
 // Module-level cache so /api/health stays cheap — probing python on every hit
 // would add hundreds of ms of process-spawn latency to a route the UI polls.

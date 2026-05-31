@@ -15,6 +15,9 @@ Produce a single mission file that an implementer can execute in one session wit
 
 ## Required inputs
 
+- The approved PRD (`docs/plans/PRD-<slug>.md`) when one exists — each PRD phase
+  maps to one bounded mission. Missions must not be written before the PRD is
+  approved (`human_approval_for_plan`); check `harness plan list` for status.
 - The source spec (`docs/specs/SPEC-<n>-<slug>.md`) — if missing, stop and request it
 - The related ADR if architecture is touched
 - The project's `package_manager` and `test_runner` from `.harness/project-state.yml`

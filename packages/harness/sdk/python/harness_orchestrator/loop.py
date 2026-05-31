@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from harness_core.gates import GateContext, evaluate_gates
+from harness_core.model_tiers import resolve_model
 from harness_core.pipelines import load_pipeline, pipeline_phases
 from harness_core.yaml_utils import get, load_yaml
 
-from harness_orchestrator.cursor_driver import DriverConfig, config_from_env, create_agent, run_prompt, send_and_wait
+from harness_orchestrator.cursor_driver import DriverConfig, config_from_env
+from harness_orchestrator.drivers import create_agent, run_prompt, send_and_wait
 from harness_orchestrator.roles import build_phase_prompt
 from harness_orchestrator.state import (
     harness_cli,
@@ -39,6 +42,15 @@ def run_next_mission_loop(root: Path, config: DriverConfig) -> int:
     pipeline = load_pipeline(root, "next-mission-loop")
     phases = pipeline_phases(pipeline)
 
+    # The implementer runs on a single persistent agent whose model is bound
+    # once at create_agent, so per-phase swaps aren't meaningful for it. Resolve
+    # its tier up front from its pipeline phase and bind it to the base config.
+    impl_phase = next((p for p in phases if p.get("agent") == "implementer"), None)
+    if impl_phase is not None:
+        impl_model = resolve_model(root, impl_phase, agent="implementer", cfg_default=config.model)
+        if impl_model and impl_model != config.model:
+            config = replace(config, model=impl_model)
+
     mission_id, mission_path = resolve_mission_for_loop(root)
     mission_body = mission_path.read_text() if mission_path else None
     implementation_occurred = False
@@ -57,6 +69,8 @@ def run_next_mission_loop(root: Path, config: DriverConfig) -> int:
         gate_required = (phase.get("gate") or {}).get("required") or []
 
         set_pipeline_phase(root, phase_id, gate_required[0] if gate_required else None)
+
+        phase_model = resolve_model(root, phase, agent=agent_name, cfg_default=config.model)
 
         prompt = build_phase_prompt(
             root,
@@ -85,12 +99,19 @@ def run_next_mission_loop(root: Path, config: DriverConfig) -> int:
                 runtime=config.runtime,
                 dry_run=config.dry_run,
                 api_key=config.api_key,
+                model=phase_model,
             )
             result = run_prompt(cfg, prompt)
             update_sdk_state(root, run_id=result.run_id, runtime=config.runtime)
         else:
             result = run_prompt(
-                config_from_env(cwd=str(root), runtime=config.runtime, dry_run=config.dry_run, api_key=config.api_key),
+                config_from_env(
+                    cwd=str(root),
+                    runtime=config.runtime,
+                    dry_run=config.dry_run,
+                    api_key=config.api_key,
+                    model=phase_model,
+                ),
                 prompt,
             )
             update_sdk_state(root, run_id=result.run_id, runtime=config.runtime)

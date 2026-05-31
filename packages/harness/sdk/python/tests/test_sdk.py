@@ -1,5 +1,7 @@
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -11,6 +13,27 @@ sys.path.insert(0, str(ROOT / "sdk/python"))
 from harness_core.gates import GateContext, evaluate_gate
 from harness_orchestrator.cursor_driver import DriverConfig, DriverResult
 from harness_orchestrator.loop import run_next_mission_loop
+
+
+def isolated_harness_root() -> Path:
+    """Copy the harness tree into a tempdir and return the copy's root.
+
+    The next-mission-loop writes pipeline-state/project-state and, when an
+    implementation occurs, runs `harness validate`/`handoff` which append a
+    session note under runs/. Pointing those writes at the live repo dirties the
+    working tree (observed repeatedly while building the loop). Running against a
+    throwaway copy keeps `git status` clean while still exercising the real CLI,
+    pipelines, roles, and gate logic. The copy excludes sdk/ and tests/ (the
+    in-process package under test is imported via sys.path, not from `root`) and
+    the usual VCS/build noise.
+    """
+    dst = Path(tempfile.mkdtemp(prefix="harness-sdk-test-")) / "harness"
+    shutil.copytree(
+        ROOT,
+        dst,
+        ignore=shutil.ignore_patterns("sdk", "tests", ".git", "node_modules", "__pycache__", "*.pyc"),
+    )
+    return dst
 
 
 class TestGates(unittest.TestCase):
@@ -31,22 +54,34 @@ class TestGates(unittest.TestCase):
 
 
 class TestLoopDryRun(unittest.TestCase):
+    def setUp(self):
+        self.root = isolated_harness_root()
+
+    def tearDown(self):
+        shutil.rmtree(self.root.parent, ignore_errors=True)
+
     @unittest.skipUnless((ROOT / ".harness").is_dir(), "harness root not found")
     def test_run_loop_dry_run(self):
-        cfg = DriverConfig(api_key=None, cwd=str(ROOT), runtime="local", dry_run=True)
-        code = run_next_mission_loop(ROOT, cfg)
+        cfg = DriverConfig(api_key=None, cwd=str(self.root), runtime="local", dry_run=True)
+        code = run_next_mission_loop(self.root, cfg)
         self.assertEqual(code, 0)
 
     @unittest.skipUnless((ROOT / ".harness").is_dir(), "harness root not found")
     @patch("harness_orchestrator.loop.evaluate_gates", return_value=(False, ["gate not satisfied: test_gate"]))
     def test_dry_run_gate_failure_still_exits_0(self, _mock_eval):
-        cfg = DriverConfig(api_key=None, cwd=str(ROOT), runtime="local", dry_run=True, strict_gates=True)
-        code = run_next_mission_loop(ROOT, cfg)
+        cfg = DriverConfig(api_key=None, cwd=str(self.root), runtime="local", dry_run=True, strict_gates=True)
+        code = run_next_mission_loop(self.root, cfg)
         self.assertEqual(code, 0)
 
 
 class TestStrictGates(unittest.TestCase):
     _MOCK_RESULT = DriverResult(agent_id="test-agent", run_id="test-run", status="finished")
+
+    def setUp(self):
+        self.root = isolated_harness_root()
+
+    def tearDown(self):
+        shutil.rmtree(self.root.parent, ignore_errors=True)
 
     @unittest.skipUnless((ROOT / ".harness").is_dir(), "harness root not found")
     @patch("harness_orchestrator.loop.evaluate_gates", return_value=(False, ["gate not satisfied: test_gate"]))
@@ -67,12 +102,12 @@ class TestStrictGates(unittest.TestCase):
         mock_create_agent.return_value = MagicMock(agent_id="test-agent", close=MagicMock())
         cfg = DriverConfig(
             api_key="cursor_test_key",
-            cwd=str(ROOT),
+            cwd=str(self.root),
             runtime="local",
             dry_run=False,
             strict_gates=True,
         )
-        code = run_next_mission_loop(ROOT, cfg)
+        code = run_next_mission_loop(self.root, cfg)
         self.assertEqual(code, 3)
 
     @unittest.skipUnless((ROOT / ".harness").is_dir(), "harness root not found")
@@ -94,12 +129,12 @@ class TestStrictGates(unittest.TestCase):
         mock_create_agent.return_value = MagicMock(agent_id="test-agent", close=MagicMock())
         cfg = DriverConfig(
             api_key="cursor_test_key",
-            cwd=str(ROOT),
+            cwd=str(self.root),
             runtime="local",
             dry_run=False,
             strict_gates=False,
         )
-        code = run_next_mission_loop(ROOT, cfg)
+        code = run_next_mission_loop(self.root, cfg)
         self.assertEqual(code, 0)
 
 

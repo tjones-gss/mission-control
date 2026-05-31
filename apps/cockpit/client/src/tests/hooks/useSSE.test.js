@@ -312,6 +312,7 @@ describe('useSSE', () => {
       'config_update',
       'hooks_update',
       'conductor_update',
+      'harness_update',
     ]
 
     expectedEvents.forEach((eventType) => {

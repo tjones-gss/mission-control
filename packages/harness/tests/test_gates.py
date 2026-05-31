@@ -172,5 +172,35 @@ class TestWorkCompletedWithinScope(unittest.TestCase):
         self.assertTrue(ok)
 
 
+class TestPlanApprovalGate(unittest.TestCase):
+    GATE = "human_approval_for_plan"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="harness-plan-gate-"))
+        (self.tmp / ".harness").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write_index(self, body: str):
+        (self.tmp / ".harness/plan-index.yml").write_text(body)
+
+    def test_fails_when_no_index(self):
+        ok, _ = evaluate_gate(self.GATE, GateContext(root=self.tmp))
+        self.assertFalse(ok)
+
+    def test_fails_when_only_in_review(self):
+        self._write_index("plans:\n  PRD-x:\n    status: in-review\n")
+        ok, _ = evaluate_gate(self.GATE, GateContext(root=self.tmp))
+        self.assertFalse(ok)
+
+    def test_passes_when_a_plan_is_approved(self):
+        self._write_index(
+            "plans:\n  PRD-x:\n    status: in-review\n  PRD-y:\n    status: approved\n"
+        )
+        ok, _ = evaluate_gate(self.GATE, GateContext(root=self.tmp))
+        self.assertTrue(ok)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
