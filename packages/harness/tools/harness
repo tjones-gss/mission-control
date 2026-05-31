@@ -474,6 +474,7 @@ def cmd_check(args, root: Path) -> int:
     print(colorize("Pipelines", "bold"))
     pipelines_dir = root / "pipelines"
     referenced_agents = set()
+    referenced_phase_models = set()
     if not pipelines_dir.is_dir():
         warn("no pipelines/ directory")
     else:
@@ -498,6 +499,8 @@ def cmd_check(args, root: Path) -> int:
                         phase_problems.append(f"phase {pid}: missing `{required_key}`")
                 if "agent" in ph and ph["agent"]:
                     referenced_agents.add(ph["agent"])
+                if ph.get("model"):
+                    referenced_phase_models.add(ph["model"])
                 # Outputs OR explicit no_outputs_reason
                 if "outputs" not in ph and "no_outputs_reason" not in ph:
                     phase_problems.append(
@@ -557,6 +560,35 @@ def cmd_check(args, root: Path) -> int:
                 f"agent `{agent}` unresolved — no agents/roles/{agent}.md, "
                 f"no claude-code subagent, no alias in agent-registry.yml"
             )
+
+    # --- Layer 5b: model-tier routing (optional feature) ---
+    print()
+    print(colorize("Model tiers", "bold"))
+    tiers_path = root / ".harness/model-tiers.yml"
+    if not tiers_path.exists():
+        ok("no .harness/model-tiers.yml — single-model behavior (model-tier routing is optional)")
+    else:
+        mt = load_yaml(tiers_path)
+        tiers = mt.get("tiers")
+        if not isinstance(tiers, dict) or not tiers:
+            warn(".harness/model-tiers.yml has no `tiers:` map — feature inert")
+            tiers = {}
+        else:
+            ok(f"model-tiers.yml defines {len(tiers)} tier(s): {', '.join(sorted(tiers))}")
+        default_tier = mt.get("default_tier")
+        if default_tier not in (None, "", "null") and default_tier not in tiers:
+            fail(f"model-tiers.yml `default_tier: {default_tier}` is not a defined tier")
+        # role_tiers values are aliases by convention — flag undefined ones (typos)
+        role_tiers = (load_yaml(registry_path).get("role_tiers") or {}) if registry_path.exists() else {}
+        if isinstance(role_tiers, dict):
+            for role, tier in role_tiers.items():
+                if tier not in tiers:
+                    warn(f"agent-registry.yml role_tiers[{role}] = `{tier}` is not a defined tier alias")
+        # phase `model:` values may be aliases OR literal model strings — list them
+        if referenced_phase_models:
+            for m in sorted(referenced_phase_models):
+                kind = "tier alias" if m in tiers else "literal model string"
+                ok(f"pipeline phase model `{m}` ({kind})")
 
     # --- Layer 6: mission index + current mission ---
     print()

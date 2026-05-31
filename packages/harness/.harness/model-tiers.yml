@@ -1,0 +1,25 @@
+# Model-tier routing for the harness orchestrator (mission-loop).
+#
+# The neutral contract is three tier ALIASES — heavy / standard / light.
+# Pipelines and roles refer to those aliases; this file maps each alias to a
+# concrete, runtime-specific model string. Re-map here (the single place) when
+# you switch runtimes (Cursor `composer-*`, a Claude model id, etc.).
+#
+# Resolution precedence (highest first); see harness_core/model_tiers.py:
+#   1. a phase's `model:` field in pipelines/*.yml      (alias or literal)
+#   2. a role default in .harness/agent-registry.yml `role_tiers:`  (alias)
+#   3. `default_tier` below                             (alias)
+#   4. the orchestrator's --model / --model-tier / HARNESS_MODEL
+#   5. unset everywhere -> DriverConfig default          (today's behavior)
+#
+# Defaulting all three tiers to the same model keeps this feature INERT until
+# you give the tiers distinct models — installing it changes nothing.
+
+tiers:
+  heavy: composer-2.5     # orchestration / strategy / synthesis
+  standard: composer-2.5  # structured planning, review, tests
+  light: composer-2.5     # narrow context distillation, lookups
+
+# Optional fallback tier when a phase/role declares none. null = no fallback
+# (callers keep their own configured default model).
+default_tier: null

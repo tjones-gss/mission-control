@@ -51,6 +51,15 @@ def cmd_run_loop(args) -> int:
         project = load_yaml(root / ".harness/project-state.yml")
         resume_id = get(project, "current", "agent_id")
 
+    # --model is a literal model string; --model-tier resolves a tier alias
+    # (heavy/standard/light) via .harness/model-tiers.yml. Either becomes the
+    # default model for phases that don't declare their own.
+    model = getattr(args, "model", None)
+    if model is None and getattr(args, "model_tier", None):
+        from harness_core.model_tiers import resolve_model
+
+        model = resolve_model(root, {"model": args.model_tier})
+
     config = config_from_env(
         cwd=str(root),
         runtime=args.runtime,
@@ -61,6 +70,7 @@ def cmd_run_loop(args) -> int:
         resume_agent_id=resume_id,
         dry_run=args.dry_run,
         strict_gates=not args.no_strict_gates,
+        model=model,
     )
     return run_next_mission_loop(root, config)
 
@@ -93,6 +103,12 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--auto-pr", action="store_true", help="Cloud: autoCreatePR")
         p.add_argument("--skip-reviewer-request", action="store_true")
         p.add_argument("--resume", action="store_true", help="Resume agent_id from project-state")
+        p.add_argument("--model", default=None, help="Default model (literal string) for phases without their own")
+        p.add_argument(
+            "--model-tier",
+            default=None,
+            help="Default tier alias (heavy/standard/light) from .harness/model-tiers.yml",
+        )
         p.add_argument("--dry-run", action="store_true", help="Mock agent (no API calls)")
         p.add_argument(
             "--no-strict-gates",

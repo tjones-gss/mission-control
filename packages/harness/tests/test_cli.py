@@ -190,6 +190,36 @@ class TestHarnessStatus(unittest.TestCase):
         self.assertIn("missions", d)
 
 
+class TestModelTiersCheck(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-test-"))
+        make_minimal_project(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_missing_tiers_file_is_ok(self):
+        r = run_cli("-C", str(self.tmpdir), "check")
+        self.assertIn("single-model behavior", r.stdout)
+
+    def test_bad_default_tier_fails(self):
+        (self.tmpdir / ".harness/model-tiers.yml").write_text(
+            "tiers:\n  heavy: m-big\ndefault_tier: ghost\n"
+        )
+        r = run_cli("-C", str(self.tmpdir), "check")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("default_tier", r.stdout)
+
+    def test_undefined_role_tier_warns(self):
+        (self.tmpdir / ".harness/model-tiers.yml").write_text("tiers:\n  heavy: m-big\n")
+        (self.tmpdir / ".harness/agent-registry.yml").write_text(
+            "aliases: {}\nrole_tiers:\n  orchestrator: heavt\n"
+        )
+        r = run_cli("-C", str(self.tmpdir), "check")
+        self.assertIn("heavt", r.stdout)
+        self.assertIn("not a defined tier", r.stdout)
+
+
 class TestWindowsGitBash(unittest.TestCase):
     @unittest.skipUnless(sys.platform == "win32", "Windows only")
     def test_find_git_bash_windows_prefers_git_over_wsl(self):
