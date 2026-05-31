@@ -39,14 +39,11 @@ export function CompileRoadmapDialog({ project, onClose, onCompiled }) {
       // project.projectKey is ALREADY encodeURIComponent(projectPath) (set by the
       // server's harness parser). Use it bare — re-encoding would double-encode
       // and 404 the whitelist check. (Matches the GET in HarnessDetail.)
-      const res = await fetch(
-        `/api/harness/${project.projectKey}/roadmap/compile`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-      )
+      const res = await fetch(`/api/harness/${project.projectKey}/roadmap/compile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data.ok === false) {
         setError(data.error || data.detail || `HTTP ${res.status}`)

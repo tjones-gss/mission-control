@@ -6,6 +6,13 @@ import { calculateCost } from '../utils/cost.js'
 const CLAUDE_DIR = path.join(os.homedir(), '.claude', 'projects')
 const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
 
+// One-time signal that Claude's on-disk session format may have changed: a
+// non-empty .jsonl whose lines no longer parse as JSON. Every session surface
+// in the cockpit is built from this format, so a silent zero-parse would just
+// render an empty session list with no clue why. Warn loudly once per process
+// instead of failing quietly.
+let formatChangeWarned = false
+
 export function getAllSessions() {
   const sessions = []
   if (!fs.existsSync(CLAUDE_DIR)) return sessions
@@ -73,7 +80,18 @@ function parseSessionFile(filePath, projectDirName, filename) {
       })
       .filter(Boolean)
 
-    if (records.length === 0) return null
+    if (records.length === 0) {
+      // Lines present but none parsed → the JSONL shape likely changed under us
+      // (an empty file, by contrast, yields zero lines and is unremarkable).
+      if (lines.length > 0 && !formatChangeWarned) {
+        formatChangeWarned = true
+        console.warn(
+          `[sessions] ${filePath} has ${lines.length} line(s) but none parsed as JSON — ` +
+            `Claude's session JSONL format may have changed (check your Claude Code version).`,
+        )
+      }
+      return null
+    }
     // Claude writes metadata-only JSONL files (e.g. ai-title stubs) that are
     // not real conversations. Ignore those so they do not flood the dashboard.
     const hasConversation = records.some(isConversationRecord)

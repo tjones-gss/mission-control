@@ -24,6 +24,20 @@ class TestParseOutput(unittest.TestCase):
         self.assertIsNone(sid)
         self.assertEqual(text, "not json")
 
+    def test_warns_loudly_when_output_is_not_json(self):
+        with self.assertLogs("harness_orchestrator.claude_driver", level="ERROR") as cm:
+            sid, text = claude_driver._parse_output("<html>gateway error</html>")
+        self.assertIsNone(sid)
+        self.assertEqual(text, "<html>gateway error</html>")
+        self.assertTrue(any("session continuity disabled" in m for m in cm.output))
+
+    def test_warns_when_session_id_missing(self):
+        with self.assertLogs("harness_orchestrator.claude_driver", level="WARNING") as cm:
+            sid, text = claude_driver._parse_output('{"result":"done"}')
+        self.assertIsNone(sid)
+        self.assertEqual(text, "done")
+        self.assertTrue(any("session_id" in m for m in cm.output))
+
 
 class TestRunClaudeCommand(unittest.TestCase):
     @patch("harness_orchestrator.claude_driver.shutil.which", return_value="/usr/bin/claude")

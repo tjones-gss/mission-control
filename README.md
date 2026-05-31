@@ -104,3 +104,6 @@ sandboxing.
 - **`packages/contracts`** — shared JSON schemas defining the data the harness
   emits and the cockpit consumes.
 - **`installers`** — one-command setup.
+- **`docs/governance`** — whole-tool reviews: an [engineering council
+  review](docs/governance/council-review.md) and a [feature-by-feature UI/UX
+  sweep](docs/governance/feature-sweep.md) with keep/fold/cut verdicts.

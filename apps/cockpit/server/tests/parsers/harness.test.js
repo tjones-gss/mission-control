@@ -121,7 +121,7 @@ describe('readHarnessStatus()', () => {
     await expect(
       (async () => {
         result = await readHarnessStatus(PROJECT_A)
-      })()
+      })(),
     ).resolves.not.toThrow()
     expect(result.available).toBe(false)
     expect(typeof result.error).toBe('string')
@@ -195,7 +195,12 @@ describe('getHarnessProjects()', () => {
         project: { mode: 'idea-to-mvp' },
         pipeline: { active: 'p1', phase: 'build', gate: null },
         current: { mission: 'M-1' },
-        next: { blocked: true, blocker: 'OAuth', recommended_agent: 'dev', recommended_action: 'wait' },
+        next: {
+          blocked: true,
+          blocker: 'OAuth',
+          recommended_agent: 'dev',
+          recommended_action: 'wait',
+        },
         // The CLI emits the readiness block under `readiness_overall` (see the
         // harness CLI cmd_status + the shared contract schema). The parser must
         // read that exact key.

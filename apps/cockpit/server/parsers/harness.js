@@ -8,10 +8,7 @@ import { getSessionCwds } from './conductor.js'
 // it stays correct regardless of the process working directory:
 // apps/cockpit/server/parsers/ → packages/harness/tools/harness
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const HARNESS_CLI_PATH = path.resolve(
-  __dirname,
-  '../../../../packages/harness/tools/harness'
-)
+const HARNESS_CLI_PATH = path.resolve(__dirname, '../../../../packages/harness/tools/harness')
 
 // Spawning the python CLI is expensive (process startup + YAML parse). The
 // watcher can fire many change events in quick succession, so we cache the
@@ -44,9 +41,7 @@ export function getKnownHarnessRoots() {
   } catch {
     return []
   }
-  return cwds.filter((cwd) =>
-    existsAsFile(path.join(cwd, '.harness', 'project-state.yml'))
-  )
+  return cwds.filter((cwd) => existsAsFile(path.join(cwd, '.harness', 'project-state.yml')))
 }
 
 // Run the harness CLI under one interpreter and resolve with its parsed JSON
@@ -184,8 +179,7 @@ export async function readHarnessStatus(projectPath) {
   if (!value.available && lastReason === 'interpreter not found') {
     value = {
       available: false,
-      error:
-        'harness unavailable: python/python3 not found or harness script missing',
+      error: 'harness unavailable: python/python3 not found or harness script missing',
     }
   }
 
@@ -243,9 +237,7 @@ function shapeSummary(projectPath, result) {
   const pipelinePhase = get(status, 'pipeline', 'phase')
   const pipelineGate = get(status, 'pipeline', 'gate')
   const hasPipeline =
-    pipelineActive !== undefined ||
-    pipelinePhase !== undefined ||
-    pipelineGate !== undefined
+    pipelineActive !== undefined || pipelinePhase !== undefined || pipelineGate !== undefined
 
   const nextAgent = get(status, 'next', 'recommended_agent')
   const nextAction = get(status, 'next', 'recommended_action')
@@ -297,8 +289,8 @@ export async function getHarnessProjects() {
   const roots = getKnownHarnessRoots()
   return Promise.all(
     roots.map(async (projectPath) =>
-      shapeSummary(projectPath, await readHarnessStatus(projectPath))
-    )
+      shapeSummary(projectPath, await readHarnessStatus(projectPath)),
+    ),
   )
 }
 

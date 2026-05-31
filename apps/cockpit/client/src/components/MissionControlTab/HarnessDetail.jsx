@@ -30,14 +30,7 @@ const PLAN_STATUS_BADGE = {
 
 // Statuses for which the mission is settled or already running — Run on-rails
 // should not be offered.
-const NON_RUNNABLE = new Set([
-  'in_progress',
-  'active',
-  'running',
-  'done',
-  'complete',
-  'completed',
-])
+const NON_RUNNABLE = new Set(['in_progress', 'active', 'running', 'done', 'complete', 'completed'])
 
 function normalizeStatus(value) {
   return value == null ? '' : String(value).toLowerCase()
@@ -434,7 +427,9 @@ export function HarnessDetail({ project, harnessVersion }) {
           <div className="flex-1 min-h-0 overflow-auto px-4 py-3">
             <h3 className="text-[10px] uppercase tracking-wider text-gray-600 mb-2">Missions</h3>
             {missions.length === 0 ? (
-              <div className="text-[11px] text-gray-600">No missions reported for this project.</div>
+              <div className="text-[11px] text-gray-600">
+                No missions reported for this project.
+              </div>
             ) : (
               <ul className="space-y-2">
                 {missions.map((mission) => (
@@ -460,8 +455,7 @@ export function HarnessDetail({ project, harnessVersion }) {
             setShowCompile(false)
             pushToast({
               tone: 'success',
-              message:
-                'Roadmap compiled — new draft missions will appear as the list refreshes.',
+              message: 'Roadmap compiled — new draft missions will appear as the list refreshes.',
             })
           }}
         />

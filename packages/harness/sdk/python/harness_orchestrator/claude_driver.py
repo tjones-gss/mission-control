@@ -26,15 +26,43 @@ def _claude_bin() -> str | None:
 def _parse_output(stdout: str) -> tuple[str | None, str]:
     """Return (session_id, result_text) from `claude -p --output-format json`.
 
-    Tolerant: falls back to (None, raw stdout) if the output isn't the expected
-    JSON envelope, so a CLI format change degrades rather than crashes.
+    Tolerant but loud: still falls back to (None, raw stdout) so a CLI format
+    change degrades rather than crashes, but every unexpected shape is logged at
+    WARNING/ERROR naming the likely cause (a Claude Code version mismatch). The
+    old silent fallback meant the implementer would quietly lose session
+    continuity — each phase starting a fresh context — with no signal in the
+    logs that the `--output-format json` contract had drifted.
     """
     try:
         data = json.loads(stdout)
     except json.JSONDecodeError:
+        logger.error(
+            "claude `--output-format json` did not return JSON (%d chars of "
+            "non-JSON output) — session continuity disabled. Check your Claude "
+            "Code version; the CLI output format may have changed.",
+            len(stdout.strip()),
+        )
         return None, stdout.strip()
     if isinstance(data, dict):
-        return data.get("session_id"), str(data.get("result", "") or "")
+        sid = data.get("session_id")
+        if sid is None:
+            logger.warning(
+                "claude JSON envelope has no `session_id` (keys: %s) — session "
+                "continuity disabled; check your Claude Code version.",
+                sorted(data.keys()),
+            )
+        if "result" not in data:
+            logger.warning(
+                "claude JSON envelope has no `result` field (keys: %s) — using "
+                "empty text; check your Claude Code version.",
+                sorted(data.keys()),
+            )
+        return sid, str(data.get("result", "") or "")
+    logger.error(
+        "claude `--output-format json` returned a %s, not a JSON object — "
+        "session continuity disabled; check your Claude Code version.",
+        type(data).__name__,
+    )
     return None, stdout.strip()
 
 
