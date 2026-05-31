@@ -76,7 +76,7 @@ import {
 import { runClaude, runClaudeCancellable } from '../../claude-cli.js'
 import { atomicWrite } from '../../lib/atomic-write.js'
 import { awaitNewSession } from '../../lib/pending-session.js'
-import { router } from '../../routes/harness.js'
+import { router, __resetInFlight } from '../../routes/harness.js'
 
 const app = express()
 app.use(express.json())
@@ -87,6 +87,10 @@ const KEY = encodeURIComponent(PROJECT)
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // Clear the module-level concurrency registry so a test that intentionally
+  // leaves a run in flight (pending CLI promise) doesn't leak a held lock key
+  // into the next test.
+  __resetInFlight()
 })
 
 describe('GET /', () => {
@@ -224,6 +228,58 @@ describe('POST /:projectKey/roadmap/compile', () => {
     expect(res.body.ok).toBe(false)
     expect(res.body.error).toMatch(/code=1/)
   })
+
+  it('409 in_progress for a concurrent compile of the same spec — does NOT spawn twice', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    // Hold the first compile in flight: runClaude resolves only when we signal.
+    // A gate promise lets the test wait until runClaude has actually been entered
+    // (i.e. the first request holds the lock) before firing the second request.
+    let releaseRun
+    let runEntered
+    const entered = new Promise((r) => {
+      runEntered = r
+    })
+    runClaude.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRun = () =>
+            resolve({ stdout: '{"type":"result","result":"ok"}\n', stderr: '', exitCode: 0 })
+          runEntered()
+        }),
+    )
+
+    // Same title → same resolved specPath → same lock key.
+    const body = { roadmap: 'Build auth.', title: 'Same Plan' }
+    // supertest dispatches lazily on .then — kick the request off and capture
+    // its eventual response.
+    const first = request(app).post(`/${KEY}/roadmap/compile`).send(body).then((r) => r)
+    // Wait until the first request has entered runClaude (lock held) before the
+    // second arrives — deterministic, no reliance on tick counts.
+    await entered
+    const second = await request(app).post(`/${KEY}/roadmap/compile`).send(body)
+
+    expect(second.status).toBe(409)
+    expect(second.body.error).toBe('in_progress')
+
+    // Release the first run and let it settle.
+    releaseRun()
+    const firstRes = await first
+    expect(firstRes.status).toBe(200)
+
+    // Only ONE spawn happened despite two concurrent requests.
+    expect(runClaude).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases the lock after settle — a later compile of the same spec succeeds', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    runClaude.mockResolvedValue({ stdout: '{"type":"result","result":"ok"}\n', stderr: '', exitCode: 0 })
+    const body = { roadmap: 'Build it.', title: 'Sequential Plan' }
+    const first = await request(app).post(`/${KEY}/roadmap/compile`).send(body)
+    expect(first.status).toBe(200)
+    const second = await request(app).post(`/${KEY}/roadmap/compile`).send(body)
+    expect(second.status).toBe(200)
+    expect(runClaude).toHaveBeenCalledTimes(2)
+  })
 })
 
 // ─── POST /:projectKey/missions/:missionId/execute ───────────────────────────
@@ -306,6 +362,56 @@ describe('POST /:projectKey/missions/:missionId/execute', () => {
     expect(res.body.error).toBe('not_found')
     expect(getHarnessProjectByPath).not.toHaveBeenCalled()
     expect(runClaudeCancellable).not.toHaveBeenCalled()
+  })
+
+  it('409 in_progress for a concurrent execute of the same mission — does NOT spawn twice', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    mockMissions({ [MISSION]: { file: 'runs/missions/MISSION-001-auth.md', status: 'draft' } })
+    // First run stays in flight (CLI promise pending) and the ack also never
+    // resolves, so the first request holds the lock while the second arrives.
+    let releaseCli
+    runClaudeCancellable.mockReturnValue({
+      promise: new Promise((resolve) => {
+        releaseCli = () => resolve({ stdout: '{"type":"result"}\n', stderr: '', exitCode: 0 })
+      }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockResolvedValue('impl-sess-1')
+
+    const first = await request(app).post(`/${KEY}/missions/${MISSION}/execute`).send({})
+    expect(first.status).toBe(202)
+
+    // Second concurrent execute for the same mission while the first is live.
+    const second = await request(app).post(`/${KEY}/missions/${MISSION}/execute`).send({})
+    expect(second.status).toBe(409)
+    expect(second.body.error).toBe('in_progress')
+
+    // Only ONE implementer was spawned.
+    expect(runClaudeCancellable).toHaveBeenCalledTimes(1)
+
+    // Settle the first CLI run so the lock releases (no leak).
+    releaseCli()
+    await new Promise((r) => setImmediate(r))
+  })
+
+  it('releases the lock after the CLI settles — a later execute of the same mission spawns again', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    mockMissions({ [MISSION]: { file: 'runs/missions/MISSION-001-auth.md', status: 'draft' } })
+    // CLI resolves immediately → lock releases via taggedCli.finally.
+    runClaudeCancellable.mockReturnValue({
+      promise: Promise.resolve({ stdout: '{"type":"result"}\n', stderr: '', exitCode: 0 }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves; CLI wins
+
+    const first = await request(app).post(`/${KEY}/missions/${MISSION}/execute`).send({})
+    expect(first.status).toBe(202)
+    // Let the taggedCli.finally release the lock.
+    await new Promise((r) => setImmediate(r))
+
+    const second = await request(app).post(`/${KEY}/missions/${MISSION}/execute`).send({})
+    expect(second.status).toBe(202)
+    expect(runClaudeCancellable).toHaveBeenCalledTimes(2)
   })
 
   it('502 when the spawn rejects before any ack', async () => {

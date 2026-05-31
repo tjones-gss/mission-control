@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { config } from './lib/config.js'
-import { securityMiddleware, getCorsOrigin, hostCheck } from './middleware/security.js'
+import { securityMiddleware, getCorsOrigin, hostCheck, originGuard } from './middleware/security.js'
 import { requestLogger } from './middleware/requestLogger.js'
 import { performanceMiddleware } from './middleware/performance.js'
 import { registerShutdown } from './lib/lifecycle.js'
@@ -33,6 +33,11 @@ const app = express()
 // so a request with a foreign Host is rejected before any handler can see it.
 app.use(hostCheck)
 app.use(cors({ origin: getCorsOrigin() }))
+// CSRF / Origin guard for state-changing methods. Runs AFTER hostCheck + CORS
+// (a foreign Host or a blocked CORS origin is already gone) but BEFORE the
+// routers, so a forged cross-origin POST to a safety-critical endpoint such as
+// /api/sessions/:id/tool-approval is rejected before any handler sees it.
+app.use(originGuard)
 app.use(...securityMiddleware)
 app.use(requestLogger)
 app.use(...performanceMiddleware)

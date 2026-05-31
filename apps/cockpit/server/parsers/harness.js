@@ -251,8 +251,11 @@ function shapeSummary(projectPath, result) {
   const nextAction = get(status, 'next', 'recommended_action')
   const hasNext = nextAgent !== undefined || nextAction !== undefined
 
-  const score = get(status, 'readiness', 'score')
-  const mvpReady = get(status, 'readiness', 'mvp_ready')
+  // The harness CLI emits the readiness block under the top-level key
+  // `readiness_overall` (see packages/harness/tools/harness cmd_status and
+  // packages/contracts/schemas/harness-status.schema.json). Read that exact key.
+  const score = get(status, 'readiness_overall', 'score')
+  const mvpReady = get(status, 'readiness_overall', 'mvp_ready')
   const hasReadiness = score !== undefined || mvpReady !== undefined
 
   return {

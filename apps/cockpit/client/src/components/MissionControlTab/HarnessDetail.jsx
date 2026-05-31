@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Circle, GitBranch, Loader2, Play } from 'lucide-react'
 import { CompileRoadmapDialog } from './CompileRoadmapDialog.jsx'
 import { Toast } from './Toast.jsx'
@@ -81,6 +81,31 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
 
   const [confirming, setConfirming] = useState(false)
   const [starting, setStarting] = useState(false)
+  // After a successful execute the server has spawned an implementer but the
+  // mission status may not flip to in-progress until the next status refetch.
+  // `pendingStart` keeps the button disabled / "starting…" across that window so
+  // a second click can't double-spawn (pairs with the server-side 409 guard).
+  const [pendingStart, setPendingStart] = useState(false)
+  const pendingTimer = useRef(null)
+
+  // Clear the pending lock once the refetched status confirms the mission left
+  // the runnable set (moved to in-progress/done/etc) — the spawn "took".
+  useEffect(() => {
+    if (pendingStart && !runnable) {
+      setPendingStart(false)
+      if (pendingTimer.current) {
+        clearTimeout(pendingTimer.current)
+        pendingTimer.current = null
+      }
+    }
+  }, [pendingStart, runnable])
+
+  // Cleanup any outstanding timeout on unmount.
+  useEffect(() => {
+    return () => {
+      if (pendingTimer.current) clearTimeout(pendingTimer.current)
+    }
+  }, [])
 
   const execute = useCallback(async () => {
     setStarting(true)
@@ -97,15 +122,31 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
       )
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data.ok === false) {
+        // A 409 means a run for this mission is already in flight — surface it
+        // but keep the pending lock (a sibling start already owns this mission).
+        if (res.status === 409) {
+          setPendingStart(true)
+        }
         onToast?.({
-          tone: 'error',
-          message: `Could not start ${mission.id}: ${
-            data.error || data.detail || `HTTP ${res.status}`
-          }`,
+          tone: res.status === 409 ? 'info' : 'error',
+          message:
+            res.status === 409
+              ? `${mission.id} is already starting.`
+              : `Could not start ${mission.id}: ${
+                  data.error || data.detail || `HTTP ${res.status}`
+                }`,
         })
         return
       }
       setConfirming(false)
+      // Hold the button disabled until the next status refetch confirms the
+      // mission left the runnable set, or a timeout re-arms it as a fallback.
+      setPendingStart(true)
+      if (pendingTimer.current) clearTimeout(pendingTimer.current)
+      pendingTimer.current = setTimeout(() => {
+        setPendingStart(false)
+        pendingTimer.current = null
+      }, 30_000)
       onToast?.({
         tone: 'success',
         message: `${mission.id} started — watch it in the Agents tab.`,
@@ -116,6 +157,10 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
       setStarting(false)
     }
   }, [projectKey, mission.id, onToast])
+
+  // The button is "busy" while the request is in flight OR while we're waiting
+  // for the refetch to confirm the spawn took.
+  const busy = starting || pendingStart
 
   return (
     <li className="bg-gray-900 border border-gray-800 rounded px-3 py-2">
@@ -128,7 +173,16 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
           </span>
         )}
         {mission.priority != null && <StatusPill value={mission.priority} map={PRIORITY_BADGE} />}
-        {runnable && !confirming && (
+        {runnable && pendingStart && !confirming && (
+          <span
+            className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-500"
+            title={`${mission.id} is starting…`}
+          >
+            <Loader2 size={11} className="animate-spin" />
+            starting…
+          </span>
+        )}
+        {runnable && !pendingStart && !confirming && (
           <button
             onClick={() => setConfirming(true)}
             className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30 transition-colors"
@@ -169,18 +223,18 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setConfirming(false)}
-              disabled={starting}
+              disabled={busy}
               className="px-2 py-1 rounded text-[11px] text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={execute}
-              disabled={starting}
+              disabled={busy}
               className="ml-auto flex items-center gap-1 px-2 py-1 rounded bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {starting ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-              {starting ? 'Starting…' : 'Run on-rails'}
+              {busy ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+              {busy ? 'Starting…' : 'Run on-rails'}
             </button>
           </div>
         </div>
@@ -243,8 +297,11 @@ export function HarnessDetail({ project, harnessVersion }) {
   const phase = status?.pipeline?.phase ?? project.pipeline?.phase
   const gate = status?.pipeline?.gate ?? project.pipeline?.gate
   const active = status?.pipeline?.active ?? project.pipeline?.active
-  const score = status?.readiness?.score ?? project.readiness?.score
-  const mvpReady = status?.readiness?.mvp_ready ?? project.readiness?.mvp_ready
+  // The /api/harness/:projectKey detail is the raw `harness status --json` object,
+  // which emits the readiness block under `readiness_overall`. The summary
+  // (project.readiness) is the parser-shaped ProjectSummary, so keep that key.
+  const score = status?.readiness_overall?.score ?? project.readiness?.score
+  const mvpReady = status?.readiness_overall?.mvp_ready ?? project.readiness?.mvp_ready
   const blocked = status?.next?.blocked ?? project.blocked
   const blocker = status?.next?.blocker ?? project.blocker
 

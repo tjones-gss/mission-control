@@ -15,6 +15,36 @@ import { parseStreamJsonStdout } from './sessions.js'
 export const router = Router()
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Concurrency guard
+// ──────────────────────────────────────────────────────────────────────────────
+// A double-click (or two clients) can otherwise spawn TWO governed implementers
+// into the same project/mission, or overwrite a SPEC mid-write. We track an
+// in-memory set of in-flight operation keys. A second request for the same key
+// while one is still in flight gets a clean 409 { error: 'in_progress' } and is
+// NOT allowed to spawn/write. Keys are released in a finally so they can't leak
+// even when the underlying run errors. In-memory is the right scope here: the
+// server is the single writer/spawner for these routes.
+const inFlight = new Set()
+
+// Reserve a key. Returns false if it is already held (caller should 409).
+function acquire(key) {
+  if (inFlight.has(key)) return false
+  inFlight.add(key)
+  return true
+}
+
+function release(key) {
+  inFlight.delete(key)
+}
+
+// Test-only: clear the in-flight registry between cases. The registry is
+// module-level (the server is a singleton), so tests that intentionally leave a
+// run "in flight" would otherwise leak a held key into the next test.
+export function __resetInFlight() {
+  inFlight.clear()
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -119,60 +149,74 @@ router.post('/:projectKey/roadmap/compile', async (req, res) => {
     .split(path.sep)
     .join('/')
 
-  // Compose the spec file with a small header noting provenance.
-  const heading = (typeof title === 'string' && title.trim()) || slug
-  const specBody = [
-    `# SPEC: ${heading}`,
-    '',
-    '> Authored via the cockpit roadmap compiler.',
-    `> Generated: ${new Date().toISOString()}`,
-    '',
-    '## Roadmap',
-    '',
-    roadmap.trim(),
-    '',
-  ].join('\n')
-
-  // Atomic write — create docs/specs first if missing.
-  try {
-    await fsp.mkdir(specsDir, { recursive: true })
-    await atomicWrite(specPath, specBody)
-  } catch (err) {
-    logger.warn({ detail: err.message, specPath }, 'roadmap_compile_write_failed')
-    return res.status(502).json({ ok: false, error: `failed to write spec: ${err.message}` })
+  // Concurrency guard, keyed on the resolved specPath: a double-submit for the
+  // same spec must not overwrite the file mid-write or spawn a second
+  // mission-writer over the top of the first. Reserve BEFORE the write/spawn.
+  const lockKey = `compile:${specPath}`
+  if (!acquire(lockKey)) {
+    return res.status(409).json({ error: 'in_progress' })
   }
 
-  // Build the mission-writer prompt. EXPLICITLY instruct draft status + no
-  // implementation + bounded/sequenced missions.
-  const prompt =
-    `/mission-writer Slice the roadmap spec at ${relSpecPath} into bounded, ` +
-    `sequenced missions. Register each in .harness/mission-index.yml with ` +
-    `status: draft (NOT ready). Keep missions bounded and sequenced. ` +
-    `Do not implement anything.`
-
   try {
-    const { stdout, stderr } = await runClaude({
-      args: buildCompileArgs(prompt),
-      cwd: projectPath,
-      timeoutMs: 300_000,
-    })
-    const result = parseStreamJsonStdout(stdout)
-    const summary =
-      (result && typeof result.result === 'string' && result.result) ||
-      (typeof stdout === 'string' ? stdout : '') ||
-      ''
-    return res.json({
-      ok: true,
-      specPath,
-      summary,
-      raw: stderr ? `${stdout || ''}\n${stderr}` : stdout || undefined,
-    })
-  } catch (err) {
-    logger.warn(
-      { detail: err.message, stderr: err.stderrOutput, specPath },
-      'roadmap_compile_run_failed',
-    )
-    return res.status(502).json({ ok: false, error: err.message })
+    // Compose the spec file with a small header noting provenance.
+    const heading = (typeof title === 'string' && title.trim()) || slug
+    const specBody = [
+      `# SPEC: ${heading}`,
+      '',
+      '> Authored via the cockpit roadmap compiler.',
+      `> Generated: ${new Date().toISOString()}`,
+      '',
+      '## Roadmap',
+      '',
+      roadmap.trim(),
+      '',
+    ].join('\n')
+
+    // Atomic write — create docs/specs first if missing.
+    try {
+      await fsp.mkdir(specsDir, { recursive: true })
+      await atomicWrite(specPath, specBody)
+    } catch (err) {
+      logger.warn({ detail: err.message, specPath }, 'roadmap_compile_write_failed')
+      return res.status(502).json({ ok: false, error: `failed to write spec: ${err.message}` })
+    }
+
+    // Build the mission-writer prompt. EXPLICITLY instruct draft status + no
+    // implementation + bounded/sequenced missions.
+    const prompt =
+      `/mission-writer Slice the roadmap spec at ${relSpecPath} into bounded, ` +
+      `sequenced missions. Register each in .harness/mission-index.yml with ` +
+      `status: draft (NOT ready). Keep missions bounded and sequenced. ` +
+      `Do not implement anything.`
+
+    try {
+      const { stdout, stderr } = await runClaude({
+        args: buildCompileArgs(prompt),
+        cwd: projectPath,
+        timeoutMs: 300_000,
+      })
+      const result = parseStreamJsonStdout(stdout)
+      const summary =
+        (result && typeof result.result === 'string' && result.result) ||
+        (typeof stdout === 'string' ? stdout : '') ||
+        ''
+      return res.json({
+        ok: true,
+        specPath,
+        summary,
+        raw: stderr ? `${stdout || ''}\n${stderr}` : stdout || undefined,
+      })
+    } catch (err) {
+      logger.warn(
+        { detail: err.message, stderr: err.stderrOutput, specPath },
+        'roadmap_compile_run_failed',
+      )
+      return res.status(502).json({ ok: false, error: err.message })
+    }
+  } finally {
+    // The compile run is fully synchronous from our side (we await runClaude to
+    // completion), so the lifecycle boundary is "request settled" — release here.
+    release(lockKey)
   }
 })
 
@@ -228,6 +272,16 @@ router.post('/:projectKey/missions/:missionId/execute', async (req, res) => {
     return res.status(404).json({ error: 'not_found' })
   }
 
+  // Concurrency guard, keyed on projectPath+missionId: a double-click must not
+  // spawn TWO governed implementers into the same mission. Reserve BEFORE the
+  // spawn. The lifecycle boundary is the CLI run settling (success/error) — NOT
+  // the early-ack — so a second click in the window after the 202 still 409s
+  // while the first implementer is live. Released in the taggedCli settle below.
+  const lockKey = `execute:${projectPath}:${missionId}`
+  if (!acquire(lockKey)) {
+    return res.status(409).json({ error: 'in_progress' })
+  }
+
   // On-rails implementer prompt. Mirrors the harness-implementer contract:
   // read the mission file + .harness state, stay within Allowed Files, run the
   // mission's Validation Commands, obey Stop Conditions, follow AGENTS.md/hooks,
@@ -242,18 +296,29 @@ router.post('/:projectKey/missions/:missionId/execute', async (req, res) => {
   // file-watcher ack against the CLI completion. Early-ack 202 on first signal.
   const args = ['-p', prompt, '--output-format', 'stream-json', '--name', missionId]
 
-  const { promise: cliPromise } = runClaudeCancellable({
-    args,
-    cwd: projectPath,
-    timeoutMs: 300_000,
-  })
+  let cliPromise
+  try {
+    ;({ promise: cliPromise } = runClaudeCancellable({
+      args,
+      cwd: projectPath,
+      timeoutMs: 300_000,
+    }))
+  } catch (err) {
+    // Synchronous spawn failure — release the key so it can't leak, then 502.
+    release(lockKey)
+    logger.warn({ detail: err.message, missionId }, 'mission_execute_spawn_failed')
+    return res.status(502).json({ ok: false, error: err.message })
+  }
 
   // Convert the CLI promise to an always-resolving tagged promise so Node never
-  // sees an unhandledRejection if the run fails after we early-ack.
+  // sees an unhandledRejection if the run fails after we early-ack. Release the
+  // concurrency key once the run settles (success OR error) — this is the
+  // lifecycle boundary, and finally-style so the key can never leak.
   const taggedCli = cliPromise.then(
     (v) => ({ _tag: 'cli', value: v }),
     (err) => ({ _tag: 'cli_err', error: err }),
   )
+  taggedCli.finally(() => release(lockKey))
   const taggedAck = awaitNewSession(projectPath, { timeoutMs: 15_000 })
     .then((id) => ({ _tag: 'ack', sessionId: id }))
     .catch((err) => ({ _tag: 'timeout', error: err }))

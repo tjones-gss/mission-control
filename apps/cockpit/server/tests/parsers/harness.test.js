@@ -196,7 +196,10 @@ describe('getHarnessProjects()', () => {
         pipeline: { active: 'p1', phase: 'build', gate: null },
         current: { mission: 'M-1' },
         next: { blocked: true, blocker: 'OAuth', recommended_agent: 'dev', recommended_action: 'wait' },
-        readiness: { score: 42, mvp_ready: false },
+        // The CLI emits the readiness block under `readiness_overall` (see the
+        // harness CLI cmd_status + the shared contract schema). The parser must
+        // read that exact key.
+        readiness_overall: { score: 42, mvp_ready: false },
       }),
     })
     const projects = await getHarnessProjects()
