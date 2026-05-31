@@ -97,7 +97,12 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("run-loop", "run-mission"):
         p = sub.add_parser(name, help="Run one next-mission-loop iteration")
         p.add_argument("--cwd", default=".")
-        p.add_argument("--runtime", choices=["local", "cloud"], default="local")
+        p.add_argument(
+            "--runtime",
+            choices=["local", "cloud", "claude"],
+            default="local",
+            help="local/cloud = Cursor SDK; claude = Claude Code CLI (subscription auth)",
+        )
         p.add_argument("--repo-url", default=None, help="Git repo URL (cloud)")
         p.add_argument("--branch", default=None, help="Mission branch (cloud)")
         p.add_argument("--auto-pr", action="store_true", help="Cloud: autoCreatePR")

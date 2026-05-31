@@ -9,7 +9,8 @@ from harness_core.model_tiers import resolve_model
 from harness_core.pipelines import load_pipeline, pipeline_phases
 from harness_core.yaml_utils import get, load_yaml
 
-from harness_orchestrator.cursor_driver import DriverConfig, config_from_env, create_agent, run_prompt, send_and_wait
+from harness_orchestrator.cursor_driver import DriverConfig, config_from_env
+from harness_orchestrator.drivers import create_agent, run_prompt, send_and_wait
 from harness_orchestrator.roles import build_phase_prompt
 from harness_orchestrator.state import (
     harness_cli,
