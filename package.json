@@ -12,6 +12,7 @@
     "up": "npm --prefix apps/cockpit run dev",
     "dev": "npm run up",
     "test:cockpit": "npm --prefix apps/cockpit test",
-    "lint": "npm --prefix apps/cockpit run lint"
+    "lint": "npm --prefix apps/cockpit run lint",
+    "seed:qa": "node scripts/seed-claude-fixtures.mjs"
   }
 }
