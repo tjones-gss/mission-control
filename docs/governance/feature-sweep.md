@@ -9,6 +9,19 @@ correctness gap) · **FOLD** (merge into a shared surface) · **RECONSIDER**
 (validate real usage before investing further) · **DEAD** (unused / half-wired,
 clean up).
 
+> **Phase 2 status (2026-06-04, shipped):** The four high-leverage Phase 2 moves
+> from "The smarter, lighter-weight recommendation" below are now **DONE** in
+> `main`: (1) Conductor + Mission Control unified into one **Runs** surface
+> (`client/src/components/RunsTab/RunsTab.jsx`); (2) the four read-only inspectors
+> folded into one **Inspect** panel with a single live-refetch version per section,
+> which also fixes the previously half-threaded inspector refetch
+> (`client/src/components/InspectPanel/InspectPanel.jsx`); (3) **executable
+> workflows** — `POST /api/workflows/:name/run` spawns a Claude session driving the
+> steps; (4) **mark-ready** — `POST /api/harness/:projectKey/missions/:missionId/ready`
+> graduates a mission draft → ready via the harness CLI. The Core/Advanced split
+> (Phase 1) had already landed in `main`. Rows below are annotated **[DONE Phase 2]**
+> where the verdict has been carried out.
+
 > Discoverability and complexity are qualitative (Low/Med/High). They reflect a
 > walkthrough, not instrumentation — treat as **[I]** inference.
 
@@ -40,10 +53,10 @@ coupling at once** — the highest-leverage change in this sweep.
 
 | Feature | Reads | Disc. | Cmplx | Verdict |
 |---|---|---|---|---|
-| `ConfigViewer` | `config` | Low | Med | **FOLD** → Inspect |
-| `HooksPanel` | `hooks` | Low | Med | **FOLD** → Inspect |
-| `McpDashboard` | `mcp` | Low | Med | **FOLD** → Inspect |
-| `MemoryViewer` | `memory` | Low | Med | **FOLD** → Inspect |
+| `ConfigViewer` | `config` | Low | Med | **FOLD** → Inspect — **[DONE Phase 2]** |
+| `HooksPanel` | `hooks` | Low | Med | **FOLD** → Inspect — **[DONE Phase 2]** |
+| `McpDashboard` | `mcp` | Low | Med | **FOLD** → Inspect — **[DONE Phase 2]** |
+| `MemoryViewer` | `memory` | Low | Med | **FOLD** → Inspect — **[DONE Phase 2]** |
 | `TimelineView` | session records | Med | Med | **KEEP** (pairs naturally with Conversation) |
 | `PlanViewer` | `~/.claude` plans | Low | Med | **RECONSIDER** — now overlaps the harness PRD plans; pick one home for "the plan" |
 | `IntelView` | external (paid) API | Low | High | **RECONSIDER** — keep opt-in; **surface cost before enabling**; it's a transcript-egress path |
@@ -53,9 +66,9 @@ coupling at once** — the highest-leverage change in this sweep.
 
 | Feature | What it does | Verdict |
 |---|---|---|
-| `ConductorTab` (`conductor`) | Drive an ADR/structured run | **RECONSIDER / unify** — Conductor and Mission Control are both "drive a structured run"; present one "Runs" concept with two modes, not two top-level tabs |
-| `MissionControlTab` (`harness`) | Drive the harness mission loop | **KEEP** (as the unified Runs home) |
-| `WorkflowsPanel` (`workflows`) | Author/run step sequences | **RECONSIDER** — heavy editor; mental-model overlap with Skills. Validate real usage before further investment |
+| `ConductorTab` (`conductor`) | Drive an ADR/structured run | **RECONSIDER / unify** — Conductor and Mission Control are both "drive a structured run"; present one "Runs" concept with two modes, not two top-level tabs — **[DONE Phase 2]** now the Conductor *mode* of `RunsTab` |
+| `MissionControlTab` (`harness`) | Drive the harness mission loop | **KEEP** (as the unified Runs home) — **[DONE Phase 2]** now the Missions *mode* of `RunsTab` |
+| `WorkflowsPanel` (`workflows`) | Author/run step sequences | **RECONSIDER** — heavy editor; mental-model overlap with Skills. **[DONE Phase 2]** workflows are now *runnable* from the UI (`POST /api/workflows/:name/run`); still validate real usage before further editor investment |
 | `SkillsPanel` (`skills`) | Pick/run a skill | **FOLD** with the detail-view skill picker into one entry |
 | `DispatchDrawer` / `DispatchSignal` | Dispatch manager | **KEEP / simplify** — powerful but heavy |
 | `TeamsPanel` (`teams`) | Team/multi-agent grouping | **KEEP** |
@@ -71,11 +84,15 @@ coupling at once** — the highest-leverage change in this sweep.
 
 ## E. Dead / half-wired — *clean up*
 
+> **Correction (2026-06-04, verified against source).** The original
+> `OVERSIGHT_API_KEY` and "watcher events" rows below were inaccurate. Re-checked
+> findings are in the table; see `concepts-vs-system.md` §3 for the full audit.
+
 | Item | Issue | Verdict |
 |---|---|---|
-| `OVERSIGHT_API_KEY` | Declared, unused — dead auth surface | **DEAD** — wire it or delete it |
-| Watcher events (`plan_update`, `skills_update`, `workflows_update`, `config_update`, `hooks_update`, `conductor_update`) | Emitted server-side; client refetch wiring is incomplete in places, so the live view can go stale | **FIX** — either complete the refetch or stop emitting |
-| Skill cache invalidation | Not wired to the watcher | **FIX** |
+| `OVERSIGHT_API_KEY` | **NOT dead.** Live optional API-key auth: mounted via `securityMiddleware` (`server/index.js:41`), enforced in `apiKeyAuth` and the CSRF/origin guard (`middleware/security.js:140,252`), documented in `ARCHITECTURE.md`, covered by tests. It is the path to safely exposing programmatic clients / future browser-approval. | **KEEP** — original "DEAD" verdict was wrong |
+| Watcher events (`plan_/skills_/workflows_/config_/hooks_update`) | **Handlers exist** in `App.jsx:179–237`. The real gap: the 4 inspector versions (`config/memory/plan/hooksVersion`) are tracked in `App.jsx` but **not threaded** through `AgentTree.jsx` to `ConfigViewer`/`MemoryViewer`/`HooksPanel`, so their refetch is inert. `hooksVersion` has no `App.jsx` state at all. `workflows_/skills_update` work (direct `refetch*()`). | **FIX in Phase 2** — **[DONE Phase 2]** fixed structurally by folding the 4 inspectors into one `InspectPanel` that threads a single live version per section (`configVersion`/`hooksVersion`/`memoryVersion`) from `AgentTree.jsx`, so the refetch is now live |
+| Skill cache invalidation | Not wired to the watcher (30s TTL) | **FIX or document the TTL as intentional** |
 | Detail-view sub-tabs | Navigation is under-labeled (discoverability gap) | **FIX** — label them |
 
 ---

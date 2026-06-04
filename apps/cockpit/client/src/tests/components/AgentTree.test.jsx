@@ -16,6 +16,17 @@ vi.mock('../../components/IntelView.jsx', () => ({
 vi.mock('../../components/SessionControlBar.jsx', () => ({
   SessionControlBar: () => <div data-testid="session-control-bar" />,
 }))
+vi.mock('../../components/InspectPanel/InspectPanel.jsx', () => ({
+  InspectPanel: ({ sessionId, configVersion, memoryVersion, hooksVersion }) => (
+    <div
+      data-testid="inspect-panel"
+      data-session={sessionId}
+      data-config-version={configVersion}
+      data-memory-version={memoryVersion}
+      data-hooks-version={hooksVersion}
+    />
+  ),
+}))
 
 import { AgentTree } from '../../components/AgentTree.jsx'
 
@@ -74,6 +85,17 @@ describe('AgentTree', () => {
     render(<AgentTree session={SESSION} />)
     await userEvent.click(screen.getByText('intel'))
     expect(screen.getByTestId('intel-view')).toBeInTheDocument()
+  })
+
+  it('clicking inspect tab shows the InspectPanel with versions threaded through', async () => {
+    render(<AgentTree session={SESSION} configVersion={2} memoryVersion={3} hooksVersion={4} />)
+    await userEvent.click(screen.getByText('inspect'))
+    const panel = screen.getByTestId('inspect-panel')
+    expect(panel).toBeInTheDocument()
+    expect(panel).toHaveAttribute('data-session', SESSION.sessionId)
+    expect(panel).toHaveAttribute('data-config-version', '2')
+    expect(panel).toHaveAttribute('data-memory-version', '3')
+    expect(panel).toHaveAttribute('data-hooks-version', '4')
   })
 
   it('summary tab shows slug', async () => {

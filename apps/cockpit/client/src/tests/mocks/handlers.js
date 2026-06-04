@@ -13,6 +13,9 @@ export const handlers = [
   ),
   http.delete('/api/workflows/:name', () => HttpResponse.json({ ok: true, name: 'test' })),
   http.post('/api/workflows/:name/export', () => HttpResponse.json({ ok: true })),
+  http.post('/api/workflows/:name/run', () =>
+    HttpResponse.json({ ok: true, status: 'started', sessionId: 'wf-sess-1' }, { status: 202 }),
+  ),
   http.get('/api/skills', () =>
     HttpResponse.json({ userSkills: [], pluginSkills: [], plugins: [], totalSkillCount: 0 }),
   ),
@@ -139,5 +142,49 @@ export const handlers = [
       recommendation: null,
       analyzedAt: Date.now(),
     }),
+  ),
+
+  // Fleet — specific paths MUST precede the /:id catch-all so 'templates' and
+  // 'escalations' are not captured by :id. These are fallbacks; individual tests
+  // override with server.use(). Without them, FleetTab's useApi calls fall through
+  // to a real (absent) network and reject with "Failed to fetch", which can leak
+  // as an unhandled rejection at teardown and flakily fail the run.
+  http.get('/api/fleet/templates', () => HttpResponse.json({ templates: [] })),
+  http.post('/api/fleet/templates', () =>
+    HttpResponse.json({ ok: true, name: 'test-template' }, { status: 201 }),
+  ),
+  http.get('/api/fleet/:id/escalations', () => HttpResponse.json({ escalations: [] })),
+  http.post('/api/fleet/:id/decide', () => HttpResponse.json({ ok: true })),
+  http.post('/api/fleet/:id/cancel', () => HttpResponse.json({ ok: true }, { status: 202 })),
+  http.get('/api/fleet/:id', () =>
+    HttpResponse.json({
+      id: 'fleet-1',
+      goal: 'test goal',
+      status: 'running',
+      policy: {},
+      spentUsd: 0,
+      children: [],
+      synthesis: { status: 'pending', summary: null },
+    }),
+  ),
+  http.get('/api/fleet', () => HttpResponse.json({ runs: [] })),
+  http.post('/api/fleet', () =>
+    HttpResponse.json(
+      { ok: true, id: 'fleet-1', status: 'running', children: [] },
+      { status: 202 },
+    ),
+  ),
+
+  // Mission mark-ready (harness CLI shell behind the cockpit)
+  http.post('/api/harness/:projectKey/missions/:missionId/ready', () =>
+    HttpResponse.json({ ok: true }),
+  ),
+
+  // Runs surface (Conductor + Mission Control modes) — benign empty fallbacks so
+  // a teardown-time refetch can't fall through to the network. Tests override.
+  http.get('/api/conductor', () => HttpResponse.json([])),
+  http.get('/api/harness', () => HttpResponse.json({ projects: [] })),
+  http.get('/api/harness/:projectKey', () =>
+    HttpResponse.json({ project: {}, pipeline: {}, missions: {} }),
   ),
 ]

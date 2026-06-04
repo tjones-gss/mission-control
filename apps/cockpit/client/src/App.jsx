@@ -14,8 +14,9 @@ import {
   Users,
   History,
   Layers,
-  Workflow,
+  Boxes,
   Gauge,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
@@ -31,8 +32,8 @@ import { WorkflowsPanel } from './components/WorkflowsPanel.jsx'
 import { SkillsPanel } from './components/SkillsPanel.jsx'
 import { TeamsPanel } from './components/TeamsPanel/TeamsPanel.jsx'
 import { HistoryTab } from './components/HistoryTab/HistoryTab.jsx'
-import { ConductorTab } from './components/ConductorTab/ConductorTab.jsx'
-import { MissionControlTab } from './components/MissionControlTab/MissionControlTab.jsx'
+import { RunsTab } from './components/RunsTab/RunsTab.jsx'
+import { FleetTab } from './components/FleetTab/FleetTab.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
@@ -43,16 +44,42 @@ import { DispatchSignal } from './components/DispatchSignal.jsx'
 import { NewSessionForm } from './components/NewSessionForm.jsx'
 import { projectLabel } from './utils/session.js'
 
-const TABS = [
+// Progressive disclosure: the core loop is always visible; power surfaces live
+// one "Advanced" click away. This matches the repo's stated philosophy (the
+// window works with zero setup; the rails/power tools are opt-in) instead of
+// presenting all eight tabs at once. The preference is persisted so a power user
+// who flips Advanced on keeps it on across reloads.
+const CORE_TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
+  { id: 'runs', label: 'Runs', icon: Gauge },
+  { id: 'fleet', label: 'Fleet', icon: Boxes },
+  { id: 'history', label: 'History', icon: History },
+]
+
+const ADVANCED_TABS = [
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
   { id: 'teams', label: 'Teams', icon: Users },
-  { id: 'conductor', label: 'Conductor', icon: Workflow },
-  { id: 'mission-control', label: 'Mission Control', icon: Gauge },
-  { id: 'history', label: 'History', icon: History },
 ]
+
+// Combined list (core first, then advanced) for any caller that needs the full
+// set regardless of disclosure state.
+const TABS = [...CORE_TABS, ...ADVANCED_TABS]
+
+const ADVANCED_TAB_IDS = new Set(ADVANCED_TABS.map((t) => t.id))
+
+const SHOW_ADVANCED_KEY = 'mc.showAdvanced'
+
+// Read the persisted Advanced-disclosure preference. Guarded so a missing or
+// throwing localStorage (private mode, tests) defaults to the core-only view.
+function readShowAdvanced() {
+  try {
+    return localStorage.getItem(SHOW_ADVANCED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 // Map SSE event types to sound event names
 const SSE_SOUND_MAP = {
@@ -87,6 +114,41 @@ async function sendQuickReply(sessionId, message) {
 export default function App() {
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [activeTab, setActiveTab] = useState('agents')
+  const [showAdvanced, setShowAdvanced] = useState(readShowAdvanced)
+  const visibleTabs = showAdvanced ? TABS : CORE_TABS
+  const toggleAdvanced = useCallback(() => {
+    setShowAdvanced((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(SHOW_ADVANCED_KEY, String(next))
+      } catch {
+        /* ignore persistence failures (private mode, etc.) */
+      }
+      return next
+    })
+  }, [])
+  // If Advanced is collapsed while an advanced-only tab is active, fall back to
+  // the core Agents view so the user is never stranded on a now-hidden tab.
+  useEffect(() => {
+    if (!showAdvanced && ADVANCED_TAB_IDS.has(activeTab)) {
+      setActiveTab('agents')
+    }
+  }, [showAdvanced, activeTab])
+  // Navigate to a tab, auto-revealing Advanced when the target is an advanced
+  // tab. Keeps keyboard shortcuts (e.g. Workflows/Skills) working even when the
+  // user hasn't manually expanded Advanced, instead of being bounced by the
+  // guard effect above.
+  const selectTab = useCallback((id) => {
+    if (ADVANCED_TAB_IDS.has(id)) {
+      setShowAdvanced(true)
+      try {
+        localStorage.setItem(SHOW_ADVANCED_KEY, 'true')
+      } catch {
+        /* ignore persistence failures */
+      }
+    }
+    setActiveTab(id)
+  }, [])
   const [agentView, setAgentView] = useState('board') // 'board' | 'detail'
   const [showLegend, setShowLegend] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -103,8 +165,10 @@ export default function App() {
   const [planVersion, setPlanVersion] = useState(0)
   const [configVersion, setConfigVersion] = useState(0)
   const [memoryVersion, setMemoryVersion] = useState(0)
+  const [hooksVersion, setHooksVersion] = useState(0)
   const [conductorVersion, setConductorVersion] = useState(0)
   const [harnessVersion, setHarnessVersion] = useState(0)
+  const [fleetVersion, setFleetVersion] = useState(0)
   // Per-run escalation dedupe: only fire sound + notification on the
   // transition into a paused/escalated state, not on every status.json
   // rewrite that keeps the same escalation_reason. Key = `${projectPath}::${adr}`,
@@ -185,6 +249,9 @@ export default function App() {
         if (evt.type === 'memory_update') {
           setMemoryVersion((v) => v + 1)
         }
+        if (evt.type === 'hooks_update') {
+          setHooksVersion((v) => v + 1)
+        }
         if (evt.type === 'conductor_update') {
           setConductorVersion((v) => v + 1)
           // The watcher payload only tells us *something* in this run's
@@ -228,6 +295,9 @@ export default function App() {
         }
         if (evt.type === 'harness_update') {
           setHarnessVersion((v) => v + 1)
+        }
+        if (evt.type === 'fleet_update') {
+          setFleetVersion((v) => v + 1)
         }
         if (evt.type === 'workflows_update') {
           refetchWorkflows?.()
@@ -305,11 +375,11 @@ export default function App() {
         else if (showLegendRef.current) setShowLegend(false)
         else setAgentView('board')
       },
-      tabAgents: () => setActiveTab('agents'),
-      tabTasks: () => setActiveTab('tasks'),
-      tabWorkflows: () => setActiveTab('workflows'),
-      tabSkills: () => setActiveTab('skills'),
-      tabMissionControl: () => setActiveTab('mission-control'),
+      tabAgents: () => selectTab('agents'),
+      tabTasks: () => selectTab('tasks'),
+      tabWorkflows: () => selectTab('workflows'),
+      tabSkills: () => selectTab('skills'),
+      tabMissionControl: () => selectTab('runs'),
       quickApprove: () => {
         const session = selectedSessionRef.current
         if (session?.needsInput) {
@@ -393,7 +463,7 @@ export default function App() {
           <span>New</span>
         </button>
         <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full md:w-auto md:ml-auto order-last md:order-none">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon
             return (
               <button
@@ -410,6 +480,17 @@ export default function App() {
               </button>
             )
           })}
+          <button
+            onClick={toggleAdvanced}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
+              showAdvanced ? 'bg-gray-800 text-gray-300' : 'text-gray-600 hover:text-gray-400'
+            }`}
+            title={showAdvanced ? 'Hide advanced tabs' : 'Show advanced tabs'}
+            aria-pressed={showAdvanced}
+          >
+            <SlidersHorizontal size={12} />
+            <span className="hidden md:inline">Advanced</span>
+          </button>
           <button
             onClick={() => setShowDispatch(true)}
             className="ml-2 flex items-center gap-1 px-2 py-1 rounded text-xs text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30 transition-colors"
@@ -539,6 +620,9 @@ export default function App() {
                   session={selectedSession}
                   sessionUpdateVersion={sessionsVersion}
                   intelligenceVersion={intelligenceVersion}
+                  configVersion={configVersion}
+                  memoryVersion={memoryVersion}
+                  hooksVersion={hooksVersion}
                   skills={skills}
                   streaming={streaming}
                 />
@@ -574,14 +658,27 @@ export default function App() {
               <HistoryTab historyVersion={historyVersion} />
             </ErrorBoundary>
           )}
-          {activeTab === 'conductor' && (
+          {activeTab === 'runs' && (
             <ErrorBoundary>
-              <ConductorTab conductorVersion={conductorVersion} sessions={sessions} />
+              <RunsTab
+                harnessVersion={harnessVersion}
+                conductorVersion={conductorVersion}
+                sessions={sessions}
+              />
             </ErrorBoundary>
           )}
-          {activeTab === 'mission-control' && (
+          {activeTab === 'fleet' && (
             <ErrorBoundary>
-              <MissionControlTab harnessVersion={harnessVersion} />
+              <FleetTab
+                fleetVersion={fleetVersion}
+                onOpenSession={(sessionId) => {
+                  // A child card's "open session" link jumps into the
+                  // Agents/Inspect detail view for that child session.
+                  setActiveTab('agents')
+                  setSelectedSessionId(sessionId)
+                  setAgentView('detail')
+                }}
+              />
             </ErrorBoundary>
           )}
         </main>

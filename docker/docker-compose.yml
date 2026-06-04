@@ -1,0 +1,32 @@
+# Interactive Mission Control cockpit in a container.
+#
+#   cp docker/.env.example docker/.env   # then edit the two paths
+#   docker compose -f docker/docker-compose.yml up --build
+#   # or, from the repo root: npm run up:docker
+#
+# Then open http://localhost:5173
+services:
+  oversight:
+    build:
+      # Context is the repo ROOT so installers/setup.mjs sees the whole monorepo.
+      context: ..
+      dockerfile: docker/Dockerfile
+    # Publish ONLY the Vite UI, and ONLY to host loopback — no LAN exposure.
+    ports:
+      - '127.0.0.1:5173:5173'
+    volumes:
+      # Your real Claude state + auth. Read-WRITE: the container's claude CLI
+      # reads ~/.claude/.credentials.json and writes session JSONL back here,
+      # which is what makes the sessions show up live in the dashboard.
+      - '${CLAUDE_DIR}:/root/.claude'
+      # Where the agents' built apps land. Persists to your host.
+      - '${WORKSPACE_DIR}:/workspace'
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      # Native inotify is unreliable across Docker Desktop bind mounts, so the
+      # watcher would miss host-side ~/.claude changes. Polling fixes that.
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=400
+      - LOG_LEVEL=info
+    restart: unless-stopped

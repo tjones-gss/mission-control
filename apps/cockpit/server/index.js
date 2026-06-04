@@ -22,6 +22,7 @@ import { router as fsRouter } from './routes/fs.js'
 import { router as healthRouter, setHealthReady } from './routes/health.js'
 import { router as conductorRouter } from './routes/conductor.js'
 import { router as harnessRouter } from './routes/harness.js'
+import { router as fleetRouter } from './routes/fleet.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
 import './intelligence/triggers.js'
@@ -60,6 +61,7 @@ app.use('/api/fs', fsRouter)
 app.use('/api/health', healthRouter)
 app.use('/api/conductor', conductorRouter)
 app.use('/api/harness', harnessRouter)
+app.use('/api/fleet', fleetRouter)
 
 // JSON 404 for any unmatched /api/* request — without this, Express
 // returns its built-in "Cannot POST X" HTML page, which forces every

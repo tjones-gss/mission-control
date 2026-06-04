@@ -13,6 +13,46 @@ guardrails you adopt when you feel the pain, not a prerequisite for the window).
 - `packages/contracts` — shared JSON schemas between them
 - `installers` — one-command setup
 
+## What it is
+
+The cockpit leads with a **Core** view and hides power surfaces behind an
+**Advanced** toggle — progressive disclosure that matches the window-vs-rails
+philosophy instead of presenting everything at once.
+
+- **Core tabs:** **Agents** (list/board/conversation, approve and steer a waiting
+  agent), **Tasks**, **Runs**, **Fleet**, and **History**.
+- **Advanced tabs** (one click away, preference persisted): **Workflows**,
+  **Skills**, **Teams**.
+- **Runs** is the unified orchestration surface. Conductor (ADR-driven single runs)
+  and Mission Control (the harness mission loop) used to be two top-level tabs; they
+  are now two modes under one "Runs" concept.
+- **Inspect** folds the four read-only `~/.claude` viewers (Config, Hooks, MCP,
+  Memory) into a single panel in the session detail view, cutting both UI weight and
+  the number of independent couplings to undocumented on-disk formats. Timeline stays
+  paired with Conversation since it's the one you reach for live.
+- **Workflows are runnable from the UI.** A workflow (an ordered list of
+  skill/agent/instruction/command steps) can be authored *and* launched as a Claude
+  session directly from the Workflows panel — not just exported to a skill.
+- **Fleet is the higher-level orchestrator.** It turns a single goal into N
+  autonomous child sessions, each spawned in its own git worktree/branch (`--worktree`)
+  and running under the harness rails. Children run unattended and only *escalate*
+  on a danger-zone or tool-approval prompt — Fleet never auto-approves; the human
+  decision is routed through the existing approval write paths. When every child
+  settles, a synthesis pass merges the per-branch results into one report. Fleet
+  also supports a **policy surface**: a **token/dollar budget** that refuses to spawn
+  children past a cap and stops the run when the running cost crosses it;
+  **adversarial verification** (a fresh, authorship-blind reviewer child checks each
+  worker's diff against the goal, with bounded re-dispatch on reject); **quarantine**
+  (a best-effort read-only stance for a child); and **save/replay templates** for
+  repeatable fleet configs. Because Fleet spawns *several* autonomous agents at once,
+  the honest framing below matters more than ever: the rails — and quarantine — are
+  best-effort accident-prevention, **not** a sandbox. The real control is OS-level
+  sandboxing, and Fleet enforces hard ceilings on how many children it will ever spawn.
+- **Missions graduate draft → ready → build.** The roadmap compiler slices a
+  plain-language roadmap into bounded, sequenced mission *drafts*; you mark a draft
+  **ready** from the UI (the harness CLI owns the `mission-index.yml` write), then
+  execute (build) it as an on-rails implementer session.
+
 ## Who this is for
 
 People already running multiple Claude Code (and Cursor/Codex) agents who want to

@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.dev/schemas/fleet-run.schema.json",
+  "title": "FleetRun",
+  "description": "One Fleet meta-orchestrator run, persisted by the cockpit at apps/cockpit/server/data/fleet/<id>.json via atomicWriteJson and emitted (summarised) on the SSE fleet_update event. A goal fans out to N governed child sessions (each in its own git worktree/branch) and fans back in to one synthesis session. Permissive on purpose (additionalProperties:true, few required) so the shape can grow and so a future migration onto the Workflow engine does not break older persisted runs.",
+  "type": "object",
+  "required": ["id", "goal", "status", "children"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Filesystem-safe run id: slugify(goal) + ISO timestamp."
+    },
+    "goal": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "description": "Derived run status. Canonical values: pending | running | partial | succeeded | failed | cancelled | budget_exceeded. budget_exceeded means a running cost total crossed policy.budgetUsd and no further children were spawned (in-flight children were allowed to finish). Kept a free string (not an enum) so the shape can grow without breaking validation.",
+      "examples": ["pending", "running", "partial", "succeeded", "failed", "cancelled", "budget_exceeded"]
+    },
+    "spentUsd": {
+      "type": "number",
+      "description": "Running total USD across ALL children that report a cost (workers + verifiers + synthesis), summed from each child.cost.totalCost (missing/null treated as 0). Recomputed on every cost movement."
+    },
+    "budgetRemaining": {
+      "type": ["number", "null"],
+      "description": "max(0, policy.budgetUsd - spentUsd) when a budget is set, else null. Stored for the UI budget bar."
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "maxConcurrency": { "type": "number" },
+        "budgetUsd": {
+          "type": "number",
+          "description": "Hard dollar cap for the whole run. When set, enables budget enforcement: refuse to spawn a child whose projected cost would exceed it, and stop spawning (run → budget_exceeded) once spentUsd crosses it. Omitted = no enforcement (count cap only)."
+        },
+        "perChildUsd": {
+          "type": "number",
+          "description": "Optional per-child cost estimate used for the pre-spawn projection (since actual child.cost lags). Falls back to a conservative default when unset."
+        },
+        "verify": {
+          "type": ["boolean", "object"],
+          "description": "Adversarial verification. true is sugar for { minApprovals:1, maxRounds:1 }. minApprovals = independent verifier approvals a worker needs; maxRounds = how many times a rejected worker may be re-dispatched (bounded loop-until-done). Omitted = off.",
+          "additionalProperties": true,
+          "properties": {
+            "minApprovals": { "type": "number" },
+            "maxRounds": { "type": "number" }
+          }
+        }
+      }
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "idx": { "type": "number" },
+          "cwd": { "type": "string" },
+          "prompt": { "type": ["string", "null"] },
+          "workflow": { "type": ["string", "null"] },
+          "sessionId": { "type": ["string", "null"] },
+          "worktree": { "type": "boolean" },
+          "branch": { "type": ["string", "null"] },
+          "status": {
+            "type": "string",
+            "description": "Per-child status: starting | running | escalated | succeeded | failed | cancelled | verifying | rejected | budget_skipped. verifying = a worker settled succeeded and a verifier is reviewing it. rejected = a verifier rejected it and re-dispatch is exhausted. budget_skipped = the child (worker or verifier) was never spawned because its projected cost would exceed the budget.",
+            "examples": ["starting", "running", "escalated", "succeeded", "failed", "cancelled", "verifying", "rejected", "budget_skipped"]
+          },
+          "childKind": {
+            "type": "string",
+            "description": "Distinguishes workers from verifier children. Defaults to 'worker'. Verifier children are spawned through the same seam to adversarially review a worker's branch.",
+            "examples": ["worker", "verifier"]
+          },
+          "quarantine": {
+            "type": "boolean",
+            "description": "When true, the child is given a best-effort read-only / no-privileged-action stance via a prompt directive (and the harness rails where present). NOT a sandbox — advisory only for projects without rails. A quarantined child is barred from being the synthesis/acting child."
+          },
+          "verifiedBy": {
+            "type": ["string", "null"],
+            "description": "The verifier child sessionId/branch that produced the latest approve (for a UI link)."
+          },
+          "rounds": {
+            "type": "number",
+            "description": "Re-dispatch count for this worker, bounded by policy.verify.maxRounds."
+          },
+          "verdicts": {
+            "type": "array",
+            "description": "One entry per verification round on this worker.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "round": { "type": "number" },
+                "verifierSessionId": { "type": ["string", "null"] },
+                "verdict": { "type": "string", "examples": ["approve", "reject"] },
+                "reasons": { "type": "array", "items": { "type": "string" } },
+                "rubricScores": { "type": "object", "additionalProperties": true },
+                "at": { "type": "string", "format": "date-time" }
+              }
+            }
+          },
+          "cost": {
+            "type": ["object", "null"],
+            "description": "Per-child cost in the cockpit's canonical session-cost shape (parsers/sessions.js estimatedCost, from utils/cost.js calculateCost). Populated from the child session's estimatedCost when the session id is known / settles. Null until then.",
+            "additionalProperties": true,
+            "properties": {
+              "totalCost": { "type": "number", "description": "Total USD across input/output/cache." },
+              "breakdown": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "input": { "type": "number" },
+                  "output": { "type": "number" },
+                  "cacheWrite": { "type": "number" },
+                  "cacheRead": { "type": "number" }
+                }
+              },
+              "family": { "type": "string", "examples": ["haiku", "sonnet", "opus"] }
+            }
+          },
+          "escalation": {
+            "type": ["object", "null"],
+            "additionalProperties": true,
+            "properties": {
+              "source": { "type": "string", "examples": ["tool", "harness"] },
+              "approvalId": { "type": "string" },
+              "requestId": { "type": "string" },
+              "tool": { "type": "string" },
+              "command": { "type": "string" },
+              "riskLevel": { "type": "string" },
+              "requestedAt": { "type": "string" }
+            }
+          },
+          "error": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "synthesis": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "pending | running | done | skipped.",
+          "examples": ["pending", "running", "done", "skipped"]
+        },
+        "sessionId": { "type": ["string", "null"] },
+        "summary": { "type": ["string", "null"] },
+        "completedAt": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

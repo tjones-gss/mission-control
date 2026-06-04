@@ -314,6 +314,83 @@ describe('WorkflowsPanel — export', () => {
 })
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Run
+// ──────────────────────────────────────────────────────────────────────────────
+describe('WorkflowsPanel — run', () => {
+  it('Run button is disabled for new (unsaved) workflows', () => {
+    render(<WorkflowsPanel workflows={[]} loading={false} refetch={vi.fn()} skills={null} />)
+    fireEvent.click(screen.getByText('New'))
+    const runBtn = screen.getByRole('button', { name: /^Run$/i })
+    expect(runBtn).toBeDisabled()
+  })
+
+  it('shows started state on a 202 run', async () => {
+    let capturedUrl = null
+    server.use(
+      http.post('/api/workflows/:name/run', ({ request }) => {
+        capturedUrl = new URL(request.url).pathname
+        return HttpResponse.json(
+          { ok: true, status: 'started', sessionId: 'wf-sess-9' },
+          { status: 202 },
+        )
+      }),
+    )
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
+    fireEvent.click(screen.getByText('my-workflow'))
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/i }))
+    await screen.findByText(/Run started/i)
+    expect(capturedUrl).toBe('/api/workflows/my-workflow/run')
+  })
+
+  it('shows in-progress error when run returns 409', async () => {
+    server.use(
+      http.post('/api/workflows/:name/run', () =>
+        HttpResponse.json({ error: 'in_progress' }, { status: 409 }),
+      ),
+    )
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
+    fireEvent.click(screen.getByText('my-workflow'))
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/i }))
+    await screen.findByText('This workflow is already running.')
+    expect(screen.queryByText(/Run started/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a generic error when run fails (502)', async () => {
+    server.use(
+      http.post('/api/workflows/:name/run', () =>
+        HttpResponse.json({ ok: false, error: 'boom' }, { status: 502 }),
+      ),
+    )
+    render(
+      <WorkflowsPanel
+        workflows={SAMPLE_WORKFLOWS}
+        loading={false}
+        refetch={vi.fn()}
+        skills={null}
+      />,
+    )
+    fireEvent.click(screen.getByText('my-workflow'))
+    fireEvent.click(screen.getByRole('button', { name: /^Run$/i }))
+    await screen.findByText('Failed to start workflow.')
+    expect(screen.queryByText(/Run started/i)).not.toBeInTheDocument()
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Add Step
 // ──────────────────────────────────────────────────────────────────────────────
 describe('WorkflowsPanel — add step', () => {
