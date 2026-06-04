@@ -442,3 +442,90 @@ describe('POST /:projectKey/missions/:missionId/execute', () => {
     expect(res.body.error).toMatch(/code=1/)
   })
 })
+
+// ─── POST /:projectKey/missions/:missionId/ready ─────────────────────────────
+
+describe('POST /:projectKey/missions/:missionId/ready', () => {
+  const MISSION = 'MISSION-001-auth'
+
+  it('200 happy path: shells the harness subcommand, returns summary', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    runClaude.mockResolvedValue({
+      stdout: `{"type":"result","result":"mission ${MISSION} marked ready"}\n`,
+      stderr: '',
+      exitCode: 0,
+    })
+
+    const res = await request(app).post(`/${KEY}/missions/${MISSION}/ready`).send({})
+
+    expect(res.status).toBe(200)
+    expect(res.body.ok).toBe(true)
+    expect(res.body.missionId).toBe(MISSION)
+    expect(res.body.summary).toMatch(/marked ready/)
+
+    // The prompt invokes the harness mission ready subcommand in the project cwd.
+    const argv = runClaude.mock.calls.at(-1)[0]
+    expect(argv.cwd).toBe(PROJECT)
+    const prompt = argv.args[argv.args.indexOf('-p') + 1]
+    expect(prompt).toContain(`harness mission ready ${MISSION}`)
+    expect(prompt).toMatch(/do not edit .harness\/mission-index\.yml directly/i)
+    expect(argv.args).toContain('--output-format')
+    expect(argv.args[argv.args.indexOf('--output-format') + 1]).toBe('stream-json')
+  })
+
+  it('404 when the projectKey is not a known harness root', async () => {
+    getKnownHarnessRoots.mockReturnValue([]) // whitelist miss
+    const res = await request(app)
+      .post(`/${encodeURIComponent('C:/evil')}/missions/${MISSION}/ready`)
+      .send({})
+    expect(res.status).toBe(404)
+    expect(res.body.error).toBe('not_found')
+    expect(runClaude).not.toHaveBeenCalled()
+  })
+
+  it('502 when the harness run fails (e.g. mission not draft)', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    runClaude.mockRejectedValue(
+      Object.assign(new Error('claude CLI exited with code=1 signal=null'), {
+        stderrOutput: 'error: mission is `ready`, not `draft`',
+      }),
+    )
+    const res = await request(app).post(`/${KEY}/missions/${MISSION}/ready`).send({})
+    expect(res.status).toBe(502)
+    expect(res.body.ok).toBe(false)
+    expect(res.body.error).toMatch(/code=1/)
+  })
+
+  it('409 in_progress for a concurrent ready of the same mission — does NOT spawn twice', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    let releaseRun
+    let runEntered
+    const entered = new Promise((r) => {
+      runEntered = r
+    })
+    runClaude.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRun = () =>
+            resolve({ stdout: '{"type":"result","result":"ok"}\n', stderr: '', exitCode: 0 })
+          runEntered()
+        }),
+    )
+
+    const first = request(app)
+      .post(`/${KEY}/missions/${MISSION}/ready`)
+      .send({})
+      .then((r) => r)
+    await entered
+    const second = await request(app).post(`/${KEY}/missions/${MISSION}/ready`).send({})
+
+    expect(second.status).toBe(409)
+    expect(second.body.error).toBe('in_progress')
+
+    releaseRun()
+    const firstRes = await first
+    expect(firstRes.status).toBe(200)
+
+    expect(runClaude).toHaveBeenCalledTimes(1)
+  })
+})

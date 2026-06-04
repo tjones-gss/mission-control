@@ -18,12 +18,26 @@ vi.mock('fs', () => {
   }
 })
 vi.mock('../../parsers/workflows.js', () => ({ getAllWorkflows: vi.fn().mockReturnValue([]) }))
+vi.mock('../../claude-cli.js', () => ({
+  runClaudeCancellable: vi.fn().mockImplementation(() => ({
+    promise: Promise.resolve({ stdout: '{"type":"result"}\n', stderr: '', exitCode: 0 }),
+    cancel: vi.fn(),
+  })),
+}))
+vi.mock('../../lib/pending-session.js', () => ({
+  awaitNewSession: vi.fn().mockResolvedValue('pending-session-id'),
+}))
+vi.mock('../../lib/logger.js', () => ({
+  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}))
 
 import express from 'express'
 import request from 'supertest'
 import { promises as fsp } from 'fs'
 import { getAllWorkflows } from '../../parsers/workflows.js'
-import { router } from '../../routes/workflows.js'
+import { runClaudeCancellable } from '../../claude-cli.js'
+import { awaitNewSession } from '../../lib/pending-session.js'
+import { router, __resetInFlight } from '../../routes/workflows.js'
 
 const app = express()
 app.use(express.json())
@@ -33,6 +47,10 @@ beforeEach(() => {
   vi.resetAllMocks()
   // atomic-write.rename must succeed by default or every write path is 500
   fsp.rename.mockResolvedValue(undefined)
+  // Clear the module-level concurrency registry so a test that intentionally
+  // leaves a run in flight (pending CLI promise) doesn't leak a held lock key
+  // into the next test.
+  __resetInFlight()
 })
 
 // ─── GET / ──────────────────────────────────────────────────────────────────
@@ -334,5 +352,139 @@ describe('POST /:name/export', () => {
 
     const written = fsp.writeFile.mock.calls[0][1]
     expect(written).toContain('Run: `npm run build`')
+  })
+})
+
+// ─── POST /:name/run ──────────────────────────────────────────────────────────
+
+describe('POST /:name/run', () => {
+  it('400 when name is invalid', async () => {
+    const res = await request(app).post('/bad name/run').send({})
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/invalid workflow name/i)
+    expect(runClaudeCancellable).not.toHaveBeenCalled()
+  })
+
+  it('404 when the workflow file does not exist', async () => {
+    fsp.readFile.mockRejectedValue({ code: 'ENOENT' })
+    const res = await request(app).post('/missing/run').send({})
+    expect(res.status).toBe(404)
+    expect(res.body.error).toMatch(/workflow not found/i)
+    expect(runClaudeCancellable).not.toHaveBeenCalled()
+  })
+
+  it('202 started: spawns with the composed prompt built from the steps', async () => {
+    const workflow = {
+      name: 'deploy',
+      description: 'Ship it safely',
+      steps: [
+        { type: 'instruction', text: 'Review open PRs.', title: 'Review' },
+        { type: 'command', command: 'npm run build', title: 'Build' },
+      ],
+    }
+    fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
+    runClaudeCancellable.mockReturnValue({
+      promise: new Promise(() => {}), // stays pending so the ack wins
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockResolvedValue('wf-sess-7')
+
+    const res = await request(app).post('/deploy/run').send({})
+
+    expect(res.status).toBe(202)
+    expect(res.body).toEqual({ ok: true, status: 'started', sessionId: 'wf-sess-7' })
+
+    // Spawned with the workflow name + a prompt composed from the steps.
+    const argv = runClaudeCancellable.mock.calls.at(-1)[0]
+    expect(argv.args).toContain('--name')
+    expect(argv.args[argv.args.indexOf('--name') + 1]).toBe('deploy')
+    expect(argv.args).toContain('--output-format')
+    expect(argv.args[argv.args.indexOf('--output-format') + 1]).toBe('stream-json')
+    const prompt = argv.args[argv.args.indexOf('-p') + 1]
+    expect(prompt).toContain('Run the "deploy" workflow.')
+    expect(prompt).toContain('Ship it safely')
+    expect(prompt).toContain('## Step 1: Review')
+    expect(prompt).toContain('Review open PRs.')
+    expect(prompt).toContain('## Step 2: Build')
+    expect(prompt).toContain('Run: `npm run build`')
+  })
+
+  it('202 started when the CLI completes before the watcher ack', async () => {
+    const workflow = { name: 'wf', description: '', steps: [] }
+    fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
+    runClaudeCancellable.mockReturnValue({
+      promise: Promise.resolve({ stdout: '{"type":"result"}\n', stderr: '', exitCode: 0 }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves
+
+    const res = await request(app).post('/wf/run').send({})
+    expect(res.status).toBe(202)
+    expect(res.body.ok).toBe(true)
+    expect(res.body.status).toBe('started')
+  })
+
+  it('409 in_progress for a concurrent run of the same workflow — does NOT spawn twice', async () => {
+    const workflow = { name: 'wf', description: '', steps: [] }
+    fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
+    // First run stays in flight (CLI promise pending) and the ack also never
+    // resolves, so the first request holds the lock while the second arrives.
+    let releaseCli
+    runClaudeCancellable.mockReturnValue({
+      promise: new Promise((resolve) => {
+        releaseCli = () => resolve({ stdout: '{"type":"result"}\n', stderr: '', exitCode: 0 })
+      }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockResolvedValue('wf-sess-1')
+
+    const first = await request(app).post('/wf/run').send({})
+    expect(first.status).toBe(202)
+
+    const second = await request(app).post('/wf/run').send({})
+    expect(second.status).toBe(409)
+    expect(second.body.error).toBe('in_progress')
+
+    expect(runClaudeCancellable).toHaveBeenCalledTimes(1)
+
+    // Settle the first CLI run so the lock releases (no leak).
+    releaseCli()
+    await new Promise((r) => setImmediate(r))
+  })
+
+  it('releases the lock after the CLI settles — a later run of the same workflow spawns again', async () => {
+    const workflow = { name: 'wf', description: '', steps: [] }
+    fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
+    runClaudeCancellable.mockReturnValue({
+      promise: Promise.resolve({ stdout: '{"type":"result"}\n', stderr: '', exitCode: 0 }),
+      cancel: vi.fn(),
+    })
+    awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves; CLI wins
+
+    const first = await request(app).post('/wf/run').send({})
+    expect(first.status).toBe(202)
+    // Let the taggedCli.finally release the lock.
+    await new Promise((r) => setImmediate(r))
+
+    const second = await request(app).post('/wf/run').send({})
+    expect(second.status).toBe(202)
+    expect(runClaudeCancellable).toHaveBeenCalledTimes(2)
+  })
+
+  it('502 when the spawn rejects before any ack', async () => {
+    const workflow = { name: 'wf', description: '', steps: [] }
+    fsp.readFile.mockResolvedValue(JSON.stringify(workflow))
+    const err = Object.assign(new Error('claude CLI exited with code=1 signal=null'), {
+      stderrOutput: 'spawn boom',
+    })
+    const p = Promise.reject(err)
+    p.catch(() => {}) // suppress unhandledRejection at the vitest process level
+    runClaudeCancellable.mockReturnValue({ promise: p, cancel: vi.fn() })
+    awaitNewSession.mockReturnValue(new Promise(() => {})) // never resolves
+
+    const res = await request(app).post('/wf/run').send({})
+    expect(res.status).toBe(502)
+    expect(res.body.ok).toBe(false)
+    expect(res.body.error).toMatch(/code=1/)
   })
 })

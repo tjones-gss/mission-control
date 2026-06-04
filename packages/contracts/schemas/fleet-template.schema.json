@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.dev/schemas/fleet-template.schema.json",
+  "title": "FleetTemplate",
+  "description": "A saved, repeatable Fleet config (goal shape + child set + policy), persisted by the cockpit at apps/cockpit/server/data/fleet-templates/<name>.json via atomicWriteJson. Implements the dynamic-workflows 'SAVE WORKING WORKFLOWS' rule so a good fleet config is not retyped. A template is a request-construction convenience: POST /api/fleet { template: name } loads it and starts a run, the same lifecycle as an inline start. Permissive on purpose (additionalProperties:true).",
+  "type": "object",
+  "required": ["name", "goal", "children"],
+  "additionalProperties": true,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Filesystem-safe template name (letters, digits, underscores, hyphens). Used as the on-disk filename and traversal-guarded."
+    },
+    "goal": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "cwd": { "type": "string" },
+          "prompt": { "type": ["string", "null"] },
+          "workflow": { "type": ["string", "null"] },
+          "quarantine": { "type": "boolean" }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "maxConcurrency": { "type": "number" },
+        "budgetUsd": { "type": "number" },
+        "perChildUsd": { "type": "number" },
+        "verify": {
+          "type": ["boolean", "object"],
+          "additionalProperties": true,
+          "properties": {
+            "minApprovals": { "type": "number" },
+            "maxRounds": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -13,6 +13,9 @@ export const handlers = [
   ),
   http.delete('/api/workflows/:name', () => HttpResponse.json({ ok: true, name: 'test' })),
   http.post('/api/workflows/:name/export', () => HttpResponse.json({ ok: true })),
+  http.post('/api/workflows/:name/run', () =>
+    HttpResponse.json({ ok: true, status: 'started', sessionId: 'wf-sess-1' }, { status: 202 }),
+  ),
   http.get('/api/skills', () =>
     HttpResponse.json({ userSkills: [], pluginSkills: [], plugins: [], totalSkillCount: 0 }),
   ),

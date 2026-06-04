@@ -21,16 +21,25 @@ function loadSchema(name) {
 export const harnessStatusSchema = loadSchema("harness-status.schema.json");
 export const approvalRequestSchema = loadSchema("approval-request.schema.json");
 export const approvalDecisionSchema = loadSchema("approval-decision.schema.json");
+export const fleetRunSchema = loadSchema("fleet-run.schema.json");
+export const fleetTemplateSchema = loadSchema("fleet-template.schema.json");
 
-// 2: additive — harness-status gained optional `plans` + `pipeline.plan_status`
-// (PRD planning layer). Non-breaking: the schema is additionalProperties:true,
-// so peers on v1 still validate.
-export const SCHEMA_VERSION = 2;
+// 4: additive — Fleet Phase 4. Extended `fleet-run` with budget fields
+// (policy.budgetUsd / perChildUsd, run.spentUsd / budgetRemaining, the
+// `budget_exceeded` run status), adversarial verification (policy.verify, the
+// `verifying`/`rejected` child statuses, child.childKind / verdicts / rounds /
+// verifiedBy), and quarantine (child.quarantine). Added the standalone
+// `fleet-template` schema (saved repeatable fleet configs). Non-breaking: every
+// fleet-run addition is on an additionalProperties:true object and statuses are
+// free strings, so older persisted runs (and peers on v1–v3) still validate.
+export const SCHEMA_VERSION = 4;
 
 export const schemas = {
   harnessStatus: harnessStatusSchema,
   approvalRequest: approvalRequestSchema,
   approvalDecision: approvalDecisionSchema,
+  fleetRun: fleetRunSchema,
+  fleetTemplate: fleetTemplateSchema,
 };
 
 export default {
@@ -38,5 +47,7 @@ export default {
   harnessStatusSchema,
   approvalRequestSchema,
   approvalDecisionSchema,
+  fleetRunSchema,
+  fleetTemplateSchema,
   schemas,
 };

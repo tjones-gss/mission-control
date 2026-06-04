@@ -15,6 +15,10 @@ Usage:
   harness setup                    Wire core harness on this machine (Cursor + Claude hooks)
   harness validate               Run validation commands from active mission, write report
   harness handoff [--mission ID] Generate a session note skeleton from current state
+  harness mission ready <id>     Mark a draft mission ready (draft -> ready) in mission-index.yml
+  harness approve <id> --allow|--deny [--approver <name>]
+                                 Decide a pending danger-zone approval; writes the
+                                   .harness/approvals/decided/<id>.json decision file
   harness dashboard [--open]     Render runs/dashboard/index.html from harness state files
 
 Options:
@@ -1223,6 +1227,150 @@ def _plan_sync(args, root: Path) -> int:
     return 0
 
 
+# ---------- mission ----------
+#
+# The harness owns .harness/mission-index.yml — it is the single writer. The
+# cockpit never edits it directly; it shells out to this subcommand. A mission
+# graduates draft → ready here once it is well-formed and sequenced, which is
+# what `harness next` selects from (it only considers status: ready).
+
+def _mission_index_path(root: Path) -> Path:
+    return root / ".harness/mission-index.yml"
+
+
+def _save_yaml_atomic(path: Path, data: dict) -> None:
+    """Write YAML via a temp file + os.replace so a crash mid-write can never
+    leave a truncated mission-index.yml. os.replace is atomic on the same
+    filesystem, so the temp file is created in the destination directory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False))
+    os.replace(tmp, path)
+
+
+def cmd_mission(args, root: Path) -> int:
+    action = getattr(args, "mission_action", None)
+    if action == "ready":
+        return _mission_ready(args, root)
+    print(f"error: unknown mission action: {action}", file=sys.stderr)
+    return 2
+
+
+def _mission_ready(args, root: Path) -> int:
+    """Flip a mission's status from draft → ready in mission-index.yml.
+
+    Errors (non-zero) if the mission is not found or is not currently draft, so
+    the caller can surface a precise reason. Writes the index back atomically."""
+    index = load_yaml(_mission_index_path(root))
+    missions = index.get("missions")
+    if not isinstance(missions, dict):
+        missions = {}
+    entry = missions.get(args.id)
+    if not isinstance(entry, dict):
+        print(f"error: no mission `{args.id}` in mission-index.yml", file=sys.stderr)
+        return 2
+    status = entry.get("status")
+    if status != "draft":
+        print(
+            f"error: mission `{args.id}` is `{status}`, not `draft` — "
+            f"only draft missions can be marked ready",
+            file=sys.stderr,
+        )
+        return 2
+    entry["status"] = "ready"
+    missions[args.id] = entry
+    index["missions"] = missions
+    _save_yaml_atomic(_mission_index_path(root), index)
+    print(colorize(f"{emoji_or_ascii('✓', '[ok]')} mission {args.id} marked ready", "green"))
+    return 0
+
+
+# ---------- approve ----------
+#
+# The harness owns the danger-zone approval contract: a pending request lives at
+# .harness/approvals/pending/<requestId>.json and a decision lives at
+# .harness/approvals/decided/<requestId>.json (approval-decision schema). The
+# harness CLI is the SINGLE WRITER of decided files — the cockpit never writes
+# them directly; it shells out to this subcommand. Carrying the pending's
+# commandHash onto the decision is the replay-proofing: a decision can only
+# unblock the exact command it was minted for.
+
+def _approvals_dir(root: Path, kind: str) -> Path:
+    return root / ".harness" / "approvals" / kind
+
+
+def cmd_approve(args, root: Path) -> int:
+    """Decide a pending danger-zone approval (allow|deny).
+
+    Reads .harness/approvals/pending/<requestId>.json, copies its commandHash,
+    and writes .harness/approvals/decided/<requestId>.json conforming to the
+    approval-decision schema. Errors (non-zero) if the pending file is missing
+    or the decision already exists. Writes the decided file atomically."""
+    request_id = args.id
+    if args.allow == args.deny:
+        # Exactly one of --allow / --deny is required (argparse marks them
+        # mutually exclusive + required, so this is belt-and-suspenders).
+        print("error: exactly one of --allow / --deny is required", file=sys.stderr)
+        return 2
+    decision = "allow" if args.allow else "deny"
+
+    pending_path = _approvals_dir(root, "pending") / f"{request_id}.json"
+    if not pending_path.exists():
+        print(
+            f"error: no pending approval `{request_id}` "
+            f"(.harness/approvals/pending/{request_id}.json not found)",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        pending = json.loads(pending_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"error: cannot read pending request {request_id}: {e}", file=sys.stderr)
+        return 2
+    if not isinstance(pending, dict):
+        print(f"error: pending request {request_id} is malformed", file=sys.stderr)
+        return 2
+
+    command_hash = pending.get("commandHash")
+    if not command_hash:
+        print(
+            f"error: pending request {request_id} has no commandHash — "
+            f"cannot mint a replay-proof decision",
+            file=sys.stderr,
+        )
+        return 2
+
+    decided_path = _approvals_dir(root, "decided") / f"{request_id}.json"
+    if decided_path.exists():
+        print(
+            f"error: approval `{request_id}` already decided "
+            f"(.harness/approvals/decided/{request_id}.json exists)",
+            file=sys.stderr,
+        )
+        return 2
+
+    decision_doc = {
+        "id": request_id,
+        "schemaVersion": pending.get("schemaVersion", APPROVAL_SCHEMA_VERSION),
+        "decision": decision,
+        "approver": args.approver or "cockpit-fleet",
+        "commandHash": command_hash,
+        "decidedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+
+    decided_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = decided_path.with_name(f".{decided_path.name}.tmp")
+    tmp.write_text(json.dumps(decision_doc, indent=2) + "\n")
+    os.replace(tmp, decided_path)
+
+    mark = emoji_or_ascii("✓", "[ok]") if decision == "allow" else emoji_or_ascii("✗", "[deny]")
+    color = "green" if decision == "allow" else "red"
+    print(colorize(f"{mark} approval {request_id} {decision} by {decision_doc['approver']}", color))
+    print(f"  decided: .harness/approvals/decided/{request_id}.json")
+    return 0
+
+
 # ---------- utilities ----------
 
 def run_cmd(args_list, cwd):
@@ -2103,6 +2251,23 @@ def main():
     pl_req.add_argument("id", help="PRD id (e.g. PRD-<slug>)")
     p_plan_sub.add_parser("sync", help="Project approval decisions into PRD status")
 
+    p_mission = sub.add_parser("mission", help="Manage missions in mission-index.yml")
+    p_mission_sub = p_mission.add_subparsers(dest="mission_action")
+    pm_ready = p_mission_sub.add_parser("ready", help="Mark a draft mission ready (draft -> ready)")
+    pm_ready.add_argument("id", help="Mission id (e.g. MISSION-001-auth)")
+
+    p_approve = sub.add_parser(
+        "approve",
+        help="Decide a pending danger-zone approval (writes the decided file)",
+    )
+    p_approve.add_argument("id", help="Request id (the pending file's <requestId>)")
+    p_approve_dec = p_approve.add_mutually_exclusive_group(required=True)
+    p_approve_dec.add_argument("--allow", action="store_true", help="Allow the request")
+    p_approve_dec.add_argument("--deny", action="store_true", help="Deny the request")
+    p_approve.add_argument(
+        "--approver", default=None, help="Approver name (default: cockpit-fleet)"
+    )
+
     p_dashboard = sub.add_parser(
         "dashboard",
         help="Generate a local HTML dashboard at runs/dashboard/index.html",
@@ -2135,6 +2300,8 @@ def main():
         "validate": cmd_validate,
         "handoff": cmd_handoff,
         "plan": cmd_plan,
+        "mission": cmd_mission,
+        "approve": cmd_approve,
         "dashboard": cmd_dashboard,
     }
     if args.cmd == "install":

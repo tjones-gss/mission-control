@@ -30,7 +30,7 @@ const ACTION_LABELS = {
   tabTasks: 'Tasks tab',
   tabWorkflows: 'Workflows tab',
   tabSkills: 'Skills tab',
-  tabMissionControl: 'Mission Control tab',
+  tabMissionControl: 'Runs tab',
   quickApprove: 'Approve (send "yes")',
   quickContinue: 'Continue session',
   focusInput: 'Focus message input',
