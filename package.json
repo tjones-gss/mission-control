@@ -10,6 +10,8 @@
     "setup": "node installers/setup.mjs",
     "setup:check": "node installers/setup.mjs --check",
     "up": "npm --prefix apps/cockpit run dev",
+    "up:docker": "docker compose -f docker/docker-compose.yml up --build",
+    "down:docker": "docker compose -f docker/docker-compose.yml down",
     "dev": "npm run up",
     "test:cockpit": "npm --prefix apps/cockpit test",
     "lint": "npm --prefix apps/cockpit run lint"
