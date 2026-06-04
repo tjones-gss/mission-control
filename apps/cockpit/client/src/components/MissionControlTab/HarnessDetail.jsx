@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowRight, CheckCircle2, Circle, GitBranch, Loader2, Play } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Circle,
+  GitBranch,
+  Loader2,
+  Play,
+} from 'lucide-react'
 import { CompileRoadmapDialog } from './CompileRoadmapDialog.jsx'
 import { Toast } from './Toast.jsx'
 
@@ -312,7 +320,11 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
             className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-emerald-300 hover:text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             title={`Mark ${mission.id} ready to run`}
           >
-            {markingReady ? <Loader2 size={11} className="animate-spin" /> : <ArrowRight size={11} />}
+            {markingReady ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <ArrowRight size={11} />
+            )}
             {markingReady ? 'Marking ready…' : 'Mark ready'}
           </button>
         )}

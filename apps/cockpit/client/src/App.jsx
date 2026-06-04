@@ -483,9 +483,7 @@ export default function App() {
           <button
             onClick={toggleAdvanced}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
-              showAdvanced
-                ? 'bg-gray-800 text-gray-300'
-                : 'text-gray-600 hover:text-gray-400'
+              showAdvanced ? 'bg-gray-800 text-gray-300' : 'text-gray-600 hover:text-gray-400'
             }`}
             title={showAdvanced ? 'Hide advanced tabs' : 'Show advanced tabs'}
             aria-pressed={showAdvanced}

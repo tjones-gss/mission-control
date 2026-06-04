@@ -31,9 +31,7 @@ export function RunsTab({ harnessVersion, conductorVersion, sessions }) {
               key={m.id}
               onClick={() => setMode(m.id)}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors ${
-                mode === m.id
-                  ? 'bg-gray-800 text-gray-100'
-                  : 'text-gray-500 hover:text-gray-300'
+                mode === m.id ? 'bg-gray-800 text-gray-100' : 'text-gray-500 hover:text-gray-300'
               }`}
               aria-pressed={mode === m.id}
             >

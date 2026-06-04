@@ -79,7 +79,14 @@ const TPL = String(TEMPLATES_DIR).replace(/\\/g, '/')
 
 // A spawn whose CLI promise resolves to a stream-json result line.
 function resolved(result) {
-  return { promise: Promise.resolve({ stdout: `{"type":"result","result":${JSON.stringify(result)}}\n`, stderr: '', exitCode: 0 }), cancel: vi.fn() }
+  return {
+    promise: Promise.resolve({
+      stdout: `{"type":"result","result":${JSON.stringify(result)}}\n`,
+      stderr: '',
+      exitCode: 0,
+    }),
+    cancel: vi.fn(),
+  }
 }
 // A spawn that never settles (stays running).
 function pending() {
@@ -189,7 +196,11 @@ describe('startFleetRun lifecycle', () => {
     // returns a stream-json result line we expect stored as the summary.
     runClaudeCancellable
       .mockReturnValueOnce({
-        promise: Promise.resolve({ stdout: '{"type":"result","result":"child done"}\n', stderr: '', exitCode: 0 }),
+        promise: Promise.resolve({
+          stdout: '{"type":"result","result":"child done"}\n',
+          stderr: '',
+          exitCode: 0,
+        }),
         cancel: vi.fn(),
       })
       .mockReturnValueOnce({
@@ -229,11 +240,19 @@ describe('startFleetRun lifecycle', () => {
     // Child resolves succeeded; synthesis resolves too.
     runClaudeCancellable
       .mockReturnValueOnce({
-        promise: Promise.resolve({ stdout: '{"type":"result","result":"done"}\n', stderr: '', exitCode: 0 }),
+        promise: Promise.resolve({
+          stdout: '{"type":"result","result":"done"}\n',
+          stderr: '',
+          exitCode: 0,
+        }),
         cancel: vi.fn(),
       })
       .mockReturnValueOnce({
-        promise: Promise.resolve({ stdout: '{"type":"result","result":"report"}\n', stderr: '', exitCode: 0 }),
+        promise: Promise.resolve({
+          stdout: '{"type":"result","result":"report"}\n',
+          stderr: '',
+          exitCode: 0,
+        }),
         cancel: vi.fn(),
       })
     awaitNewSession.mockResolvedValue('sess-cost')
@@ -265,25 +284,38 @@ describe('startFleetRun lifecycle', () => {
     getKnownHarnessRoots.mockReturnValue([A])
     gitPaths.add(A)
 
-    const failing = Object.assign(new Error('claude CLI exited with code=1'), { stderrOutput: 'boom' })
+    const failing = Object.assign(new Error('claude CLI exited with code=1'), {
+      stderrOutput: 'boom',
+    })
     const rejected = Promise.reject(failing)
     rejected.catch(() => {})
     runClaudeCancellable
       .mockReturnValueOnce({
-        promise: Promise.resolve({ stdout: '{"type":"result","result":"ok"}\n', stderr: '', exitCode: 0 }),
+        promise: Promise.resolve({
+          stdout: '{"type":"result","result":"ok"}\n',
+          stderr: '',
+          exitCode: 0,
+        }),
         cancel: vi.fn(),
       })
       .mockReturnValueOnce({ promise: rejected, cancel: vi.fn() })
       // synthesis spawn
       .mockReturnValueOnce({
-        promise: Promise.resolve({ stdout: '{"type":"result","result":"report"}\n', stderr: '', exitCode: 0 }),
+        promise: Promise.resolve({
+          stdout: '{"type":"result","result":"report"}\n',
+          stderr: '',
+          exitCode: 0,
+        }),
         cancel: vi.fn(),
       })
     awaitNewSession.mockResolvedValue('sess-y')
 
     const res = await startFleetRun({
       goal: 'Partial Goal',
-      children: [{ cwd: A, prompt: 'a' }, { cwd: A, prompt: 'b' }],
+      children: [
+        { cwd: A, prompt: 'a' },
+        { cwd: A, prompt: 'b' },
+      ],
     })
     expect(res.ok).toBe(true)
     for (let i = 0; i < 12; i += 1) await tick()
@@ -395,7 +427,10 @@ describe('budget enforcement', () => {
     gitPaths.add(A)
     const r = validateFleetRequest({
       goal: 'g',
-      children: [{ cwd: A, prompt: 'x' }, { cwd: A, prompt: 'y' }],
+      children: [
+        { cwd: A, prompt: 'x' },
+        { cwd: A, prompt: 'y' },
+      ],
       policy: { budgetUsd: 1, perChildUsd: 0.8 }, // 2 * 0.8 = 1.6 > 1
     })
     expect(r.ok).toBe(false)
@@ -440,7 +475,9 @@ describe('budget enforcement', () => {
     runClaudeCancellable.mockReturnValue(resolved('done over budget'))
     awaitNewSession.mockResolvedValue('sess-over')
     getSessionById.mockImplementation((sid) =>
-      sid === 'sess-over' ? { sessionId: sid, estimatedCost: { totalCost: 2.0, breakdown: {}, family: 'opus' } } : null,
+      sid === 'sess-over'
+        ? { sessionId: sid, estimatedCost: { totalCost: 2.0, breakdown: {}, family: 'opus' } }
+        : null,
     )
 
     const res = await startFleetRun({
@@ -559,8 +596,10 @@ describe('adverse verification', () => {
     let n = 0
     awaitNewSession.mockImplementation(() => Promise.resolve(`sess-${n++}`))
     getSessionById.mockImplementation((sid) => {
-      if (sid === 'sess-0') return { sessionId: sid, estimatedCost: { totalCost: 0.6, breakdown: {}, family: 'opus' } }
-      if (sid === 'sess-1') return { sessionId: sid, estimatedCost: { totalCost: 0.6, breakdown: {}, family: 'opus' } }
+      if (sid === 'sess-0')
+        return { sessionId: sid, estimatedCost: { totalCost: 0.6, breakdown: {}, family: 'opus' } }
+      if (sid === 'sess-1')
+        return { sessionId: sid, estimatedCost: { totalCost: 0.6, breakdown: {}, family: 'opus' } }
       return null
     })
 
@@ -663,8 +702,14 @@ describe('fleet templates', () => {
   })
 
   it('rejects saving a template with a bad name or empty body', async () => {
-    expect((await saveFleetTemplate({ name: '../x', goal: 'g', children: [{ cwd: A, prompt: 'p' }] })).status).toBe(400)
-    expect((await saveFleetTemplate({ name: 'ok', goal: '', children: [{ cwd: A, prompt: 'p' }] })).status).toBe(400)
+    expect(
+      (await saveFleetTemplate({ name: '../x', goal: 'g', children: [{ cwd: A, prompt: 'p' }] }))
+        .status,
+    ).toBe(400)
+    expect(
+      (await saveFleetTemplate({ name: 'ok', goal: '', children: [{ cwd: A, prompt: 'p' }] }))
+        .status,
+    ).toBe(400)
     expect((await saveFleetTemplate({ name: 'ok', goal: 'g', children: [] })).status).toBe(400)
   })
 })

@@ -108,19 +108,14 @@ describe('HarnessDetail — mission lifecycle', () => {
     })
 
     // Success toast confirms the flip and points at the now-available run path.
-    await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent(/marked ready/i),
-    )
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/marked ready/i))
   })
 
   it('Mark ready surfaces an error toast when the endpoint fails', async () => {
     stubStatus({ 'MISSION-001-auth': { status: 'draft' } })
     server.use(
       http.post('/api/harness/:projectKey/missions/:missionId/ready', () =>
-        HttpResponse.json(
-          { ok: false, error: 'mission is `ready`, not `draft`' },
-          { status: 502 },
-        ),
+        HttpResponse.json({ ok: false, error: 'mission is `ready`, not `draft`' }, { status: 502 }),
       ),
     )
 

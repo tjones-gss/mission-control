@@ -12,7 +12,12 @@ import { MemoryViewer } from '../MemoryViewer.jsx'
 // at its default.)
 const SECTIONS = ['config', 'hooks', 'mcp', 'memory']
 
-export function InspectPanel({ sessionId, configVersion = 0, hooksVersion = 0, memoryVersion = 0 }) {
+export function InspectPanel({
+  sessionId,
+  configVersion = 0,
+  hooksVersion = 0,
+  memoryVersion = 0,
+}) {
   const [section, setSection] = useState('config')
 
   return (

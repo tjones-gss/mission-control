@@ -88,9 +88,7 @@ describe('AgentTree', () => {
   })
 
   it('clicking inspect tab shows the InspectPanel with versions threaded through', async () => {
-    render(
-      <AgentTree session={SESSION} configVersion={2} memoryVersion={3} hooksVersion={4} />,
-    )
+    render(<AgentTree session={SESSION} configVersion={2} memoryVersion={3} hooksVersion={4} />)
     await userEvent.click(screen.getByText('inspect'))
     const panel = screen.getByTestId('inspect-panel')
     expect(panel).toBeInTheDocument()

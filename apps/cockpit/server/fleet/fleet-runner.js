@@ -136,7 +136,8 @@ function isGitRepo(cwd) {
 // Derive the effective concurrency cap. policy.maxConcurrency may only lower the
 // hard cap, never raise it.
 function effectiveCap(policy) {
-  const requested = policy && typeof policy.maxConcurrency === 'number' ? policy.maxConcurrency : MAX_FLEET_CHILDREN
+  const requested =
+    policy && typeof policy.maxConcurrency === 'number' ? policy.maxConcurrency : MAX_FLEET_CHILDREN
   if (!(requested > 0)) return MAX_FLEET_CHILDREN
   return Math.min(requested, MAX_FLEET_CHILDREN)
 }
@@ -144,12 +145,16 @@ function effectiveCap(policy) {
 // Read the dollar budget off a policy. Enforcement is GATED behind this being a
 // positive number — no budget = today's behaviour (count cap only), unchanged.
 function budgetOf(policy) {
-  return policy && typeof policy.budgetUsd === 'number' && policy.budgetUsd > 0 ? policy.budgetUsd : null
+  return policy && typeof policy.budgetUsd === 'number' && policy.budgetUsd > 0
+    ? policy.budgetUsd
+    : null
 }
 
 // Read the per-child estimate (for the pre-spawn projection). Null when unset.
 function perChildOf(policy) {
-  return policy && typeof policy.perChildUsd === 'number' && policy.perChildUsd > 0 ? policy.perChildUsd : null
+  return policy && typeof policy.perChildUsd === 'number' && policy.perChildUsd > 0
+    ? policy.perChildUsd
+    : null
 }
 
 // Normalize policy.verify into { minApprovals, maxRounds } or null (off).
@@ -160,8 +165,10 @@ function normalizeVerify(policy) {
   if (!v) return null
   if (v === true) return { minApprovals: 1, maxRounds: 1 }
   if (typeof v === 'object') {
-    const minApprovals = typeof v.minApprovals === 'number' && v.minApprovals >= 1 ? Math.floor(v.minApprovals) : 1
-    const maxRounds = typeof v.maxRounds === 'number' && v.maxRounds >= 1 ? Math.floor(v.maxRounds) : 1
+    const minApprovals =
+      typeof v.minApprovals === 'number' && v.minApprovals >= 1 ? Math.floor(v.minApprovals) : 1
+    const maxRounds =
+      typeof v.maxRounds === 'number' && v.maxRounds >= 1 ? Math.floor(v.maxRounds) : 1
     return { minApprovals, maxRounds }
   }
   return null
@@ -306,11 +313,16 @@ export function spentUsd(state) {
   if (!state || !Array.isArray(state.children)) return 0
   let total = 0
   for (const child of state.children) {
-    const c = child && child.cost && typeof child.cost.totalCost === 'number' ? child.cost.totalCost : 0
+    const c =
+      child && child.cost && typeof child.cost.totalCost === 'number' ? child.cost.totalCost : 0
     total += c
   }
   // The synthesis child's cost, when captured, also counts toward the budget.
-  if (state.synthesis && state.synthesis.cost && typeof state.synthesis.cost.totalCost === 'number') {
+  if (
+    state.synthesis &&
+    state.synthesis.cost &&
+    typeof state.synthesis.cost.totalCost === 'number'
+  ) {
     total += state.synthesis.cost.totalCost
   }
   return total
@@ -352,7 +364,11 @@ function projectionWouldExceed(state) {
   let reserved = 0
   for (const c of state.children) {
     const hasCost = c.cost && typeof c.cost.totalCost === 'number'
-    if (spawnedChildren.has(c) && !hasCost && !['succeeded', 'failed', 'cancelled', 'rejected'].includes(c.status)) {
+    if (
+      spawnedChildren.has(c) &&
+      !hasCost &&
+      !['succeeded', 'failed', 'cancelled', 'rejected'].includes(c.status)
+    ) {
       reserved += estimate
     }
   }
@@ -506,7 +522,10 @@ function buildWorkerPrompt(child) {
   // them rather than redoing the same work.
   if (child.rounds > 0 && Array.isArray(child.verdicts) && child.verdicts.length) {
     const last = child.verdicts[child.verdicts.length - 1]
-    const reasons = Array.isArray(last.reasons) && last.reasons.length ? last.reasons.join('; ') : 'no specific reasons given'
+    const reasons =
+      Array.isArray(last.reasons) && last.reasons.length
+        ? last.reasons.join('; ')
+        : 'no specific reasons given'
     prompt = `A prior reviewer rejected this work for: ${reasons}. Address them.\n\n${prompt}`
   }
   return prompt
@@ -599,7 +618,11 @@ function spawnChild(state, idx, lockKey) {
     // worker's pending slot stays held (we do NOT settle it here); it settles
     // only once verification concludes (approve → succeeded, or rounds exhausted
     // → rejected). maybeStartVerification returns true when it took ownership.
-    if (succeeded && child.childKind !== 'verifier' && maybeStartVerification(state, child, lockKey)) {
+    if (
+      succeeded &&
+      child.childKind !== 'verifier' &&
+      maybeStartVerification(state, child, lockKey)
+    ) {
       // verification owns the lifecycle of this worker's pending slot now.
       persistFleet(state).catch(() => {})
       return
@@ -696,10 +719,17 @@ function spawnVerifier(state, worker, lockKey) {
     // a broken verifier can't silently pass work, then route the rejection.
     verifier.status = 'failed'
     verifier.error = err.message
-    logger.warn({ detail: err.message, id: state.id, idx: verifierIdx }, 'fleet_verifier_spawn_failed')
+    logger.warn(
+      { detail: err.message, id: state.id, idx: verifierIdx },
+      'fleet_verifier_spawn_failed',
+    )
     persistFleet(state).catch(() => {})
     settleChild(state, lockKey) // settle the verifier's slot
-    recordVerdict(worker, { verdict: 'reject', reasons: ['verifier failed to spawn'], rubricScores: {} }, null)
+    recordVerdict(
+      worker,
+      { verdict: 'reject', reasons: ['verifier failed to spawn'], rubricScores: {} },
+      null,
+    )
     routeVerdict(state, worker, false, lockKey)
     return
   }
@@ -737,7 +767,11 @@ function spawnVerifier(state, worker, lockKey) {
       // A failed verifier fails closed to reject (still consumes the round).
       verifier.status = 'failed'
       verifier.error = t.error.message
-      parsed = { verdict: 'reject', reasons: [`verifier error: ${t.error.message}`], rubricScores: {} }
+      parsed = {
+        verdict: 'reject',
+        reasons: [`verifier error: ${t.error.message}`],
+        rubricScores: {},
+      }
     } else {
       verifier.status = 'succeeded'
       const resultText = extractResult(t.value && t.value.stdout)
@@ -767,7 +801,8 @@ function recordVerdict(worker, parsed, verifierSessionId) {
     verifierSessionId: verifierSessionId || null,
     verdict: parsed.verdict,
     reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
-    rubricScores: parsed.rubricScores && typeof parsed.rubricScores === 'object' ? parsed.rubricScores : {},
+    rubricScores:
+      parsed.rubricScores && typeof parsed.rubricScores === 'object' ? parsed.rubricScores : {},
     at: new Date().toISOString(),
   })
 }
@@ -824,7 +859,8 @@ function routeVerdict(state, worker, approved, lockKey) {
 function lastVerifierSession(worker) {
   if (!Array.isArray(worker.verdicts)) return null
   for (let i = worker.verdicts.length - 1; i >= 0; i -= 1) {
-    if (worker.verdicts[i].verdict === 'approve') return worker.verdicts[i].verifierSessionId || null
+    if (worker.verdicts[i].verdict === 'approve')
+      return worker.verdicts[i].verifierSessionId || null
   }
   return null
 }
@@ -895,7 +931,12 @@ async function onAllChildrenSettled(state) {
   // worktree). budget_exceeded supersedes the derived status.
   if (budgetExceeded(state) && state.status !== 'cancelled') {
     state.status = 'budget_exceeded'
-    state.synthesis = { status: 'skipped', sessionId: null, summary: 'budget exceeded — synthesis skipped', completedAt: new Date().toISOString() }
+    state.synthesis = {
+      status: 'skipped',
+      sessionId: null,
+      summary: 'budget exceeded — synthesis skipped',
+      completedAt: new Date().toISOString(),
+    }
     await persistFleet(state)
     return
   }
@@ -1163,7 +1204,8 @@ export function listEscalations(id) {
       } catch {
         status = null
       }
-      const pending = status && Array.isArray(status.pendingApprovals) ? status.pendingApprovals : []
+      const pending =
+        status && Array.isArray(status.pendingApprovals) ? status.pendingApprovals : []
       for (const a of pending) {
         escalations.push({
           childIdx: child.idx,

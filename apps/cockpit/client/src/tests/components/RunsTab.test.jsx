@@ -19,9 +19,7 @@ describe('RunsTab — mode switch', () => {
   it('renders the Missions surface by default', async () => {
     setup()
     render(<RunsTab harnessVersion={0} conductorVersion={0} sessions={[]} />)
-    await waitFor(() =>
-      expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument())
     // Conductor surface should not be mounted yet
     expect(screen.queryByText(/no conductor runs detected/i)).not.toBeInTheDocument()
   })
@@ -29,15 +27,11 @@ describe('RunsTab — mode switch', () => {
   it('switches to the Conductor surface when its mode is selected', async () => {
     setup()
     render(<RunsTab harnessVersion={0} conductorVersion={0} sessions={[]} />)
-    await waitFor(() =>
-      expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole('button', { name: /conductor/i }))
 
-    await waitFor(() =>
-      expect(screen.getByText(/no conductor runs detected/i)).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText(/no conductor runs detected/i)).toBeInTheDocument())
     // Missions surface should be unmounted now
     expect(screen.queryByText(/no governed projects found/i)).not.toBeInTheDocument()
   })
@@ -45,18 +39,12 @@ describe('RunsTab — mode switch', () => {
   it('switches back to the Missions surface', async () => {
     setup()
     render(<RunsTab harnessVersion={0} conductorVersion={0} sessions={[]} />)
-    await waitFor(() =>
-      expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole('button', { name: /conductor/i }))
-    await waitFor(() =>
-      expect(screen.getByText(/no conductor runs detected/i)).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText(/no conductor runs detected/i)).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole('button', { name: /missions/i }))
-    await waitFor(() =>
-      expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument())
   })
 })

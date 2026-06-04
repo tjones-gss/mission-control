@@ -232,7 +232,10 @@ function ChildCard({ child, escalations, onDecide, onOpenSession }) {
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-[10px] font-mono text-gray-600 shrink-0">#{child.idx}</span>
         <FolderGit2 size={13} className="text-indigo-400 shrink-0" />
-        <span className="text-sm font-medium text-gray-100 truncate flex-1 min-w-0" title={child.cwd}>
+        <span
+          className="text-sm font-medium text-gray-100 truncate flex-1 min-w-0"
+          title={child.cwd}
+        >
           {basename(child.cwd)}
         </span>
         {child.quarantine && (
@@ -712,10 +715,11 @@ function LaunchDrawer({ open, onClose, onLaunched, onSaveTemplate, workflows, ro
 function RunDetail({ runId, version, onOpenSession }) {
   // Full persisted run state. The fleetVersion bump (from a fleet_update SSE
   // event) is in deps so the run refetches in place when anything changes.
-  const { data: run, loading, error } = useApi(runId ? `/api/fleet/${runId}` : null, [
-    runId,
-    version,
-  ])
+  const {
+    data: run,
+    loading,
+    error,
+  } = useApi(runId ? `/api/fleet/${runId}` : null, [runId, version])
   // Escalation list is read-only and refreshed on the same version bump.
   const { data: escData, refetch: refetchEsc } = useApi(
     runId ? `/api/fleet/${runId}/escalations` : null,
@@ -776,7 +780,8 @@ function RunDetail({ runId, version, onOpenSession }) {
   }, 0)
   // Budget bar: spentUsd / budgetRemaining come from the runner (recomputed on
   // every cost movement). Only shown when a budget cap is set on the run.
-  const budgetUsd = run.policy && typeof run.policy.budgetUsd === 'number' ? run.policy.budgetUsd : null
+  const budgetUsd =
+    run.policy && typeof run.policy.budgetUsd === 'number' ? run.policy.budgetUsd : null
   const spentUsd = typeof run.spentUsd === 'number' ? run.spentUsd : totalCost
   const budgetRemaining =
     typeof run.budgetRemaining === 'number'
@@ -784,8 +789,10 @@ function RunDetail({ runId, version, onOpenSession }) {
       : budgetUsd != null
         ? Math.max(0, budgetUsd - spentUsd)
         : null
-  const budgetPct = budgetUsd != null && budgetUsd > 0 ? Math.min(100, (spentUsd / budgetUsd) * 100) : 0
-  const budgetOver = run.status === 'budget_exceeded' || (budgetUsd != null && spentUsd >= budgetUsd)
+  const budgetPct =
+    budgetUsd != null && budgetUsd > 0 ? Math.min(100, (spentUsd / budgetUsd) * 100) : 0
+  const budgetOver =
+    run.status === 'budget_exceeded' || (budgetUsd != null && spentUsd >= budgetUsd)
   // Group escalations by child idx so each card shows its own.
   const escByChild = escalations.reduce((acc, e) => {
     ;(acc[e.childIdx] = acc[e.childIdx] || []).push(e)

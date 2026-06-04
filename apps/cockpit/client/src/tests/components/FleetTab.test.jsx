@@ -119,9 +119,7 @@ describe('FleetTab', () => {
   it('renders the empty state when there are no runs', async () => {
     stubFleet({ runs: [] })
     render(<FleetTab fleetVersion={0} />)
-    await waitFor(() =>
-      expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
   })
 
   it('launches a run via the launch drawer (mocked POST /api/fleet)', async () => {
@@ -138,10 +136,7 @@ describe('FleetTab', () => {
       within(dialog).getByPlaceholderText(/what should the fleet accomplish/i),
       'Add OAuth across services',
     )
-    await userEvent.type(
-      within(dialog).getByLabelText(/child 0 working directory/i),
-      'C:/proj/a',
-    )
+    await userEvent.type(within(dialog).getByLabelText(/child 0 working directory/i), 'C:/proj/a')
     await userEvent.type(within(dialog).getByLabelText(/child 0 prompt/i), 'Add OAuth to A')
 
     await userEvent.click(within(dialog).getByRole('button', { name: /launch fleet/i }))
@@ -387,9 +382,7 @@ describe('FleetTab', () => {
       expect(post).toBeTruthy()
       expect(post.body.goal).toBe('Ship the thing')
       expect(post.body.policy).toEqual({ budgetUsd: 12.5, verify: true })
-      expect(post.body.children).toEqual([
-        { cwd: 'C:/proj/a', prompt: 'Do it', quarantine: true },
-      ])
+      expect(post.body.children).toEqual([{ cwd: 'C:/proj/a', prompt: 'Do it', quarantine: true }])
     })
   })
 

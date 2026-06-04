@@ -214,7 +214,13 @@ describe('POST /api/fleet — start', () => {
     whitelist(A) // B is NOT whitelisted
     const res = await request(app)
       .post('/')
-      .send({ goal: 'g', children: [{ cwd: A, prompt: 'x' }, { cwd: B, prompt: 'y' }] })
+      .send({
+        goal: 'g',
+        children: [
+          { cwd: A, prompt: 'x' },
+          { cwd: B, prompt: 'y' },
+        ],
+      })
     expect(res.status).toBe(404)
     expect(runClaudeCancellable).not.toHaveBeenCalled()
   })
