@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plus, X, ChevronUp, ChevronDown, Pencil, Check, AlertTriangle, Play } from 'lucide-react'
+import { Dialog } from './ui/Dialog.jsx'
 
 const AGENT_TYPES = [
   'general-purpose',
@@ -33,123 +34,125 @@ function StepEditor({ step, skills, onSave, onClose }) {
   const set = (k, v) => setLocal((prev) => ({ ...prev, [k]: v }))
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-      onClick={onClose}
+    <Dialog
+      onClose={onClose}
+      labelledBy="workflow-step-editor-title"
+      backdropClassName="bg-black/70"
+      className="bg-gray-900 border border-gray-700 rounded-lg w-[calc(100%-2rem)] max-w-lg p-5 shadow-xl"
     >
-      <div
-        className="bg-gray-900 border border-gray-700 rounded-lg w-full max-w-lg p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-semibold text-gray-200 capitalize">{local.type} Step</span>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
-            <X size={14} />
-          </button>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <span
+          id="workflow-step-editor-title"
+          className="text-sm font-semibold text-gray-200 capitalize"
+        >
+          {local.type} Step
+        </span>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
+          <X size={14} />
+        </button>
+      </div>
 
-        {local.type === 'skill' && (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Skill</label>
-              <select
-                value={local.skillName || ''}
-                onChange={(e) => set('skillName', e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
-              >
-                <option value="">— select skill —</option>
-                {userSkills.map((s) => (
-                  <option key={s.name} value={s.name}>
-                    {s.name}
-                    {s.description ? ` — ${s.description}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Note (optional)</label>
-              <textarea
-                value={local.note || ''}
-                onChange={(e) => set('note', e.target.value)}
-                rows={3}
-                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500 resize-none"
-              />
-            </div>
-          </div>
-        )}
-
-        {local.type === 'agent' && (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Agent type</label>
-              <select
-                value={local.agentType || ''}
-                onChange={(e) => set('agentType', e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
-              >
-                <option value="">— select type —</option>
-                {AGENT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Prompt</label>
-              <textarea
-                value={local.prompt || ''}
-                onChange={(e) => set('prompt', e.target.value)}
-                rows={4}
-                placeholder="Describe what the agent should do…"
-                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500 resize-none"
-              />
-            </div>
-          </div>
-        )}
-
-        {local.type === 'instruction' && (
+      {local.type === 'skill' && (
+        <div className="space-y-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Instruction text</label>
+            <label className="block text-xs text-gray-500 mb-1">Skill</label>
+            <select
+              value={local.skillName || ''}
+              onChange={(e) => set('skillName', e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
+            >
+              <option value="">— select skill —</option>
+              {userSkills.map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name}
+                  {s.description ? ` — ${s.description}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Note (optional)</label>
             <textarea
-              value={local.text || ''}
-              onChange={(e) => set('text', e.target.value)}
-              rows={5}
-              placeholder="Plain instruction for Claude to follow…"
+              value={local.note || ''}
+              onChange={(e) => set('note', e.target.value)}
+              rows={3}
               className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500 resize-none"
             />
           </div>
-        )}
+        </div>
+      )}
 
-        {local.type === 'command' && (
+      {local.type === 'agent' && (
+        <div className="space-y-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Shell command</label>
-            <input
-              type="text"
-              value={local.command || ''}
-              onChange={(e) => set('command', e.target.value)}
-              placeholder="npm run build"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-300 font-mono focus:outline-none focus:border-gray-500"
+            <label className="block text-xs text-gray-500 mb-1">Agent type</label>
+            <select
+              value={local.agentType || ''}
+              onChange={(e) => set('agentType', e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
+            >
+              <option value="">— select type —</option>
+              {AGENT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Prompt</label>
+            <textarea
+              value={local.prompt || ''}
+              onChange={(e) => set('prompt', e.target.value)}
+              rows={4}
+              placeholder="Describe what the agent should do…"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500 resize-none"
             />
           </div>
-        )}
-
-        <div className="flex justify-end gap-2 mt-4">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave(local)}
-            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded transition-colors flex items-center gap-1"
-          >
-            <Check size={12} /> Save
-          </button>
         </div>
+      )}
+
+      {local.type === 'instruction' && (
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Instruction text</label>
+          <textarea
+            value={local.text || ''}
+            onChange={(e) => set('text', e.target.value)}
+            rows={5}
+            placeholder="Plain instruction for Claude to follow…"
+            className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500 resize-none"
+          />
+        </div>
+      )}
+
+      {local.type === 'command' && (
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Shell command</label>
+          <input
+            type="text"
+            value={local.command || ''}
+            onChange={(e) => set('command', e.target.value)}
+            placeholder="npm run build"
+            className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-300 font-mono focus:outline-none focus:border-gray-500"
+          />
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 mt-4">
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => onSave(local)}
+          className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded transition-colors flex items-center gap-1"
+        >
+          <Check size={12} /> Save
+        </button>
       </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -585,34 +588,31 @@ export function WorkflowsPanel({ workflows, loading, refetch, skills }) {
 
       {/* Delete confirm overlay */}
       {deleteConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-          onClick={() => setDeleteConfirm(null)}
+        <Dialog
+          onClose={() => setDeleteConfirm(null)}
+          label={`Delete ${deleteConfirm}?`}
+          backdropClassName="bg-black/70"
+          className="bg-gray-900 border border-gray-700 rounded-lg p-5 shadow-xl max-w-xs w-[calc(100%-2rem)]"
         >
-          <div
-            className="bg-gray-900 border border-gray-700 rounded-lg p-5 shadow-xl max-w-xs"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-sm text-gray-200 mb-1">
-              Delete <span className="font-semibold">{deleteConfirm}</span>?
-            </p>
-            <p className="text-xs text-gray-500 mb-4">This cannot be undone.</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => deleteWorkflow(deleteConfirm)}
-                className="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
-              >
-                Delete
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+          <p className="text-sm text-gray-200 mb-1">
+            Delete <span className="font-semibold">{deleteConfirm}</span>?
+          </p>
+          <p className="text-xs text-gray-500 mb-4">This cannot be undone.</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => deleteWorkflow(deleteConfirm)}
+              className="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
+            >
+              Delete
+            </button>
+            <button
+              onClick={() => setDeleteConfirm(null)}
+              className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )

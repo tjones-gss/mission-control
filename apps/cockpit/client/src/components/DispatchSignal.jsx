@@ -65,7 +65,7 @@ export function DispatchSignal({ from, to, onComplete, durationMs = 700 }) {
 
   return (
     <svg
-      className="pointer-events-none fixed inset-0 z-[60]"
+      className="pointer-events-none fixed inset-0 z-signal"
       style={{ width: '100vw', height: '100vh' }}
       aria-hidden="true"
     >

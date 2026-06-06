@@ -204,7 +204,7 @@ export function DispatchDrawerHandle({ open, onToggle }) {
     <button
       type="button"
       onClick={onToggle}
-      className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-1.5 rounded-t-lg border border-b-0 border-gray-700 bg-gray-900 hover:bg-gray-800 hover:border-indigo-700 transition-colors shadow-lg group"
+      className="fixed bottom-0 left-1/2 -translate-x-1/2 z-drawer flex items-center gap-2 px-4 py-1.5 rounded-t-lg border border-b-0 border-gray-700 bg-gray-900 hover:bg-gray-800 hover:border-indigo-700 transition-colors shadow-lg group"
       title="Open Dispatch Manager (d)"
       aria-label="Open dispatch manager"
     >
@@ -377,7 +377,7 @@ export function DispatchDrawer({ open, onClose, onSingleDispatchSuccess }) {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity z-40 ${
+        className={`fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity z-drawerBackdrop ${
           open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         onClick={() => !sending && onClose()}
@@ -385,7 +385,7 @@ export function DispatchDrawer({ open, onClose, onSingleDispatchSuccess }) {
 
       {/* Drawer — centered, max 1100px wide so it doesn't span the full screen */}
       <div
-        className="fixed left-1/2 bottom-0 z-50 w-[min(92vw,1100px)] bg-gray-950 border border-b-0 border-gray-800 rounded-t-xl shadow-2xl transition-transform duration-200 ease-out"
+        className="fixed left-1/2 bottom-0 z-drawer w-[min(92vw,1100px)] bg-gray-950 border border-b-0 border-gray-800 rounded-t-xl shadow-2xl transition-transform duration-200 ease-out"
         style={{
           height: 'min(72vh, 640px)',
           transform: open ? 'translate(-50%, 0)' : 'translate(-50%, 100%)',

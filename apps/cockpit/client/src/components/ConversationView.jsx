@@ -292,7 +292,7 @@ function SlashAutocomplete({ filter, skills, selectedIndex, onSelect }) {
   if (filtered.length === 0) return null
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto z-50">
+    <div className="absolute bottom-full left-0 right-0 mb-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto z-dropdown">
       {filtered.map((s, i) => (
         <button
           key={s.name}

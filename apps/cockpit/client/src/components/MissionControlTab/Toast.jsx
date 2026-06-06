@@ -25,7 +25,7 @@ export function Toast({ toast, onDismiss }) {
   const tone = TONE[toast.tone] || TONE.success
 
   return (
-    <div className="pointer-events-none absolute bottom-3 right-3 z-40 flex justify-end">
+    <div className="pointer-events-none absolute bottom-3 right-3 z-toast flex justify-end">
       <div
         role="status"
         className={`pointer-events-auto flex items-start gap-2 max-w-sm px-3 py-2 rounded border shadow-lg text-xs ${tone.wrap}`}

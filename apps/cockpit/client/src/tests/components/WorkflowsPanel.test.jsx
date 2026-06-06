@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server.js'
@@ -486,14 +486,12 @@ describe('WorkflowsPanel — StepEditor', () => {
     // Type something in the instruction textarea
     const textarea = screen.getByPlaceholderText(/Plain instruction for Claude/i)
     fireEvent.change(textarea, { target: { value: 'Do the thing' } })
-    // Click Save in the StepEditor modal — find it by its container (the fixed overlay)
-    const modal = document.querySelector('.fixed.inset-0.z-50')
-    expect(modal).toBeTruthy()
-    const modalSaveBtn = modal.querySelector('button.bg-indigo-600')
-    expect(modalSaveBtn).toBeTruthy()
+    // Click Save in the StepEditor modal — it now portals to <body> as a dialog.
+    const modal = screen.getByRole('dialog')
+    const modalSaveBtn = within(modal).getByRole('button', { name: /save/i })
     fireEvent.click(modalSaveBtn)
-    // Modal should close (no more fixed overlay)
-    await waitFor(() => expect(document.querySelector('.fixed.inset-0.z-50')).toBeNull())
+    // Modal should close (dialog unmounts)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     // Step should appear in the list
     expect(screen.getByText('Do the thing')).toBeInTheDocument()
   })

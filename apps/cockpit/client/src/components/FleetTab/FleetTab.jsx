@@ -22,6 +22,7 @@ import {
 import { useApi } from '../../hooks/useApi.js'
 import { formatCost } from '../../utils/cost.js'
 import { Markdown } from '../Markdown.jsx'
+import { Dialog } from '../ui/Dialog.jsx'
 
 // Fleet UI — the power-user headline surface. Launch a fleet (a goal + N child
 // agents, each in its own git worktree/branch), then watch the children live as
@@ -335,7 +336,6 @@ function LaunchDrawer({ open, onClose, onLaunched, onSaveTemplate, workflows, ro
   useEffect(() => {
     if (!open) return
     setError(null)
-    setTimeout(() => goalRef.current?.focus(), 50)
   }, [open])
 
   // Load a saved template into the form. The user can still tweak any field
@@ -359,18 +359,6 @@ function LaunchDrawer({ open, onClose, onLaunched, onSaveTemplate, workflows, ro
     setVerify(!!pol.verify)
     setError(null)
   }, [])
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e) => {
-      if (e.key === 'Escape' && !submitting) {
-        e.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, submitting, onClose])
 
   const updateChild = useCallback((idx, patch) => {
     setChildren((prev) => prev.map((c, i) => (i === idx ? { ...c, ...patch } : c)))
@@ -483,229 +471,225 @@ function LaunchDrawer({ open, onClose, onLaunched, onSaveTemplate, workflows, ro
   if (!open) return null
 
   return (
-    <>
-      <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-        onClick={() => !submitting && onClose()}
-      />
-      <div
-        className="fixed left-1/2 bottom-0 z-50 w-[min(92vw,960px)] bg-gray-950 border border-b-0 border-gray-800 rounded-t-xl shadow-2xl -translate-x-1/2"
-        style={{ height: 'min(78vh, 700px)' }}
-        role="dialog"
-        aria-label="New fleet run"
-        aria-modal="true"
-      >
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-800">
-          <Layers size={16} className="text-indigo-400" />
-          <span className="text-sm font-semibold text-gray-100">New Fleet Run</span>
+    <Dialog
+      onClose={onClose}
+      placement="bottom"
+      dismissible={!submitting}
+      label="New fleet run"
+      initialFocusRef={goalRef}
+      backdropClassName="bg-black/40 backdrop-blur-sm"
+      className="w-[min(92vw,960px)] h-[min(78vh,700px)] bg-gray-950 border border-b-0 border-gray-800 rounded-t-xl shadow-2xl"
+    >
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-800">
+        <Layers size={16} className="text-indigo-400" />
+        <span className="text-sm font-semibold text-gray-100">New Fleet Run</span>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={submitting}
+          className="ml-auto text-gray-600 hover:text-gray-300 transition-colors p-1 rounded disabled:opacity-30"
+          title="Close (Esc)"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="flex flex-col h-[calc(100%-58px)]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {templateList.length > 0 && (
+            <div>
+              <label
+                htmlFor="fleet-template-picker"
+                className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1"
+              >
+                Launch from template
+              </label>
+              <select
+                id="fleet-template-picker"
+                aria-label="launch from template"
+                defaultValue=""
+                onChange={(e) => {
+                  const tpl = templateList.find((t) => t.name === e.target.value)
+                  applyTemplate(tpl)
+                  e.target.value = ''
+                }}
+                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">— pick a saved template —</option>
+                {templateList.map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">
+              Goal
+            </label>
+            <textarea
+              ref={goalRef}
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              rows={2}
+              placeholder="What should the fleet accomplish? (e.g. Add OAuth across all services)"
+              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none"
+            />
+          </div>
+
+          {/* Run policy — budget cap + adversarial verification. Both opt-in;
+                omitted from the request when off so default behaviour is kept. */}
+          <div className="flex items-end gap-4 flex-wrap">
+            <div>
+              <label
+                htmlFor="fleet-budget"
+                className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1"
+              >
+                Budget (USD)
+              </label>
+              <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 focus-within:border-indigo-500">
+                <DollarSign size={12} className="text-gray-600 shrink-0" />
+                <input
+                  id="fleet-budget"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  placeholder="no cap"
+                  aria-label="budget usd"
+                  className="w-24 bg-transparent text-xs text-gray-200 placeholder-gray-600 focus:outline-none font-mono"
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer pb-1.5">
+              <input
+                type="checkbox"
+                checked={verify}
+                onChange={(e) => setVerify(e.target.checked)}
+                aria-label="verify results"
+                className="accent-indigo-500"
+              />
+              <ShieldCheck size={13} className="text-sky-400" />
+              Verify results (adversarial review)
+            </label>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center">
+              <span className="text-[11px] uppercase tracking-wide text-gray-500">Children</span>
+              <button
+                type="button"
+                onClick={addChild}
+                className="ml-auto flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 transition-colors"
+              >
+                <Plus size={12} /> Add child
+              </button>
+            </div>
+            {children.map((child, idx) => (
+              <div
+                key={idx}
+                className="rounded-lg border border-gray-800 bg-gray-900/50 p-2.5 space-y-2"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-gray-600 shrink-0">#{idx}</span>
+                  <input
+                    type="text"
+                    value={child.cwd}
+                    onChange={(e) => updateChild(idx, { cwd: e.target.value })}
+                    list="fleet-roots"
+                    placeholder="Working directory (a known harness root)"
+                    aria-label={`child ${idx} working directory`}
+                    className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 font-mono"
+                  />
+                  {children.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeChild(idx)}
+                      className="shrink-0 text-gray-600 hover:text-red-400 transition-colors p-1"
+                      title="Remove child"
+                      aria-label={`remove child ${idx}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-start gap-2">
+                  <textarea
+                    value={child.prompt}
+                    onChange={(e) => updateChild(idx, { prompt: e.target.value })}
+                    disabled={!!child.workflow.trim()}
+                    rows={2}
+                    placeholder="Prompt for this child…"
+                    aria-label={`child ${idx} prompt`}
+                    className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-40"
+                  />
+                  <div className="flex flex-col gap-1 shrink-0 w-40">
+                    <span className="text-[10px] text-gray-600">or workflow</span>
+                    <select
+                      value={child.workflow}
+                      onChange={(e) => updateChild(idx, { workflow: e.target.value })}
+                      aria-label={`child ${idx} workflow`}
+                      className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="">— none —</option>
+                      {workflowList.map((wf) => (
+                        <option key={wf.name} value={wf.name}>
+                          {wf.name}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="flex items-center gap-1.5 text-[10px] text-gray-400 cursor-pointer mt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={!!child.quarantine}
+                        onChange={(e) => updateChild(idx, { quarantine: e.target.checked })}
+                        aria-label={`child ${idx} quarantine`}
+                        className="accent-orange-500"
+                      />
+                      <Lock size={10} className="text-orange-400" />
+                      quarantine (read-only)
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <datalist id="fleet-roots">
+              {(Array.isArray(roots) ? roots : []).map((r) => (
+                <option key={r} value={r} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-800 px-4 py-3 bg-gray-900/40 flex items-center gap-3">
+          {error && (
+            <span className="text-[11px] text-red-400 flex items-center gap-1.5">
+              <AlertTriangle size={12} /> {error}
+            </span>
+          )}
           <button
             type="button"
-            onClick={onClose}
+            onClick={saveTemplate}
             disabled={submitting}
-            className="ml-auto text-gray-600 hover:text-gray-300 transition-colors p-1 rounded disabled:opacity-30"
-            title="Close (Esc)"
+            className="ml-auto px-3 py-2 rounded border border-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-800 hover:text-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
           >
-            <X size={16} />
+            <Save size={14} /> Save as template
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting}
+            className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+          >
+            {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {submitting ? 'Launching…' : 'Launch Fleet'}
           </button>
         </div>
-
-        <div className="flex flex-col h-[calc(100%-58px)]">
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {templateList.length > 0 && (
-              <div>
-                <label
-                  htmlFor="fleet-template-picker"
-                  className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1"
-                >
-                  Launch from template
-                </label>
-                <select
-                  id="fleet-template-picker"
-                  aria-label="launch from template"
-                  defaultValue=""
-                  onChange={(e) => {
-                    const tpl = templateList.find((t) => t.name === e.target.value)
-                    applyTemplate(tpl)
-                    e.target.value = ''
-                  }}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="">— pick a saved template —</option>
-                  {templateList.map((t) => (
-                    <option key={t.name} value={t.name}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">
-                Goal
-              </label>
-              <textarea
-                ref={goalRef}
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                rows={2}
-                placeholder="What should the fleet accomplish? (e.g. Add OAuth across all services)"
-                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none"
-              />
-            </div>
-
-            {/* Run policy — budget cap + adversarial verification. Both opt-in;
-                omitted from the request when off so default behaviour is kept. */}
-            <div className="flex items-end gap-4 flex-wrap">
-              <div>
-                <label
-                  htmlFor="fleet-budget"
-                  className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1"
-                >
-                  Budget (USD)
-                </label>
-                <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 focus-within:border-indigo-500">
-                  <DollarSign size={12} className="text-gray-600 shrink-0" />
-                  <input
-                    id="fleet-budget"
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={budget}
-                    onChange={(e) => setBudget(e.target.value)}
-                    placeholder="no cap"
-                    aria-label="budget usd"
-                    className="w-24 bg-transparent text-xs text-gray-200 placeholder-gray-600 focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-              <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer pb-1.5">
-                <input
-                  type="checkbox"
-                  checked={verify}
-                  onChange={(e) => setVerify(e.target.checked)}
-                  aria-label="verify results"
-                  className="accent-indigo-500"
-                />
-                <ShieldCheck size={13} className="text-sky-400" />
-                Verify results (adversarial review)
-              </label>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center">
-                <span className="text-[11px] uppercase tracking-wide text-gray-500">Children</span>
-                <button
-                  type="button"
-                  onClick={addChild}
-                  className="ml-auto flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 transition-colors"
-                >
-                  <Plus size={12} /> Add child
-                </button>
-              </div>
-              {children.map((child, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-lg border border-gray-800 bg-gray-900/50 p-2.5 space-y-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono text-gray-600 shrink-0">#{idx}</span>
-                    <input
-                      type="text"
-                      value={child.cwd}
-                      onChange={(e) => updateChild(idx, { cwd: e.target.value })}
-                      list="fleet-roots"
-                      placeholder="Working directory (a known harness root)"
-                      aria-label={`child ${idx} working directory`}
-                      className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 font-mono"
-                    />
-                    {children.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeChild(idx)}
-                        className="shrink-0 text-gray-600 hover:text-red-400 transition-colors p-1"
-                        title="Remove child"
-                        aria-label={`remove child ${idx}`}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <textarea
-                      value={child.prompt}
-                      onChange={(e) => updateChild(idx, { prompt: e.target.value })}
-                      disabled={!!child.workflow.trim()}
-                      rows={2}
-                      placeholder="Prompt for this child…"
-                      aria-label={`child ${idx} prompt`}
-                      className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-40"
-                    />
-                    <div className="flex flex-col gap-1 shrink-0 w-40">
-                      <span className="text-[10px] text-gray-600">or workflow</span>
-                      <select
-                        value={child.workflow}
-                        onChange={(e) => updateChild(idx, { workflow: e.target.value })}
-                        aria-label={`child ${idx} workflow`}
-                        className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
-                      >
-                        <option value="">— none —</option>
-                        {workflowList.map((wf) => (
-                          <option key={wf.name} value={wf.name}>
-                            {wf.name}
-                          </option>
-                        ))}
-                      </select>
-                      <label className="flex items-center gap-1.5 text-[10px] text-gray-400 cursor-pointer mt-0.5">
-                        <input
-                          type="checkbox"
-                          checked={!!child.quarantine}
-                          onChange={(e) => updateChild(idx, { quarantine: e.target.checked })}
-                          aria-label={`child ${idx} quarantine`}
-                          className="accent-orange-500"
-                        />
-                        <Lock size={10} className="text-orange-400" />
-                        quarantine (read-only)
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <datalist id="fleet-roots">
-                {(Array.isArray(roots) ? roots : []).map((r) => (
-                  <option key={r} value={r} />
-                ))}
-              </datalist>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-800 px-4 py-3 bg-gray-900/40 flex items-center gap-3">
-            {error && (
-              <span className="text-[11px] text-red-400 flex items-center gap-1.5">
-                <AlertTriangle size={12} /> {error}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={saveTemplate}
-              disabled={submitting}
-              className="ml-auto px-3 py-2 rounded border border-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-800 hover:text-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
-            >
-              <Save size={14} /> Save as template
-            </button>
-            <button
-              type="button"
-              onClick={submit}
-              disabled={submitting}
-              className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
-            >
-              {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              {submitting ? 'Launching…' : 'Launch Fleet'}
-            </button>
-          </div>
-        </div>
       </div>
-    </>
+    </Dialog>
   )
 }
 

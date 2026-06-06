@@ -160,8 +160,9 @@ describe('SettingsModal — close behavior', () => {
 
   it('calls onClose when overlay backdrop is clicked', () => {
     const onClose = vi.fn()
-    const { container } = renderModal({ onClose })
-    fireEvent.click(container.firstChild)
+    renderModal({ onClose })
+    // The modal now portals to <body>; the backdrop carries a stable hook.
+    fireEvent.click(document.querySelector('[data-dialog-backdrop]'))
     expect(onClose).toHaveBeenCalled()
   })
 
