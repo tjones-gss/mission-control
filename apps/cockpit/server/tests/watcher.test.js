@@ -126,4 +126,28 @@ describe('watcher', () => {
     expect(emit).not.toHaveBeenCalled()
     expect(onSessionEvent).not.toHaveBeenCalled()
   })
+
+  // Regression: a chokidar 'error' event with no listener is re-thrown as an
+  // uncaught exception and crashes the server. On Windows, stat-ing a file in a
+  // transient ~/.claude/plugins/cache/temp_git_* dir (created and deleted by the
+  // plugin system) throws EPERM, which previously killed the process.
+  it('registers an error handler so watcher errors do not crash the process', () => {
+    startWatcher()
+    expect(handlers.error).toBeTypeOf('function')
+  })
+
+  it('error handler swallows transient FS errors (e.g. Windows EPERM) without throwing', () => {
+    startWatcher()
+    const eperm = Object.assign(new Error('EPERM: operation not permitted, stat'), {
+      code: 'EPERM',
+      syscall: 'stat',
+    })
+    expect(() => handlers.error(eperm)).not.toThrow()
+  })
+
+  it('ignores the transient plugins directory so its temp_git_* churn never gets stat-ed', () => {
+    startWatcher()
+    const opts = chokidar.watch.mock.calls[0][1]
+    expect(opts.ignored).toContain(path.join(CLAUDE_DIR, 'plugins'))
+  })
 })
