@@ -34,6 +34,7 @@ import { TeamsPanel } from './components/TeamsPanel/TeamsPanel.jsx'
 import { HistoryTab } from './components/HistoryTab/HistoryTab.jsx'
 import { RunsTab } from './components/RunsTab/RunsTab.jsx'
 import { FleetTab } from './components/FleetTab/FleetTab.jsx'
+import { FeatureBrief } from './components/FeatureBrief/FeatureBrief.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
@@ -577,6 +578,7 @@ export default function App() {
 
         {/* Center: Main panel */}
         <main className="flex-1 min-w-0 overflow-hidden flex flex-col relative z-0 bg-gray-950">
+          {activeTab !== 'runs' && <FeatureBrief surfaceId={activeTab} />}
           {activeTab === 'agents' && (
             <>
               {/* Board / Detail toggle bar */}
