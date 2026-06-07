@@ -30,3 +30,9 @@ venv/
 
 # OS
 .DS_Store
+
+# Cockpit Fleet runtime state — per-run JSONs + saved templates (localhost runtime
+# data, not source). e2e and live runs write here; keep it out of the repo so a
+# late async write can't trip prettier --check. (data/session-names.json stays tracked.)
+apps/cockpit/server/data/fleet/
+apps/cockpit/server/data/fleet-templates/
