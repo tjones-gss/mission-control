@@ -2,16 +2,13 @@ import fs from 'fs'
 import path from 'path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { getSessionCwds } from './conductor.js'
+import { getSessionCwds } from '../lib/session-discovery.js'
 
 // Absolute path to the python harness CLI. Resolved relative to this module so
 // it stays correct regardless of the process working directory:
 // apps/cockpit/server/parsers/ → packages/harness/tools/harness
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const HARNESS_CLI_PATH = path.resolve(
-  __dirname,
-  '../../../../packages/harness/tools/harness'
-)
+const HARNESS_CLI_PATH = path.resolve(__dirname, '../../../../packages/harness/tools/harness')
 
 // Spawning the python CLI is expensive (process startup + YAML parse). The
 // watcher can fire many change events in quick succession, so we cache the
@@ -33,6 +30,28 @@ function existsAsFile(p) {
   }
 }
 
+function existsAsDir(p) {
+  try {
+    return fs.statSync(p).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+// Modes the harness understands. Mirror of the CLI's VALID_MODES
+// (packages/harness/tools/harness) and the enum in
+// packages/contracts/schemas/harness-scaffold.schema.json — keep all three in
+// sync. Used to validate POST /api/harness/create before shelling out.
+export const VALID_HARNESS_MODES = [
+  'idea-to-mvp',
+  'mvp-sketch',
+  'existing-repo-retrofit',
+  'feature-development',
+  'bugfix',
+  'refactor',
+  'release-readiness',
+]
+
 // Known harness roots are session cwds that contain a .harness/project-state.yml
 // file. Tolerant: any scan failure yields [] rather than throwing. This doubles
 // as the path-whitelist for the detail route — we never shell out to a path that
@@ -44,9 +63,23 @@ export function getKnownHarnessRoots() {
   } catch {
     return []
   }
-  return cwds.filter((cwd) =>
-    existsAsFile(path.join(cwd, '.harness', 'project-state.yml'))
-  )
+  return cwds.filter((cwd) => existsAsFile(path.join(cwd, '.harness', 'project-state.yml')))
+}
+
+// Candidate directories for `harness scaffold`: session cwds that are real
+// directories but are NOT already harness projects. This is the create
+// allowlist — a fresh target is by definition NOT a known harness root, so the
+// create route validates against THIS set rather than getKnownHarnessRoots().
+// Tolerant: any scan failure yields [].
+export function getScaffoldCandidates() {
+  let cwds = []
+  try {
+    cwds = getSessionCwds()
+  } catch {
+    return []
+  }
+  const roots = new Set(getKnownHarnessRoots())
+  return cwds.filter((cwd) => typeof cwd === 'string' && cwd && !roots.has(cwd) && existsAsDir(cwd))
 }
 
 // Run the harness CLI under one interpreter and resolve with its parsed JSON
@@ -184,13 +217,125 @@ export async function readHarnessStatus(projectPath) {
   if (!value.available && lastReason === 'interpreter not found') {
     value = {
       available: false,
-      error:
-        'harness unavailable: python/python3 not found or harness script missing',
+      error: 'harness unavailable: python/python3 not found or harness script missing',
     }
   }
 
   statusCache.set(projectPath, { value, ts: now })
   return value
+}
+
+// Scaffolding copies a template tree + runs init, so it is slower than a status
+// read — give it a more generous bound than STATUS_TIMEOUT_MS.
+const SCAFFOLD_TIMEOUT_MS = 30_000
+
+// Spawn `harness scaffold <mode> --json` in projectPath under one interpreter.
+// Mirrors runHarnessStatus: bounded by a hard-kill timer, never throws, never
+// hangs. The CLI emits a JSON object on BOTH success (exit 0) and handled
+// refusals (exit 2, e.g. already_initialized/invalid_mode), so we parse stdout
+// regardless of exit code and resolve { ok:true, result } whenever it is a
+// well-formed CLI result object. Only un-parseable output / spawn failure /
+// timeout resolve { ok:false, reason }.
+function spawnHarnessScaffold(python, projectPath, mode) {
+  return new Promise((resolve) => {
+    let settled = false
+    let timedOut = false
+    const done = (res) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(res)
+    }
+
+    let child
+    try {
+      child = spawn(python, [HARNESS_CLI_PATH, 'scaffold', mode, '--json'], {
+        cwd: projectPath,
+        windowsHide: true,
+      })
+    } catch {
+      resolve({ ok: false, reason: 'spawn failed' })
+      return
+    }
+
+    const timer = setTimeout(() => {
+      timedOut = true
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // ignore — close/error will still fire
+      }
+    }, SCAFFOLD_TIMEOUT_MS)
+
+    let stdout = ''
+    if (child.stdout) {
+      child.stdout.setEncoding('utf-8')
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk
+      })
+    }
+    if (child.stderr) {
+      child.stderr.on('data', () => {})
+    }
+
+    child.on('error', (err) => {
+      if (timedOut) {
+        done({ ok: false, reason: 'harness scaffold timed out' })
+        return
+      }
+      if (err && err.code === 'ENOENT') {
+        done({ ok: false, reason: 'interpreter not found' })
+        return
+      }
+      done({ ok: false, reason: `spawn error: ${(err && err.code) || 'unknown'}` })
+    })
+
+    child.on('close', (code) => {
+      if (timedOut || code === null) {
+        done({ ok: false, reason: 'harness scaffold timed out' })
+        return
+      }
+      let parsed
+      try {
+        parsed = JSON.parse(stdout)
+      } catch {
+        parsed = null
+      }
+      if (parsed && typeof parsed === 'object' && typeof parsed.ok === 'boolean') {
+        done({ ok: true, result: parsed })
+        return
+      }
+      done({ ok: false, reason: `harness scaffold exited ${code} without parseable JSON` })
+    })
+  })
+}
+
+// Create a new harness project at projectPath in the given mode by shelling out
+// to the CLI. NEVER throws/hangs. Resolves to the CLI's own result object —
+// { ok:true, root, mode, stage, phase, created } on success, or
+// { ok:false, error, message } on a refusal/error (the CLI's machine-readable
+// shape, conforming to packages/contracts harness-scaffold). Tries 'python'
+// then 'python3' (mirrors readHarnessStatus). The cockpit writes NO harness
+// files itself — the CLI is the sole author, preserving the contract boundary.
+export async function runHarnessScaffold(projectPath, mode) {
+  if (typeof projectPath !== 'string' || !projectPath) {
+    return { ok: false, error: 'invalid_target', message: 'invalid project path' }
+  }
+  let lastReason = null
+  for (const python of ['python', 'python3']) {
+    // eslint-disable-next-line no-await-in-loop
+    const res = await spawnHarnessScaffold(python, projectPath, mode)
+    if (res.ok) return res.result
+    lastReason = res.reason
+    // Missing interpreter → try the next candidate. Any other failure means the
+    // interpreter ran, so surface that reason directly.
+    if (res.reason !== 'interpreter not found') break
+  }
+  return {
+    ok: false,
+    error: 'scaffold_failed',
+    message: lastReason || 'python/python3 not found or harness script missing',
+  }
 }
 
 // Pull a nested value safely. obj?.a?.b without optional-chaining noise at the
@@ -243,9 +388,7 @@ function shapeSummary(projectPath, result) {
   const pipelinePhase = get(status, 'pipeline', 'phase')
   const pipelineGate = get(status, 'pipeline', 'gate')
   const hasPipeline =
-    pipelineActive !== undefined ||
-    pipelinePhase !== undefined ||
-    pipelineGate !== undefined
+    pipelineActive !== undefined || pipelinePhase !== undefined || pipelineGate !== undefined
 
   const nextAgent = get(status, 'next', 'recommended_agent')
   const nextAction = get(status, 'next', 'recommended_action')
@@ -297,8 +440,8 @@ export async function getHarnessProjects() {
   const roots = getKnownHarnessRoots()
   return Promise.all(
     roots.map(async (projectPath) =>
-      shapeSummary(projectPath, await readHarnessStatus(projectPath))
-    )
+      shapeSummary(projectPath, await readHarnessStatus(projectPath)),
+    ),
   )
 }
 

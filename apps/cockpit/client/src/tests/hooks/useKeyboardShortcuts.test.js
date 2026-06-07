@@ -39,8 +39,8 @@ function fireKeyOnElement(element, key, opts = {}) {
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 describe('exports', () => {
-  it('exports DEFAULT_SHORTCUTS with all 15 actions', () => {
-    expect(Object.keys(DEFAULT_SHORTCUTS)).toHaveLength(15)
+  it('exports DEFAULT_SHORTCUTS with all 16 actions', () => {
+    expect(Object.keys(DEFAULT_SHORTCUTS)).toHaveLength(16)
     expect(DEFAULT_SHORTCUTS.nextSession).toBe('j')
     expect(DEFAULT_SHORTCUTS.prevSession).toBe('k')
     expect(DEFAULT_SHORTCUTS.quickApprove).toBe('y')

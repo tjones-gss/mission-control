@@ -26,6 +26,25 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
   return runClaudeCancellable({ args, cwd, timeoutMs }).promise
 }
 
+// The claude CLI rejects `--output-format stream-json` in print (-p) mode unless
+// `--verbose` is also present ("When using --print, --output-format=stream-json
+// requires --verbose"). Every stream-json spawn in the cockpit flows through
+// runClaudeCancellable, so we enforce that invariant ONCE here, at the spawn
+// boundary, instead of at each call site — scattering it across arg-builders is
+// exactly the drift that let three sites (compile, mission-execute, new-session)
+// ship without it. Idempotent, and a no-op for `--output-format json`
+// (intelligence/analyzer.js), which does not require --verbose.
+export function withStreamJsonVerbose(args) {
+  if (!Array.isArray(args)) return args
+  const i = args.indexOf('--output-format')
+  // Handle both the two-token form (--output-format stream-json) and the
+  // equals form (--output-format=stream-json) that the CLI also accepts.
+  const usesStreamJson =
+    (i !== -1 && args[i + 1] === 'stream-json') || args.includes('--output-format=stream-json')
+  if (!usesStreamJson || args.includes('--verbose')) return args
+  return [...args, '--verbose']
+}
+
 /**
  * Like runClaude but also returns a cancel() function that kills the child
  * process. The promise rejects with an error if cancel() is called.
@@ -53,7 +72,7 @@ export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000 }) {
     // For a resolved .exe absolute path, shell:false is correct and safer.
     if (isShellScript(bin)) spawnOpts.shell = true
 
-    const child = spawn(bin, args, spawnOpts)
+    const child = spawn(bin, withStreamJsonVerbose(args), spawnOpts)
     childRef = child
 
     // Close stdin immediately — claude CLI waits for EOF on stdin when it is a pipe

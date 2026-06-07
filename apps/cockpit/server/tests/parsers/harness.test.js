@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events'
 
 // Mock the cwd-scanning source so getKnownHarnessRoots is hermetic — we control
 // which "session cwds" exist without touching the real ~/.claude dir.
-vi.mock('../../parsers/conductor.js', () => ({
+vi.mock('../../lib/session-discovery.js', () => ({
   getSessionCwds: vi.fn().mockReturnValue([]),
 }))
 
@@ -24,7 +24,7 @@ vi.mock('node:child_process', () => ({
 
 import fs from 'fs'
 import { spawn } from 'node:child_process'
-import { getSessionCwds } from '../../parsers/conductor.js'
+import { getSessionCwds } from '../../lib/session-discovery.js'
 import {
   getKnownHarnessRoots,
   readHarnessStatus,
@@ -121,7 +121,7 @@ describe('readHarnessStatus()', () => {
     await expect(
       (async () => {
         result = await readHarnessStatus(PROJECT_A)
-      })()
+      })(),
     ).resolves.not.toThrow()
     expect(result.available).toBe(false)
     expect(typeof result.error).toBe('string')
@@ -195,7 +195,12 @@ describe('getHarnessProjects()', () => {
         project: { mode: 'idea-to-mvp' },
         pipeline: { active: 'p1', phase: 'build', gate: null },
         current: { mission: 'M-1' },
-        next: { blocked: true, blocker: 'OAuth', recommended_agent: 'dev', recommended_action: 'wait' },
+        next: {
+          blocked: true,
+          blocker: 'OAuth',
+          recommended_agent: 'dev',
+          recommended_action: 'wait',
+        },
         // The CLI emits the readiness block under `readiness_overall` (see the
         // harness CLI cmd_status + the shared contract schema). The parser must
         // read that exact key.

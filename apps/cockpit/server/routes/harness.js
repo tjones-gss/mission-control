@@ -5,6 +5,9 @@ import {
   getHarnessProjects,
   getHarnessProjectByPath,
   getKnownHarnessRoots,
+  getScaffoldCandidates,
+  runHarnessScaffold,
+  VALID_HARNESS_MODES,
 } from '../parsers/harness.js'
 import { runClaude, runClaudeCancellable } from '../claude-cli.js'
 import { atomicWrite } from '../lib/atomic-write.js'
@@ -97,6 +100,20 @@ router.get('/', async (_req, res) => {
   res.json({ projects: await getHarnessProjects() })
 })
 
+// Candidate directories the user can scaffold a new harness project into:
+// session cwds that are NOT already harness roots. Powers the create dialog's
+// directory picker. MUST be registered BEFORE '/:projectKey' so the literal
+// path is not captured as a projectKey.
+router.get('/scaffold-candidates', (_req, res) => {
+  let candidates = []
+  try {
+    candidates = getScaffoldCandidates()
+  } catch {
+    candidates = []
+  }
+  res.json({ candidates: Array.isArray(candidates) ? candidates : [] })
+})
+
 router.get('/:projectKey', async (req, res) => {
   const { projectKey } = req.params
   const projectPath = decodeProjectKey(projectKey)
@@ -112,13 +129,98 @@ router.get('/:projectKey', async (req, res) => {
 })
 
 // ──────────────────────────────────────────────────────────────────────────────
+// POST /create
+// Create a NEW harness project in a directory that is not yet one. Validates the
+// mode and the target against the scaffold-candidate allowlist (session cwds that
+// are NOT already harness roots), then shells out to `harness scaffold`. The
+// cockpit writes NO harness files itself — the CLI is the sole author. The
+// watcher then sees the new .harness/ and emits harness_update, so the client
+// picks the project up automatically.
+// ──────────────────────────────────────────────────────────────────────────────
+
+router.post('/create', async (req, res) => {
+  const { projectPath, mode } = req.body || {}
+
+  // Validate the mode against the known enum BEFORE touching anything.
+  if (typeof mode !== 'string' || !VALID_HARNESS_MODES.includes(mode)) {
+    return res.status(400).json({ error: 'invalid_mode' })
+  }
+  if (typeof projectPath !== 'string' || !projectPath) {
+    return res.status(400).json({ error: 'invalid_target' })
+  }
+
+  // Whitelist membership check BEFORE any spawn. The target must be a known
+  // session cwd that is NOT already a harness project — never scaffold into an
+  // arbitrary path.
+  let candidates
+  try {
+    candidates = getScaffoldCandidates()
+  } catch {
+    candidates = []
+  }
+  if (!Array.isArray(candidates) || !candidates.includes(projectPath)) {
+    return res.status(403).json({ error: 'path_not_allowed' })
+  }
+
+  // Concurrency guard, keyed on projectPath: a double-click must not spawn two
+  // scaffolds into the same directory. Reserve BEFORE the spawn; release in a
+  // finally so it can never leak.
+  const lockKey = `create:${projectPath}`
+  if (!acquire(lockKey)) {
+    return res.status(409).json({ error: 'in_progress' })
+  }
+
+  try {
+    let result
+    try {
+      result = await runHarnessScaffold(projectPath, mode)
+    } catch (err) {
+      logger.warn({ detail: err.message, projectPath }, 'harness_create_run_failed')
+      return res.status(502).json({ ok: false, error: err.message })
+    }
+
+    if (result && result.ok) {
+      return res.status(201).json(result)
+    }
+
+    // The CLI refused or errored (it emits its own machine-readable result).
+    // Map a clean "already a harness project" refusal to 409; anything else 502.
+    const status = result && result.error === 'already_initialized' ? 409 : 502
+    return res.status(status).json(result || { ok: false, error: 'scaffold_failed' })
+  } finally {
+    release(lockKey)
+  }
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
 // POST /:projectKey/roadmap/compile
-// Persist the user's plain-language roadmap as a spec file, then spawn the
-// mission-writer skill one-shot to slice it into bounded, sequenced missions
-// registered as status: draft. Never implements anything.
+// Persist the user's plain-language roadmap as a spec file, then spawn a one-shot
+// claude run to slice it into bounded, sequenced missions registered as
+// status: draft. Never implements anything.
+//
+// The prompt is SELF-CONTAINED — it does NOT invoke the `/mission-writer` slash
+// command. That command only exists in projects that have installed the harness
+// Claude adapter (.claude/skills/), and the cockpit compiles roadmaps in
+// arbitrary harness projects. An unrecognized slash command in `claude -p` does
+// not error — it exits 0 with result "Unknown command: /mission-writer" and does
+// NOTHING, which would otherwise read as a silent success that produced zero
+// missions. Inlining the mission-writing directives makes compile work in any
+// harness project regardless of adapter state.
 // ──────────────────────────────────────────────────────────────────────────────
 
 router.post('/:projectKey/roadmap/compile', async (req, res) => {
+  // This handler awaits a full mission-writer run synchronously (up to the
+  // runClaude 300s budget below). The global 30s socket timeout
+  // (middleware/performance.js) would otherwise sever the connection mid-run —
+  // the client would see a network error while the orphaned CLI keeps working.
+  // Lift the socket timeout above the work budget for THIS route only; the
+  // global 30s protection stays intact everywhere else, and runClaude's own
+  // timer still hard-bounds the actual work. The gap over runClaude's 300s
+  // budget (20s) is deliberate headroom so a 300s-timeout rejection can still
+  // run its cleanup (unlink) and write the 504 response before the socket dies.
+  req.setTimeout(320_000)
+  res.setTimeout(320_000)
+
   const { projectKey } = req.params
   const { roadmap, title } = req.body || {}
 
@@ -144,10 +246,7 @@ router.post('/:projectKey/roadmap/compile', async (req, res) => {
   const specFileName = `SPEC-${slug}.md`
   const specPath = path.join(specsDir, specFileName)
   // Relative path (POSIX-style) for the prompt so the skill resolves it from cwd.
-  const relSpecPath = path
-    .join('docs', 'specs', specFileName)
-    .split(path.sep)
-    .join('/')
+  const relSpecPath = path.join('docs', 'specs', specFileName).split(path.sep).join('/')
 
   // Concurrency guard, keyed on the resolved specPath: a double-submit for the
   // same spec must not overwrite the file mid-write or spawn a second
@@ -172,6 +271,12 @@ router.post('/:projectKey/roadmap/compile', async (req, res) => {
       '',
     ].join('\n')
 
+    // Did a spec at this path already exist (e.g. a prior successful compile of
+    // the same title)? If so we must NOT delete it on a later failed re-compile —
+    // that would leave its already-registered missions pointing at a missing
+    // file. Only the orphan cleanup of a freshly-created spec is safe.
+    const specPreexisted = await fileExists(specPath)
+
     // Atomic write — create docs/specs first if missing.
     try {
       await fsp.mkdir(specsDir, { recursive: true })
@@ -181,13 +286,10 @@ router.post('/:projectKey/roadmap/compile', async (req, res) => {
       return res.status(502).json({ ok: false, error: `failed to write spec: ${err.message}` })
     }
 
-    // Build the mission-writer prompt. EXPLICITLY instruct draft status + no
-    // implementation + bounded/sequenced missions.
-    const prompt =
-      `/mission-writer Slice the roadmap spec at ${relSpecPath} into bounded, ` +
-      `sequenced missions. Register each in .harness/mission-index.yml with ` +
-      `status: draft (NOT ready). Keep missions bounded and sequenced. ` +
-      `Do not implement anything.`
+    // Self-contained mission-writer prompt — no `/mission-writer` slash command
+    // (see the route header). Inlines the essential directives + points at the
+    // mission template that ships in every harness project.
+    const prompt = buildMissionWriterPrompt(relSpecPath)
 
     try {
       const { stdout, stderr } = await runClaude({
@@ -196,10 +298,23 @@ router.post('/:projectKey/roadmap/compile', async (req, res) => {
         timeoutMs: 300_000,
       })
       const result = parseStreamJsonStdout(stdout)
-      const summary =
-        (result && typeof result.result === 'string' && result.result) ||
-        (typeof stdout === 'string' ? stdout : '') ||
-        ''
+
+      // Guard against a silent no-op: a real completion is a stream-json object
+      // with type:'result' and is_error !== true. Anything else (no result
+      // event, or an error result) means the run did NOT do the work — surface
+      // it as a failure instead of returning ok:true with an empty summary.
+      const completed = result && result.type === 'result' && result.is_error !== true
+      if (!completed) {
+        logger.warn({ specPath, result }, 'roadmap_compile_no_result')
+        if (!specPreexisted) await unlinkQuietly(specPath)
+        return res.status(502).json({
+          ok: false,
+          error: 'mission compilation did not complete',
+          detail: (result && typeof result.result === 'string' && result.result) || null,
+        })
+      }
+
+      const summary = typeof result.result === 'string' ? result.result : ''
       return res.json({
         ok: true,
         specPath,
@@ -211,7 +326,17 @@ router.post('/:projectKey/roadmap/compile', async (req, res) => {
         { detail: err.message, stderr: err.stderrOutput, specPath },
         'roadmap_compile_run_failed',
       )
-      return res.status(502).json({ ok: false, error: err.message })
+      // The spec was written before the spawn; on failure a freshly-created one
+      // is orphaned (no missions) — remove it so a retry starts clean. But never
+      // delete a spec that pre-existed (a prior compile's missions reference it).
+      if (!specPreexisted) await unlinkQuietly(specPath)
+      // Timeouts are a gateway-timeout (504), not a generic bad-gateway (502).
+      const status = /timed out/i.test(err.message || '') ? 504 : 502
+      return res.status(status).json({
+        ok: false,
+        error: err.message,
+        stderr: capStderr(err.stderrOutput),
+      })
     }
   } finally {
     // The compile run is fully synchronous from our side (we await runClaude to
@@ -220,10 +345,64 @@ router.post('/:projectKey/roadmap/compile', async (req, res) => {
   }
 })
 
-// Args for the one-shot mission-writer compile run. Kept as a small named
-// helper so the test can assert the prompt + stream-json flag are present.
+// Args for the one-shot mission-writer compile run.
+// `--permission-mode acceptEdits` is REQUIRED: a headless `claude -p` denies
+// file edits by default (no interactive approver), so without it the
+// mission-writer cannot write mission files or update mission-index.yml — the
+// run "succeeds" but produces zero missions. acceptEdits auto-approves file
+// edits only (not arbitrary Bash), which is exactly the mission-writer's needs.
+// `--verbose` is injected centrally in claude-cli.js (stream-json print mode
+// requires it), so it is intentionally absent here.
 function buildCompileArgs(prompt) {
-  return ['-p', prompt, '--output-format', 'stream-json']
+  return ['-p', prompt, '--output-format', 'stream-json', '--permission-mode', 'acceptEdits']
+}
+
+// Self-contained mission-writer instructions. Mirrors the essence of the
+// mission-writer skill (packages/harness/.claude/skills/mission-writer) but does
+// NOT depend on that skill being installed in the target project — it points at
+// the mission template that ships in every harness project (agents/templates/).
+function buildMissionWriterPrompt(relSpecPath) {
+  return (
+    `You are acting as a mission-writer for the Adaptive Agentic Engineering Harness. ` +
+    `Read the roadmap spec at ${relSpecPath} and the project's .harness/project-state.yml. ` +
+    `Slice the spec into bounded, sequenced missions — each completable in one session and ` +
+    `reviewable as a single PR. For each mission, write a file at ` +
+    `runs/missions/MISSION-<id>-<slug>.md following the template at ` +
+    `agents/templates/mission-template.md, filling every section (Goal, Context To Read, ` +
+    `Allowed Files, Forbidden Files, Required Plan, Required Tests, Validation Commands, ` +
+    `Acceptance Criteria, Stop Conditions) — no placeholders. Register each mission in ` +
+    `.harness/mission-index.yml with status: draft (NOT ready). Keep missions bounded and ` +
+    `sequenced. Do NOT implement anything — only write mission files and update the index.`
+  )
+}
+
+// Best-effort unlink that never throws — used to clean up a just-written spec
+// when the compile run fails, so a retry starts from a clean slate.
+async function unlinkQuietly(filePath) {
+  try {
+    await fsp.unlink(filePath)
+  } catch {
+    /* already gone or never written — nothing to clean up */
+  }
+}
+
+// True if the path exists. Never throws (a missing file or stat error → false).
+async function fileExists(filePath) {
+  try {
+    await fsp.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Bound the CLI stderr we echo back to the client. We deliberately surface it
+// (the actionable cause, e.g. "requires --verbose", must reach the UI) but cap
+// the length so a multi-KB traceback can't bloat the response. The full payload
+// is still logged server-side.
+function capStderr(stderr, max = 4000) {
+  if (typeof stderr !== 'string' || !stderr) return null
+  return stderr.length > max ? `${stderr.slice(0, max)}\n… (truncated)` : stderr
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -251,10 +430,8 @@ router.post('/:projectKey/missions/:missionId/execute', async (req, res) => {
   // unknown / unavailable project.
   const detail = await getHarnessProjectByPath(projectPath)
   const missions = detail && typeof detail === 'object' ? detail.missions : null
-  const mission =
-    missions && typeof missions === 'object' ? missions[missionId] : undefined
-  const missionFile =
-    mission && typeof mission === 'object' ? mission.file : undefined
+  const mission = missions && typeof missions === 'object' ? missions[missionId] : undefined
+  const missionFile = mission && typeof mission === 'object' ? mission.file : undefined
 
   if (!missionFile || typeof missionFile !== 'string') {
     return res.status(404).json({ error: 'not_found' })
@@ -294,7 +471,20 @@ router.post('/:projectKey/missions/:missionId/execute', async (req, res) => {
 
   // Reuse the POST /new spawn pattern: spawn via runClaudeCancellable, race the
   // file-watcher ack against the CLI completion. Early-ack 202 on first signal.
-  const args = ['-p', prompt, '--output-format', 'stream-json', '--name', missionId]
+  // `--permission-mode acceptEdits` lets the headless implementer actually edit
+  // files (a default `claude -p` denies edits with no interactive approver).
+  // Note: running the mission's Validation Commands (Bash) needs a broader mode
+  // than acceptEdits — tracked as a follow-up; this at least unblocks edits.
+  const args = [
+    '-p',
+    prompt,
+    '--output-format',
+    'stream-json',
+    '--permission-mode',
+    'acceptEdits',
+    '--name',
+    missionId,
+  ]
 
   let cliPromise
   try {
@@ -306,8 +496,13 @@ router.post('/:projectKey/missions/:missionId/execute', async (req, res) => {
   } catch (err) {
     // Synchronous spawn failure — release the key so it can't leak, then 502.
     release(lockKey)
-    logger.warn({ detail: err.message, missionId }, 'mission_execute_spawn_failed')
-    return res.status(502).json({ ok: false, error: err.message })
+    logger.warn(
+      { detail: err.message, stderr: err.stderrOutput, missionId },
+      'mission_execute_spawn_failed',
+    )
+    return res
+      .status(502)
+      .json({ ok: false, error: err.message, stderr: capStderr(err.stderrOutput) })
   }
 
   // Convert the CLI promise to an always-resolving tagged promise so Node never
@@ -331,7 +526,10 @@ router.post('/:projectKey/missions/:missionId/execute', async (req, res) => {
       { detail: err.message, stderr: err.stderrOutput, missionId },
       'mission_execute_failed',
     )
-    return res.status(502).json({ ok: false, error: err.message })
+    const status = /timed out/i.test(err.message || '') ? 504 : 502
+    return res
+      .status(status)
+      .json({ ok: false, error: err.message, stderr: capStderr(err.stderrOutput) })
   }
 
   if (winner._tag === 'ack') {

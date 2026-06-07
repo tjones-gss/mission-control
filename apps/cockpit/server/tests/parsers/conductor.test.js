@@ -27,7 +27,6 @@ import {
   getConductorRunById,
   getKnownConductorRoots,
   readRunFile,
-  getSessionCwds,
 } from '../../parsers/conductor.js'
 
 const PROJECTS = path.join(os.homedir(), '.claude', 'projects')
@@ -53,28 +52,9 @@ beforeEach(() => {
   vi.resetAllMocks()
 })
 
-// ─── getSessionCwds ──────────────────────────────────────────────────────────
-
-describe('getSessionCwds()', () => {
-  it('returns [] when projects dir missing', () => {
-    fs.existsSync.mockReturnValue(false)
-    expect(getSessionCwds()).toEqual([])
-  })
-
-  it('reads first JSONL line of each session file to extract cwd', () => {
-    fs.existsSync.mockReturnValue(true)
-    fs.readdirSync
-      .mockReturnValueOnce([{ name: 'proj-a', isDirectory: () => true }]) // project dirs
-      .mockReturnValueOnce(['session-1.jsonl']) // jsonl files
-    fs.openSync.mockReturnValue(7)
-    const firstLine = JSON.stringify({ cwd: PROJECT_A, type: 'system' }) + '\n'
-    fs.readSync.mockImplementation((_fd, buf) => {
-      const written = buf.write(firstLine, 0, 'utf-8')
-      return written
-    })
-    expect(getSessionCwds()).toEqual([PROJECT_A])
-  })
-})
+// getSessionCwds() moved to lib/session-discovery.js — see its own test there.
+// The conductor parser consumes it; the getKnownConductorRoots tests below
+// still exercise the full discovery path end-to-end.
 
 // ─── getKnownConductorRoots ──────────────────────────────────────────────────
 

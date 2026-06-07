@@ -19,6 +19,7 @@ function loadSchema(name) {
 }
 
 export const harnessStatusSchema = loadSchema("harness-status.schema.json");
+export const harnessScaffoldSchema = loadSchema("harness-scaffold.schema.json");
 export const approvalRequestSchema = loadSchema("approval-request.schema.json");
 export const approvalDecisionSchema = loadSchema("approval-decision.schema.json");
 
@@ -26,6 +27,7 @@ export const SCHEMA_VERSION = 1;
 
 export const schemas = {
   harnessStatus: harnessStatusSchema,
+  harnessScaffold: harnessScaffoldSchema,
   approvalRequest: approvalRequestSchema,
   approvalDecision: approvalDecisionSchema,
 };
@@ -33,6 +35,7 @@ export const schemas = {
 export default {
   SCHEMA_VERSION,
   harnessStatusSchema,
+  harnessScaffoldSchema,
   approvalRequestSchema,
   approvalDecisionSchema,
   schemas,
