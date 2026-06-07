@@ -338,6 +338,138 @@ export async function runHarnessScaffold(projectPath, mode) {
   }
 }
 
+// The approve subcommand only flips an approval-decision file (no template copy),
+// so it is fast — bound it like a status read rather than a scaffold.
+const APPROVE_TIMEOUT_MS = STATUS_TIMEOUT_MS
+
+// Spawn `harness approve <requestId> --allow|--deny` in projectPath under one
+// interpreter. Mirrors runHarnessStatus/spawnHarnessScaffold: bounded by a
+// hard-kill timer, never throws, never hangs. Unlike scaffold, the approve CLI
+// does NOT emit JSON — it prints a human line and signals the decision purely via
+// exit code (0 = decided, non-zero = pending missing/already decided/etc). So we
+// resolve { ok, code, stdout, stderr } and let the caller map it; only a missing
+// interpreter / spawn failure / timeout resolves { ok:false, reason }.
+function spawnHarnessApprove(python, projectPath, requestId, flag) {
+  return new Promise((resolve) => {
+    let settled = false
+    let timedOut = false
+    const done = (res) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(res)
+    }
+
+    let child
+    try {
+      child = spawn(python, [HARNESS_CLI_PATH, 'approve', requestId, flag], {
+        cwd: projectPath,
+        windowsHide: true,
+      })
+    } catch {
+      resolve({ ok: false, reason: 'spawn failed' })
+      return
+    }
+
+    const timer = setTimeout(() => {
+      timedOut = true
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // ignore — close/error will still fire
+      }
+    }, APPROVE_TIMEOUT_MS)
+
+    let stdout = ''
+    let stderr = ''
+    if (child.stdout) {
+      child.stdout.setEncoding('utf-8')
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk
+      })
+    }
+    if (child.stderr) {
+      child.stderr.setEncoding('utf-8')
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk
+      })
+    }
+
+    child.on('error', (err) => {
+      if (timedOut) {
+        done({ ok: false, reason: 'harness approve timed out' })
+        return
+      }
+      if (err && err.code === 'ENOENT') {
+        done({ ok: false, reason: 'interpreter not found' })
+        return
+      }
+      done({ ok: false, reason: `spawn error: ${(err && err.code) || 'unknown'}` })
+    })
+
+    child.on('close', (code) => {
+      if (timedOut || code === null) {
+        done({ ok: false, reason: 'harness approve timed out' })
+        return
+      }
+      done({ ok: true, code, stdout, stderr })
+    })
+  })
+}
+
+// Apply a human Allow/Deny to ONE harness approval request by shelling the CLI
+// DIRECTLY (no Claude/LLM in the loop) — the harness CLI is the single writer of
+// the decided file. Resolves { ok, code, stdout, stderr } on a clean run (ok:true
+// even on a non-zero exit — that is the CLI's own refusal, e.g. pending missing /
+// already decided — the caller inspects `code`), or { ok:false, error } when the
+// CLI could not be run at all (missing interpreter / spawn failure / timeout).
+// NEVER throws/hangs. Tries 'python' then 'python3' (mirrors readHarnessStatus).
+// The CALLER is responsible for whitelisting projectPath against
+// getKnownHarnessRoots() before calling — this function shells out unconditionally.
+export async function runHarnessApprove(projectPath, requestId, decision) {
+  if (typeof projectPath !== 'string' || !projectPath) {
+    return { ok: false, error: 'invalid project path' }
+  }
+  if (typeof requestId !== 'string' || !requestId) {
+    return { ok: false, error: 'invalid request id' }
+  }
+  if (decision !== 'allow' && decision !== 'deny') {
+    return { ok: false, error: 'decision must be "allow" or "deny"' }
+  }
+  const flag = decision === 'allow' ? '--allow' : '--deny'
+
+  let lastReason = null
+  for (const python of ['python', 'python3']) {
+    // eslint-disable-next-line no-await-in-loop
+    const res = await spawnHarnessApprove(python, projectPath, requestId, flag)
+    if (res.ok) {
+      // Non-zero exit = the CLI refused (pending missing / already decided / bad
+      // request). Surface it as a failure carrying the CLI's own stderr/stdout.
+      if (res.code !== 0) {
+        return {
+          ok: false,
+          code: res.code,
+          stdout: res.stdout,
+          stderr: res.stderr,
+          error:
+            (res.stderr && res.stderr.trim()) ||
+            (res.stdout && res.stdout.trim()) ||
+            `harness approve exited ${res.code}`,
+        }
+      }
+      return { ok: true, code: res.code, stdout: res.stdout, stderr: res.stderr }
+    }
+    lastReason = res.reason
+    // Missing interpreter → try the next candidate. Any other failure means the
+    // interpreter ran, so surface that reason directly.
+    if (res.reason !== 'interpreter not found') break
+  }
+  return {
+    ok: false,
+    error: lastReason || 'python/python3 not found or harness script missing',
+  }
+}
+
 // Pull a nested value safely. obj?.a?.b without optional-chaining noise at the
 // call sites below.
 function get(obj, ...keys) {

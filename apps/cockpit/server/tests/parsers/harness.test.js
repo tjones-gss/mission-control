@@ -30,6 +30,7 @@ import {
   readHarnessStatus,
   getHarnessProjects,
   getHarnessProjectByPath,
+  runHarnessApprove,
 } from '../../parsers/harness.js'
 
 const PROJECT_A = 'C:\\projects\\foo'
@@ -47,6 +48,7 @@ function makeChild(scenario) {
   const stdout = new EventEmitter()
   const stderr = new EventEmitter()
   stdout.setEncoding = () => {}
+  stderr.setEncoding = () => {}
   child.stdout = stdout
   child.stderr = stderr
 
@@ -69,6 +71,9 @@ function makeChild(scenario) {
     if (scenario.hang) return
     if (typeof scenario.stdout === 'string') {
       stdout.emit('data', scenario.stdout)
+    }
+    if (typeof scenario.stderr === 'string') {
+      stderr.emit('data', scenario.stderr)
     }
     child.emit('close', scenario.exit ?? 0)
   })
@@ -275,5 +280,62 @@ describe('getHarnessProjectByPath()', () => {
     expect(detail.projectLabel).toBe(path.basename(DETAIL_PROJECT))
     expect(detail.project).toEqual({ mode: 'existing-repo-retrofit' })
     expect(detail.extra).toBe(1)
+  })
+})
+
+// ─── runHarnessApprove ────────────────────────────────────────────────────────
+
+describe('runHarnessApprove()', () => {
+  it('shells the harness CLI with [approve, <id>, --allow] and returns stdout', async () => {
+    spawnReturns({ stdout: 'approval rq-1 allow', exit: 0 })
+    const res = await runHarnessApprove('C:\projects\foo', 'rq-1', 'allow')
+    expect(res.ok).toBe(true)
+    expect(res.code).toBe(0)
+    expect(res.stdout).toContain('approval rq-1 allow')
+    // First spawn call: argv after the script path is [approve, id, flag].
+    const argv = spawn.mock.calls[0][1]
+    expect(argv.slice(1)).toEqual(['approve', 'rq-1', '--allow'])
+    // Spawned in the given cwd.
+    expect(spawn.mock.calls[0][2]).toMatchObject({ cwd: 'C:\projects\foo' })
+  })
+
+  it('passes --deny for a deny decision', async () => {
+    spawnReturns({ stdout: 'approval rq-1 deny', exit: 0 })
+    await runHarnessApprove('C:\projects\foo', 'rq-1', 'deny')
+    expect(spawn.mock.calls[0][1].slice(1)).toEqual(['approve', 'rq-1', '--deny'])
+  })
+
+  it('maps a non-zero CLI exit to ok:false carrying the CLI stderr', async () => {
+    spawnReturns({ stderr: 'pending rq-1 not found', exit: 1 })
+    const res = await runHarnessApprove('C:\projects\foo', 'rq-1', 'allow')
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe(1)
+    expect(res.error).toContain('pending rq-1 not found')
+  })
+
+  it('falls back python → python3 when the first interpreter is missing', async () => {
+    let call = 0
+    spawn.mockImplementation(() => {
+      call += 1
+      return makeChild(call === 1 ? { errorCode: 'ENOENT' } : { stdout: 'ok', exit: 0 })
+    })
+    const res = await runHarnessApprove('C:\projects\foo', 'rq-1', 'allow')
+    expect(res.ok).toBe(true)
+    expect(spawn.mock.calls[0][0]).toBe('python')
+    expect(spawn.mock.calls[1][0]).toBe('python3')
+  })
+
+  it('returns ok:false (never throws) when no interpreter is found', async () => {
+    spawnReturns({ errorCode: 'ENOENT' })
+    const res = await runHarnessApprove('C:\projects\foo', 'rq-1', 'allow')
+    expect(res.ok).toBe(false)
+    expect(res.error).toBeTruthy()
+  })
+
+  it('validates inputs without spawning', async () => {
+    expect((await runHarnessApprove('', 'rq-1', 'allow')).ok).toBe(false)
+    expect((await runHarnessApprove('C:\projects\foo', '', 'allow')).ok).toBe(false)
+    expect((await runHarnessApprove('C:\projects\foo', 'rq-1', 'maybe')).ok).toBe(false)
+    expect(spawn).not.toHaveBeenCalled()
   })
 })

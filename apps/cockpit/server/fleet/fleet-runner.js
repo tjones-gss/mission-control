@@ -21,10 +21,10 @@ import fs from 'fs'
 import { promises as fsp } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'node:url'
-import { runClaude, runClaudeCancellable } from '../claude-cli.js'
+import { runClaudeCancellable } from '../claude-cli.js'
 import { atomicWriteJson } from '../lib/atomic-write.js'
 import { awaitNewSession } from '../lib/pending-session.js'
-import { getKnownHarnessRoots } from '../parsers/harness.js'
+import { getKnownHarnessRoots, runHarnessApprove } from '../parsers/harness.js'
 import { getQueryStatus, resolveApproval } from '../pty-session.js'
 import { getSessionById } from '../parsers/sessions.js'
 import { emit } from '../sse.js'
@@ -1319,9 +1319,10 @@ export async function reconcileEscalationStatus(id) {
 //   source 'tool'    → the in-memory SDK resolver (resolveApproval), the SAME
 //                      function POST /api/sessions/:id/tool-approval uses.
 //   source 'harness' → shell `harness approve <requestId> --allow|--deny` in the
-//                      CHILD's cwd via runClaude (like the mission-ready route).
-//                      The harness CLI is the SINGLE WRITER of the decided file;
-//                      the cockpit NEVER writes it directly.
+//                      CHILD's cwd DIRECTLY (runHarnessApprove — a child_process
+//                      subprocess, NO Claude/LLM session in the trust path). The
+//                      harness CLI is the SINGLE WRITER of the decided file; the
+//                      cockpit NEVER writes it directly.
 //
 // Returns { ok, status, ... } so the route maps it to HTTP. 4xx on bad input /
 // unknown child; the child cwd is whitelisted before any harness shell-out.
@@ -1370,28 +1371,18 @@ export async function decideFleetEscalation(id, body = {}) {
     return { ok: false, status: 404, error: 'child cwd is not a known root' }
   }
 
-  // Ask the agent to run the harness subcommand that OWNS the decided-file write.
-  // The harness CLI errors non-zero if the pending is missing / already decided,
-  // and it copies the pending's commandHash onto the decision (replay-proofing).
-  const flag = decision === 'allow' ? '--allow' : '--deny'
-  const prompt =
-    `Run the harness CLI command \`harness approve ${requestId} ${flag}\` in this ` +
-    `project. Do not write .harness/approvals/decided/ directly — the harness CLI ` +
-    `owns that write. Report exactly what the command printed.`
-
-  let stdout
-  let stderr
-  try {
-    ;({ stdout, stderr } = await runClaude({
-      args: ['-p', prompt, '--output-format', 'stream-json'],
-      cwd: child.cwd,
-      timeoutMs: 120_000,
-    }))
-  } catch (err) {
-    logger.warn({ detail: err.message, id, childIdx, requestId }, 'fleet_decide_harness_failed')
-    return { ok: false, status: 502, error: err.message }
+  // Shell the harness CLI DIRECTLY in child.cwd — NO Claude/LLM session. The
+  // harness CLI is the single writer of the decided file; it copies the pending's
+  // commandHash onto the decision (replay-proofing) and exits non-zero if the
+  // pending is missing / already decided. runHarnessApprove never throws/hangs.
+  const result = await runHarnessApprove(child.cwd, requestId, decision)
+  if (!result.ok) {
+    logger.warn({ detail: result.error, id, childIdx, requestId }, 'fleet_decide_harness_failed')
+    return { ok: false, status: 502, error: result.error }
   }
 
+  const stdout = result.stdout || ''
+  const stderr = result.stderr || ''
   return {
     ok: true,
     status: 200,
@@ -1399,6 +1390,6 @@ export async function decideFleetEscalation(id, body = {}) {
     decision,
     childIdx,
     requestId,
-    raw: stderr ? `${stdout || ''}\n${stderr}` : stdout || undefined,
+    raw: stderr ? `${stdout}\n${stderr}` : stdout || undefined,
   }
 }

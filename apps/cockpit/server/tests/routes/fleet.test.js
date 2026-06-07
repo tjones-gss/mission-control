@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // never create a real worktree. ───────────────────────────────────────────────
 vi.mock('../../parsers/harness.js', () => ({
   getKnownHarnessRoots: vi.fn().mockReturnValue([]),
+  runHarnessApprove: vi.fn(),
 }))
 vi.mock('../../claude-cli.js', () => ({
   runClaude: vi.fn().mockResolvedValue({
@@ -68,7 +69,7 @@ vi.mock('fs', () => {
 
 import express from 'express'
 import request from 'supertest'
-import { getKnownHarnessRoots } from '../../parsers/harness.js'
+import { getKnownHarnessRoots, runHarnessApprove } from '../../parsers/harness.js'
 import { runClaude, runClaudeCancellable } from '../../claude-cli.js'
 import { awaitNewSession } from '../../lib/pending-session.js'
 import { atomicWriteJson } from '../../lib/atomic-write.js'
@@ -115,6 +116,8 @@ beforeEach(() => {
     stderr: '',
     exitCode: 0,
   })
+  // Default harness-approve subprocess: a clean decided write.
+  runHarnessApprove.mockResolvedValue({ ok: true, code: 0, stdout: 'approval ok', stderr: '' })
   // Round-trip persists back into the in-memory fs so a subsequent read sees the
   // updated state (the runner persists via atomicWriteJson, then re-reads on the
   // next request). Mirrors what a real atomic write would do on disk.
@@ -410,7 +413,7 @@ describe('POST /api/fleet/:id/decide — route a human Allow/Deny', () => {
     expect(runClaude).not.toHaveBeenCalled()
   })
 
-  it('source "harness" shells `harness approve <id> --allow` in the child cwd, never the resolver', async () => {
+  it('source "harness" runs the harness CLI DIRECTLY (no claude session) in the child cwd, never the resolver', async () => {
     whitelist(A)
     seedRun({
       id: 'goal-d2',
@@ -428,12 +431,11 @@ describe('POST /api/fleet/:id/decide — route a human Allow/Deny', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.ok).toBe(true)
-    // Shelled the harness CLI in the CHILD's cwd with the approve subcommand.
-    expect(runClaude).toHaveBeenCalledTimes(1)
-    const call = runClaude.mock.calls[0][0]
-    expect(call.cwd).toBe(A)
-    const promptArg = call.args[call.args.indexOf('-p') + 1]
-    expect(promptArg).toContain('harness approve req-9 --deny')
+    // Shelled the harness CLI DIRECTLY in the CHILD's cwd — a child_process
+    // subprocess, NOT an LLM/claude session in the deterministic trust path.
+    expect(runHarnessApprove).toHaveBeenCalledTimes(1)
+    expect(runHarnessApprove).toHaveBeenCalledWith(A, 'req-9', 'deny')
+    expect(runClaude).not.toHaveBeenCalled()
     // The cockpit NEVER writes the decided file directly, and never uses the
     // in-memory resolver for a harness-source decision.
     expect(resolveApproval).not.toHaveBeenCalled()
@@ -499,6 +501,7 @@ describe('POST /api/fleet/:id/decide — route a human Allow/Deny', () => {
       .send({ childIdx: 0, source: 'harness', decision: 'allow', requestId: 'req-1' })
     expect(res.status).toBe(404)
     expect(runClaude).not.toHaveBeenCalled()
+    expect(runHarnessApprove).not.toHaveBeenCalled()
   })
 })
 
