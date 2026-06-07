@@ -32,6 +32,7 @@ export function useSSE(onMessage) {
       'conductor_update',
       'harness_update',
       'fleet_update',
+      'parser_degraded',
     ]
 
     function connect() {

@@ -24,6 +24,10 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -33,9 +37,12 @@ import {
   getConfigForSession,
   getUserConfig,
 } from '../../parsers/config.js'
+import { emit } from '../../sse.js'
+import { isDegraded, _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 const USER_CONFIG = path.join(os.homedir(), '.claude', 'settings.json')
@@ -108,9 +115,29 @@ describe('getUserConfig()', () => {
     expect(getUserConfig()).toEqual({})
   })
 
-  it('handles malformed JSON gracefully', () => {
+  it('returns a degraded marker (NOT a bare {}) when user config is present but unparseable', () => {
+    // A present-but-unparseable settings.json must NOT read as "none
+    // configured" — that would misreport the safety posture as "no guardrails"
+    // when the rails may in fact be enforced. It must be a distinguishable
+    // degraded marker and emit a persistent parser_degraded SSE event.
     fs.readFileSync.mockReturnValue('{bad json!!')
-    expect(getUserConfig()).toEqual({})
+    const result = getUserConfig()
+    expect(isDegraded(result)).toBe(true)
+    expect(result).not.toEqual({})
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'config' }),
+    )
+  })
+
+  it('returns {} (not degraded) when the user config file is absent', () => {
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error('ENOENT')
+    })
+    const result = getUserConfig()
+    expect(result).toEqual({})
+    expect(isDegraded(result)).toBe(false)
+    expect(emit).not.toHaveBeenCalled()
   })
 })
 
@@ -140,9 +167,24 @@ describe('getConfigForSession()', () => {
     expect(result.merged).toEqual({})
     expect(result.sources).toEqual({})
     expect(result.files).toHaveLength(3)
-    expect(result.files[0]).toEqual({ level: 'user', path: USER_CONFIG, exists: false })
-    expect(result.files[1]).toEqual({ level: 'project', path: projectPath, exists: false })
-    expect(result.files[2]).toEqual({ level: 'local', path: localPath, exists: false })
+    expect(result.files[0]).toEqual({
+      level: 'user',
+      path: USER_CONFIG,
+      exists: false,
+      degraded: false,
+    })
+    expect(result.files[1]).toEqual({
+      level: 'project',
+      path: projectPath,
+      exists: false,
+      degraded: false,
+    })
+    expect(result.files[2]).toEqual({
+      level: 'local',
+      path: localPath,
+      exists: false,
+      degraded: false,
+    })
   })
 
   it('reads and returns user config only', () => {
@@ -192,7 +234,10 @@ describe('getConfigForSession()', () => {
     expect(result.sources).toEqual({ a: 'user', b: 'project', c: 'local', d: 'local' })
   })
 
-  it('handles malformed JSON gracefully (returns {} for that level)', () => {
+  it('flags a present-but-unparseable level as degraded (distinct from absent)', () => {
+    // The valid level still merges, but the unparseable level must be flagged
+    // degraded on its file entry + emit a parser_degraded SSE event — never
+    // silently dropped to {} and rendered as "this level configures nothing."
     fs.readFileSync.mockImplementation((filePath) => {
       if (filePath === USER_CONFIG) return '{"valid": true}'
       if (filePath === projectPath) return '{not valid json!!!'
@@ -206,6 +251,14 @@ describe('getConfigForSession()', () => {
     const result = getConfigForSession(cwd)
     expect(result.merged).toEqual({ valid: true })
     expect(result.sources.valid).toBe('user')
+    // project level present-but-unparseable → degraded flag, not silent absence
+    expect(result.files[1].level).toBe('project')
+    expect(result.files[1].degraded).toBe(true)
+    expect(result.files[0].degraded).toBeFalsy()
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'config' }),
+    )
   })
 
   it('reports file existence correctly', () => {
