@@ -213,6 +213,38 @@ See [sdk/README.md](sdk/README.md), [docs/setup/cursor-sdk.md](docs/setup/cursor
 [docs/setup/cursor-sdk-verification.md](docs/setup/cursor-sdk-verification.md),
 and [docs/roadmap/cursor-sdk-roadmap.md](docs/roadmap/cursor-sdk-roadmap.md).
 
+## Model tiers and runtimes
+
+The mission loop can route each phase to a different model. Three neutral tier
+aliases — `heavy` / `standard` / `light` — are the contract pipelines and roles
+refer to; `.harness/model-tiers.yml` maps them to concrete model strings in one
+place. Resolution precedence: a phase's `model:` → a role default in
+`agent-registry.yml` `role_tiers:` → `default_tier` → `--model`/`--model-tier`
+/`HARNESS_MODEL` → the runtime default. Unset everywhere = today's single-model
+behavior, so the feature is inert until you give the tiers distinct models.
+
+Two runtimes back the loop:
+
+```bash
+python -m harness_orchestrator run-loop --runtime local   --dry-run   # Cursor SDK
+python -m harness_orchestrator run-loop --runtime claude  --dry-run   # Claude Code CLI
+```
+
+The `claude` runtime drives Claude Code via the `claude` CLI (subscription auth,
+no API key), so the tiers map onto real Claude models — the
+**Opus-orchestrates / Sonnet-plans / Haiku-distills** pattern. Activate it by
+copying [`adapters/claude-code/model-tiers.claude.yml`](adapters/claude-code/model-tiers.claude.yml)
+(`heavy: opus`, `standard: sonnet`, `light: haiku`) over `.harness/model-tiers.yml`.
+
+### Relation to Claude-native orchestration
+
+This sits *on top of* Claude Code's primitives rather than replacing them. Claude
+Code subagents already pin a model each (the same tiering idea) and **Plan mode**
+plans before code; the harness adds the cross-tool, persisted layer: tier aliases
+that aren't bound to one vendor's model names, and a **PRD planning layer** (see
+`pipelines/plan-review.yml`) that turns Plan mode's per-session, ephemeral plan
+into a persisted, human-approved artifact that *gates* mission-planning.
+
 ## Compatibility
 
 | Adapter      | Status        | Path                                    |

@@ -42,6 +42,31 @@ Oversight is a local web dashboard that monitors Claude Code agent activity in r
 
 **Stack:** Express 4 + React 18 + Vite 5 + Tailwind CSS. No TypeScript, no external database.
 
+### Tab & surface inventory
+
+The UI uses progressive disclosure (`client/src/App.jsx`): a **Core** view is always
+visible; **Advanced** tabs sit behind a persisted toggle (`mc.showAdvanced` in
+localStorage). Navigating to an advanced-only tab auto-reveals Advanced.
+
+| Group | Tab | Surface |
+|-------|-----|---------|
+| Core | **Agents** | The core loop — `SessionsList` / `KanbanBoard`, `AgentTree` detail, `ConversationView`, `ToolApprovalBanner` / `QuickActions` |
+| Core | **Tasks** | `TaskBoard` |
+| Core | **Runs** | `RunsTab` — unified orchestration surface with two modes: **Missions** (`MissionControlTab`, the harness mission loop) and **Conductor** (`ConductorTab`, ADR-driven runs). Replaces the former two top-level Conductor + Mission Control tabs. |
+| Core | **Fleet** | `FleetTab/FleetTab.jsx` — the meta-orchestrator surface: start a goal→N-children run, watch per-child status + escalations, read the synthesis. Backed by `GET/POST /api/fleet`; refreshed by the `fleet_update` SSE event. |
+| Core | **History** | `HistoryTab/` |
+| Advanced | **Workflows** | `WorkflowsPanel` — author, export-to-skill, *and run* step sequences |
+| Advanced | **Skills** | `SkillsPanel` — the skill library |
+| Advanced | **Teams** | `TeamsPanel/` |
+
+**Inspect (session detail, not a top-level tab):** `InspectPanel/InspectPanel.jsx`
+folds the four read-only `~/.claude` viewers — `ConfigViewer`, `HooksPanel`,
+`McpDashboard`, `MemoryViewer` — into one panel mounted from `AgentTree.jsx`. It
+threads a single live-refetch version per section (`configVersion` / `hooksVersion` /
+`memoryVersion`), which also fixes the previously half-threaded inspector refetch.
+`TimelineView` stays paired with `ConversationView` (the one inspector reached for
+live) rather than being folded in.
+
 ---
 
 ## Data Flow
@@ -133,12 +158,14 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 | `routes/tasks.js` | `GET /:sessionId`, task CRUD (async `fs/promises`) |
 | `routes/skills.js` | `GET /`, skill listing |
 | `routes/teams.js` | `GET /`, `POST /:name/inbox`, `PATCH /:name/inbox/:messageId` |
-| `routes/workflows.js` | `GET /`, workflow listing |
+| `routes/workflows.js` | `GET /`, `POST /` (create), `PUT /:name`, `DELETE /:name`, `POST /:name/export` (write a `~/.claude/skills/:name.md` skill), **`POST /:name/run`** (spawn a Claude session driving the workflow's ordered steps — same spawn pattern as missions execute: 202 `{ ok, status:'started', sessionId }` on file-watcher ack, 404 if the workflow file is missing, 409 `{ error:'in_progress' }` on a concurrent run of the same workflow). Path-traversal guarded; concurrency-keyed on the workflow name. |
+| `routes/harness.js` | `GET /api/harness` (list harness projects), `GET /:projectKey` (single project detail), `POST /:projectKey/roadmap/compile` (write a spec, spawn `mission-writer` to slice it into `status: draft` missions), `POST /:projectKey/missions/:missionId/execute` (spawn an on-rails implementer session for one mission), **`POST /:projectKey/missions/:missionId/ready`** (graduate a mission draft → ready by shelling `harness mission ready <id>` — the cockpit never edits `mission-index.yml`; the harness CLI owns that write). `projectKey` is an `encodeURIComponent`-encoded absolute path, decoded and whitelisted against known harness roots before any write or spawn. |
 | `routes/history.js` | `GET /`, `GET /stats` |
 | `routes/stream.js` | `GET /stream` — SSE endpoint |
 | `routes/fs.js` | `GET /api/fs/home`, `GET /api/fs/list?path=…` — host filesystem enumeration used by the sidebar folder picker. Returns `sep` so the client stays platform-agnostic. Absolute-only, NUL-reject, UNC-reject on Windows. Unrestricted directory listing is intentional for a local-only dashboard; documented inline. |
 | `routes/managers.js` | `GET /api/managers` — manager/team/standalone session groupings surfaced by the Dispatch Manager. |
 | `routes/conductor.js` | `GET /api/conductor` (list all runs), `GET /api/conductor/:projectKey/:adr` (single run), `GET /api/conductor/:projectKey/:adr/:kind` (file content, kind ∈ `journal`, `ratification`, `skill-diff`, `plan`, `status`). `projectKey` is `encodeURIComponent`-encoded absolute path; server decodes and whitelists it against known roots. File content returned as `text/plain` to avoid JSON parsing on malformed content. |
+| `routes/fleet.js` | **`POST /api/fleet`** (start a run — early-ack `202 { ok, id, status, children }`; children spawn in the background. Accepts either an inline `{ goal, children, policy }` body OR `{ template: name }` to instantiate a saved template; inline fields override template defaults), `GET /api/fleet` (list run summaries), `GET /api/fleet/:id` (full persisted run state, 404 if unknown), **`POST /api/fleet/templates`** (save a repeatable fleet config — `{ name, goal, children, policy }`; the name is validated like a workflow name at the route AND re-validated with the body in the runner before any write), **`GET /api/fleet/templates`** (list saved templates), `GET /api/fleet/:id/escalations` (merged escalation list — live SDK tool-approval requests tagged `source:'tool'` + harness `.harness/approvals/pending/*.json` tagged `source:'harness'`; reconciles the per-child `running↔escalated` status as a side effect so the badge survives a reload), **`POST /api/fleet/:id/decide`** (route ONE human Allow/Deny — body `{ childIdx, source:'tool'\|'harness', decision:'allow'\|'deny', approvalId?, requestId?, message? }`), **`POST /api/fleet/:id/cancel`** (cancel in-flight children, `202`). A thin Express layer over `server/fleet/fleet-runner.js`, which owns all lifecycle/spawn/persistence/safety. **Route-ordering note:** the `/templates` routes are registered *before* the `/:id` param routes so Express does not match `templates` as an `:id`. **`/decide` is a dispatch-only endpoint, not a new approval store** — it routes the decision through the EXISTING write paths: the in-memory SDK `resolveApproval` (the same one `POST /api/sessions/:id/tool-approval` uses) for `source:'tool'`, and the harness CLI (`harness approve <requestId> --allow\|--deny`, shelled in the whitelisted child cwd) for `source:'harness'`. The cockpit NEVER writes a `.harness/approvals/decided/` file itself — the harness CLI is the single writer, and it copies the pending request's `commandHash` onto the decision (replay-proofing). Fleet has no auto-approve branch. |
 
 ### Intelligence
 
@@ -157,7 +184,9 @@ AI-powered session analysis using the `claude` CLI.
 | `watcher.js` | chokidar file watcher on `~/.claude/`, detects changes, triggers parser re-reads |
 | `sse.js` | SSE connection manager, broadcasts typed events to all connected clients |
 
-**SSE Event Types:** `session_update`, `new_session`, `task_update`, `team_update`, `intelligence_update`, `history_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`, `conductor_update`
+**SSE Event Types:** `session_update`, `new_session`, `task_update`, `team_update`, `intelligence_update`, `history_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`, `conductor_update`, `fleet_update`
+
+**`fleet_update`:** emitted by `server/fleet/fleet-runner.js` after every persisted-state write (write THEN emit, mirroring `conductor_update`). The payload is a *summary*, not the full state — `{ id, goal, status, createdAt, updatedAt, childCount, settledCount, verifyingCount, rejectedCount, spentUsd, budgetUsd, budgetRemaining, synthesis }` (`childCount` stays the *worker* count so the left-rail "N children" matches what the user launched — verifier children are an internal review detail) — and the client uses it only as a refresh signal (`App.jsx` bumps a `fleetVersion`, `FleetTab` refetches `GET /api/fleet[/:id]`). The allowed-event list in `client/src/hooks/useSSE.js` includes `fleet_update`.
 
 **Conductor watching:** On startup and on every `new_session` event, `watcher.js` calls `getKnownConductorRoots()` and dynamically `chokidar.add()`s any `.conductor/` directories it finds. `chokidar.add()` is idempotent so no dedup logic is needed. Changes to files under those directories emit `conductor_update` with `{ projectPath, adr, filePath, ts }` and skip the normal `~/.claude/` path handling.
 
@@ -181,6 +210,145 @@ AI-powered session analysis using the `claude` CLI.
 - Auto-deny after 120s timeout (timer stored on approval object, cleared on early resolve)
 - 10-minute safety timeout marks query as no longer busy
 - `waitForReady()` detects CLI initialization via 1.5s silence after first output
+
+### Fleet Meta-Orchestrator
+
+| File | Purpose |
+|------|---------|
+| `fleet/fleet-runner.js` | The Fleet lifecycle owner (no Express). Turns a goal into N autonomous child sessions, each spawned via `runClaudeCancellable` **with `--worktree`** (own git worktree/branch) — the same spawn-with-early-ack pattern as the mission-execute handler in `routes/harness.js`, copied once per child. Children run under the harness rails and *escalate* on danger rather than auto-approving. When the last child settles it releases the per-run concurrency key and spawns ONE synthesis child (a normal `runClaudeCancellable` in the first NON-quarantined worker's cwd) fed each child's branch + result. Per-child cost is populated by `populateChildCost(child)` — on the watcher ack and again on settle it reads `parsers/sessions.js getSessionById(child.sessionId).estimatedCost` (the cockpit's canonical `{ totalCost, breakdown, family }` shape) onto `child.cost`, so Fleet never invents a parallel cost model; it stays `null` until the session id is known and Claude has written usage. State is persisted one JSON per run via `atomicWriteJson` to `server/data/fleet/<id>.json`, and a summary is emitted on `fleet_update` after each write. **Phase 4** layers the dynamic-workflow PATTERNS natively onto this same seam (no embedded Workflow engine — see ADR-003 §Phase 4): token **budgets**, adversarial **verification**, **quarantine**, and saved **templates**. |
+
+**Spawn safety:** Fleet spawns several autonomous agents, so an absurd N is refused server-side *before* any spawn. `MAX_FLEET_CHILDREN` (4) is the default cap; `policy.maxConcurrency` may only *lower* it, never raise it. `HARD_REFUSE_CHILDREN` (8) is an absolute refusal line. `validateFleetRequest()` fails closed (all-or-nothing): it requires a non-empty `goal`, a non-empty `children` array within the caps, a `prompt` or `workflow` per child, and — for **every** child cwd — both a known-harness-root whitelist hit (else 404) and a `.git` precondition (else 404, since `--worktree` against a non-git tree is unsafe). A `workflow` value is passed as a `/workflow <name>` slash command, never used to build a filesystem path, so a tampered name cannot traverse.
+
+**In-memory registries** (the server is the single spawner/writer): `inFlight` keys each run so a double-submit gets a clean 409; `cancels` maps `fleetId → [cancel,…]` so `cancelFleet` can kill in-flight children; `pendingCounts` tracks not-yet-settled children so the run key is released and synthesis runs exactly once. `__resetFleet()` clears them in tests.
+
+**Escalation surfacing is read-only; deciding is dispatch-only.** `listEscalations(id)` merges, per child, the live SDK tool-approval requests for that child's session (`source:'tool'`) and the harness rails' `.harness/approvals/pending/*.json` (`source:'harness'`). `reconcileEscalationStatus(id)` (called from `GET /:id/escalations`) flips a `running` child to `escalated` while it has a live escalation and back to `running` once it clears, persisting only when the status actually changes. `decideFleetEscalation(id, body)` (called from `POST /:id/decide`) routes ONE human Allow/Deny through the EXISTING write paths and adds NO approval logic of its own: `source:'tool'` calls the in-memory SDK `resolveApproval` (same function `POST /api/sessions/:id/tool-approval` uses); `source:'harness'` shells `harness approve <requestId> --allow\|--deny` in the child's whitelisted cwd via `runClaude` (like the mission-ready route). The harness CLI is the SINGLE WRITER of `.harness/approvals/decided/<requestId>.json` and copies the pending request's `commandHash` onto the decision so a stale/replayed decision cannot unblock a different command. Fleet never writes a decided file directly and never auto-approves.
+
+#### Phase 4 — dynamic-workflow patterns, native (policy surface)
+
+Phase 4 implements the dynamic-workflow PATTERNS (token budgets, adversarial
+verification, loop-until-done, quarantine, saved templates) **natively in
+`fleet-runner.js`** rather than by embedding the Claude Code Workflow engine —
+which is part of the agent runtime, not an importable library for the Express
+server (the decision and its rationale live in **ADR-003 §Phase 4**). Everything
+below rides the same `spawnChild` (one governed `runClaudeCancellable --worktree`
+per child) + `persistFleet` (atomic write + `fleet_update`) seam Phase 3
+established; it adds new *kinds* of children and new run-level policy/state, no new
+spawn/approval/persistence stack.
+
+**Budget enforcement** (`policy.budgetUsd`, optional `policy.perChildUsd`). When a
+positive `budgetUsd` is set, enforcement turns on (omitted = today's count-cap-only
+behaviour). `spentUsd(state)` is the single running-total definition — it sums
+`child.cost.totalCost` across workers + verifiers + the synthesis child (missing/null
+→ 0), recomputed in `persistFleet` so `run.spentUsd` / `run.budgetRemaining` track
+every cost movement. Because `child.cost` *lags* (it is `null` until the session
+writes usage), enforcement uses a **pre-spawn projection** (`projectionWouldExceed`),
+not the laggy actual: it reserves one `perChildUsd` estimate (or a conservative
+`DEFAULT_CHILD_ESTIMATE_USD = 0.5` fallback) for each already-committed-but-not-yet-costed
+child plus the one about to spawn, and refuses pessimistically so an initial
+synchronous fan-out honours the budget. There are three gates: a **start-time guard**
+in `validateFleetRequest` (refuse the whole run `422` if `children.length × perChildUsd`
+already exceeds the budget), a **per-spawn projection** in the fan-out loop (a child
+that would push the projection over budget is never spawned — marked
+`budget_skipped`), and a **budget latch** read before each verifier/re-dispatch
+(`budgetExceeded`: once the running total crosses the cap, stop spawning anything
+further). In-flight children are *allowed to finish* (their cost is sunk; killing a
+child mid-write can corrupt a worktree); the run then settles to `budget_exceeded`
+and synthesis is skipped.
+
+**Verifier-child flow** (`policy.verify`: `true`, sugar for `{ minApprovals:1,
+maxRounds:1 }`, or an explicit `{ minApprovals, maxRounds }`). After a worker settles
+`succeeded` — when verify is on and the budget latch is clear — it does NOT count as a
+final settle: `maybeStartVerification` flips it to `verifying` and `spawnVerifier`
+launches an **adversarial VERIFIER child** in the SAME cwd as the worker (so it can
+`git diff` the worker's branch). The verifier runs in fresh context, is **blind to
+authorship** (its prompt never says who produced the work), is itself quarantined
+(read-only), and must return only a JSON verdict `{ verdict:'approve'|'reject',
+reasons, rubricScores }`. `parseVerdict` **fails closed to `reject`** on anything
+unparseable — a malformed or failed verifier can never silently pass work. The
+verifier is appended to `state.children` (so synthesis still waits for it via
+`pendingCounts`) but is excluded from the run-level outcome (`deriveStatus` filters
+verifiers out; only worker outcomes define the run). `routeVerdict` then: **approve +
+enough approvals** → worker final `succeeded`; **approve but `minApprovals` not yet
+met** → spawn another independent verifier (budget permitting); **reject** →
+re-dispatch the worker up to `maxRounds` (bounded loop-until-done, prior rejection
+reasons are prepended to the re-dispatch prompt), else the worker is terminal
+`rejected`. Verifiers count toward the same budget and emit `fleet_update`; each
+round's verdict is recorded on `child.verdicts[]`.
+
+**Quarantine** (`child.quarantine: true`). A quarantined child is given a best-effort
+read-only / no-privileged-action stance via (a) an explicit `QUARANTINE_DIRECTIVE`
+prepended to its prompt and (b) the existing danger-zone hooks where the child's
+project has harness rails. **This is accident-prevention, not a sandbox** (the same
+framing the README uses for the rails generally) — a determined or confused model can
+ignore the directive, which is exactly why it is not called a boundary; the genuine
+control for an untrusted child is OS-level sandboxing. A quarantined child is barred
+from being the synthesis/acting child; if ALL workers are quarantined, synthesis runs
+read-only in the first worker's cwd and is flagged so the UI can say so. Verifier
+children are always quarantined (a reviewer must not modify code).
+
+**Templates** (saved, repeatable fleet configs — the dynamic-workflows "save working
+workflows" pattern). `saveFleetTemplate` writes one JSON per template to
+`server/data/fleet-templates/<name>.json` via `atomicWriteJson` (the same primitive
+as runs); `listFleetTemplates` / `getFleetTemplate` read them. A template stores
+`{ name, goal, children, policy }` and is validated with the SAME body checks as a
+start request PLUS a filesystem-safe name rule — but it does NOT require the child
+cwds to be whitelisted at save time (a template may target a project not yet
+registered); the whitelist + git-repo preconditions are enforced at launch. A
+template is a request-construction convenience: `POST /api/fleet { template: name }`
+instantiates it (inline fields override template defaults) — it starts no lifecycle
+of its own. The name is traversal-guarded before any path is built.
+
+#### Fleet-run state shape (`server/data/fleet/<id>.json`)
+
+```jsonc
+{
+  "id": "<slug(goal)>-<iso-timestamp>",   // path-safe; '/','\\','..' rejected on read
+  "goal": "the original goal (the supervisor holds it)",
+  "createdAt": "ISO",
+  "updatedAt": "ISO",
+  "status": "running",   // running | succeeded | failed | partial | cancelled | budget_exceeded (derived)
+  "policy": {                              // resolved/persisted policy (what was enforced)
+    "maxConcurrency": 4,                   // effective cap (clamped to MAX_FLEET_CHILDREN)
+    "budgetUsd": 5,                        // optional — hard dollar cap; omitted = no budget enforcement
+    "perChildUsd": 0.5,                    // optional — per-child estimate for the pre-spawn projection
+    "verify": { "minApprovals": 1, "maxRounds": 1 }  // optional — adversarial verification (or true)
+  },
+  "spentUsd": 0,                           // running total across workers + verifiers + synthesis
+  "budgetRemaining": 5,                    // max(0, budgetUsd - spentUsd) when budgeted, else null
+  "children": [
+    {
+      "idx": 0,
+      "cwd": "/abs/known/harness/root",
+      "prompt": "literal prompt or null",
+      "workflow": "workflow name or null",  // exactly one of prompt/workflow is set
+      "childKind": "worker",                 // worker | verifier (verifiers appended at runtime)
+      "quarantine": false,                   // best-effort read-only stance (NOT a sandbox)
+      "sessionId": null,                     // filled on watcher ack
+      "worktree": true,                      // children ALWAYS run with --worktree
+      "branch": "fleet/<id>/c0",
+      "status": "starting",                  // starting | running | escalated | succeeded | failed |
+                                             //   cancelled | verifying | rejected | budget_skipped
+      "cost": null,                          // null until the session id is known/settles, then the
+                                             //   cockpit's canonical session-cost shape:
+                                             //   { totalCost, breakdown:{ input, output, cacheWrite, cacheRead }, family }
+                                             //   pulled from parsers/sessions.js getSessionById(...).estimatedCost
+      "rounds": 0,                           // re-dispatch count, bounded by policy.verify.maxRounds
+      "verdicts": [],                        // one entry per verification round: { round, verdict, reasons, ... }
+      "verifiedBy": null,                    // sessionId of the verifier that produced the latest approve
+      "escalation": null,
+      "error": null
+    }
+  ],
+  "synthesis": {
+    "status": "pending",   // pending | running | done | skipped
+    "sessionId": null,
+    "summary": null,       // merged report text (extracted from the synth child's stream-json result)
+    "completedAt": null
+  }
+}
+```
+
+The run `status` is *derived* from the **worker** children only (verifiers are tracked for `pendingCounts`/cost but never define the run outcome): all-cancelled → `cancelled`; any worker still unsettled OR a verifier still in flight → `running`; otherwise `succeeded` (all ok), `failed` (all failed/rejected/budget_skipped), or `partial` (mixed). `budget_exceeded` supersedes the derived status when the running cost total crossed `policy.budgetUsd`. Synthesis is `skipped` when the run was cancelled, the budget was exceeded, or no primary (non-quarantined) cwd exists.
 
 ---
 

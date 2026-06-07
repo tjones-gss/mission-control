@@ -313,6 +313,7 @@ describe('useSSE', () => {
       'hooks_update',
       'conductor_update',
       'harness_update',
+      'fleet_update',
     ]
 
     expectedEvents.forEach((eventType) => {

@@ -25,6 +25,11 @@ allowed_transitions:
   adr-writing:
   - spec-writing
   spec-writing:
+  - plan-review
+  - mission-planning
+  spec:
+  - plan-review
+  plan-review:
   - mission-planning
   mission-planning:
   - implementation
@@ -47,3 +52,4 @@ blocked_transitions:
   architecture_change_without_adr: true
   deploy_without_release_gate: true
   dangerous_operation_without_approval: true
+  missions_without_approved_prd: true

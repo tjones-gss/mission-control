@@ -569,3 +569,76 @@ router.post('/:projectKey/missions/:missionId/execute', async (req, res) => {
   logger.info({ missionId }, 'mission_execute_slow_ack')
   return res.status(202).json({ ok: true, status: 'started' })
 })
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /:projectKey/missions/:missionId/ready
+// Graduate a mission draft → ready. The harness owns mission-index.yml (it is
+// the single writer), so we never edit it from the cockpit — we shell the
+// `harness mission ready <id>` subcommand via the CLI and return the result.
+// Synchronous: we await the run to completion (no early-ack — this is a quick
+// state flip, not a long implementer session). Mirrors roadmap/compile.
+// ──────────────────────────────────────────────────────────────────────────────
+
+router.post('/:projectKey/missions/:missionId/ready', async (req, res) => {
+  const { projectKey, missionId } = req.params
+
+  const projectPath = decodeProjectKey(projectKey)
+  if (projectPath === null) {
+    return res.status(400).json({ error: 'invalid_project_key' })
+  }
+
+  // Whitelist membership check BEFORE any spawn — never shell into an arbitrary
+  // path.
+  if (!isKnownHarnessRoot(projectPath)) {
+    return res.status(404).json({ error: 'not_found' })
+  }
+
+  // Concurrency guard, keyed on projectPath+missionId: a double-click must not
+  // fire two ready flips for the same mission. Reserve BEFORE the spawn and
+  // release in a finally — the run is fully synchronous from our side.
+  const lockKey = `ready:${projectPath}:${missionId}`
+  if (!acquire(lockKey)) {
+    return res.status(409).json({ error: 'in_progress' })
+  }
+
+  // Ask the agent to run the harness subcommand that owns the write. The harness
+  // CLI errors non-zero if the mission is not draft / not found, so the agent
+  // surfaces that back to us.
+  const prompt =
+    `Run the harness CLI command \`harness mission ready ${missionId}\` in this ` +
+    `project. Do not edit .harness/mission-index.yml directly — the harness CLI ` +
+    `owns that write. Report exactly what the command printed.`
+
+  try {
+    const { stdout, stderr } = await runClaude({
+      args: buildReadyArgs(prompt),
+      cwd: projectPath,
+      timeoutMs: 120_000,
+    })
+    const result = parseStreamJsonStdout(stdout)
+    const summary =
+      (result && typeof result.result === 'string' && result.result) ||
+      (typeof stdout === 'string' ? stdout : '') ||
+      ''
+    return res.json({
+      ok: true,
+      missionId,
+      summary,
+      raw: stderr ? `${stdout || ''}\n${stderr}` : stdout || undefined,
+    })
+  } catch (err) {
+    logger.warn(
+      { detail: err.message, stderr: err.stderrOutput, missionId },
+      'mission_ready_run_failed',
+    )
+    return res.status(502).json({ ok: false, error: err.message })
+  } finally {
+    release(lockKey)
+  }
+})
+
+// Args for the one-shot mission-ready run. Kept as a small named helper so the
+// test can assert the prompt + stream-json flag are present.
+function buildReadyArgs(prompt) {
+  return ['-p', prompt, '--output-format', 'stream-json']
+}

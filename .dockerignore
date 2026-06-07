@@ -1,0 +1,22 @@
+# The image runs `node installers/setup.mjs` to install fresh, Linux-native
+# deps. Never copy host node_modules (Windows-compiled node-pty would break the
+# container) or other host-only artifacts into the build context.
+**/node_modules
+.git
+.gitignore
+
+# Build outputs / caches
+apps/cockpit/client/dist
+**/.vite
+**/.cache
+.pytest_cache
+.benchmarks
+**/coverage
+
+# Local docker env (paths/secrets) — provided at runtime, not baked in
+docker/.env
+
+# Test + screenshot artifacts not needed to run the cockpit
+apps/cockpit/test_screenshots
+apps/cockpit/e2e
+**/*.log

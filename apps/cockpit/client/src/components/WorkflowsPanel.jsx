@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, X, ChevronUp, ChevronDown, Pencil, Check, AlertTriangle } from 'lucide-react'
+import { Plus, X, ChevronUp, ChevronDown, Pencil, Check, AlertTriangle, Play } from 'lucide-react'
 
 const AGENT_TYPES = [
   'general-purpose',
@@ -163,6 +163,8 @@ export function WorkflowsPanel({ workflows, loading, refetch, skills }) {
   const [exporting, setExporting] = useState(false)
   const [exportConflict, setExportConflict] = useState(false)
   const [exportSuccess, setExportSuccess] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [runStarted, setRunStarted] = useState(false)
   const [error, setError] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
 
@@ -174,6 +176,7 @@ export function WorkflowsPanel({ workflows, loading, refetch, skills }) {
     setIsNew(false)
     setExportConflict(false)
     setExportSuccess(false)
+    setRunStarted(false)
     setError(null)
   }
 
@@ -184,6 +187,7 @@ export function WorkflowsPanel({ workflows, loading, refetch, skills }) {
     setIsNew(true)
     setExportConflict(false)
     setExportSuccess(false)
+    setRunStarted(false)
     setError(null)
   }
 
@@ -297,6 +301,36 @@ export function WorkflowsPanel({ workflows, loading, refetch, skills }) {
       setError('Network error.')
     } finally {
       setExporting(false)
+    }
+  }
+
+  async function run() {
+    if (!selectedName || isNew) return
+    setError(null)
+    setRunStarted(false)
+    setRunning(true)
+    try {
+      const res = await fetch(`/api/workflows/${selectedName}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (res.status === 409) {
+        setError('This workflow is already running.')
+        return
+      }
+      if (!res.ok) {
+        setError('Failed to start workflow.')
+        return
+      }
+      // 202 { ok, status:'started', sessionId? } — the new session surfaces in
+      // the Agents tab via the SSE session_update path; the panel only reflects
+      // that the run was started.
+      setRunStarted(true)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setRunning(false)
     }
   }
 
@@ -484,6 +518,11 @@ export function WorkflowsPanel({ workflows, loading, refetch, skills }) {
                   Exported as <code className="bg-gray-800 px-1 rounded">/{exportName}</code>
                 </div>
               )}
+              {runStarted && (
+                <div className="text-xs text-green-400 mb-3">
+                  Run started — track it in the Agents tab.
+                </div>
+              )}
               {exportConflict && (
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-xs text-yellow-400">
@@ -511,6 +550,14 @@ export function WorkflowsPanel({ workflows, loading, refetch, skills }) {
                   className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
                 >
                   {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  onClick={run}
+                  disabled={running || isNew || !selectedName}
+                  className="px-3 py-1.5 text-xs bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors flex items-center gap-1"
+                  title={isNew ? 'Save first before running' : undefined}
+                >
+                  <Play size={12} /> {running ? 'Starting…' : 'Run'}
                 </button>
                 <button
                   onClick={() => doExport(false)}

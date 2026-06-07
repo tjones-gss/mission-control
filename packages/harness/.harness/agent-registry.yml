@@ -23,6 +23,28 @@ aliases:
   #   gss-cobol-tester: agents/roles/tester.md
   {}
 
+# Default model tier per agent role (model-tier routing).
+#
+# Values are tier ALIASES defined in .harness/model-tiers.yml (heavy/standard/
+# light), NOT literal model strings — keep concrete model names in that file so
+# they remap in one place across tools. A phase's own `model:` overrides these;
+# a role not listed here falls through to `default_tier` / the configured
+# default. Unset = today's single-model behavior.
+role_tiers:
+  orchestrator: heavy
+  architect: heavy
+  prd-writer: heavy
+  product-analyst: standard
+  spec-writer: standard
+  mission-planner: standard
+  intake: standard
+  reviewer: standard
+  tester: standard
+  implementer: standard
+  repo-analyzer: light
+  researcher: light
+  session-memory: light
+
 # Notes:
 # - Aliases are file paths relative to the harness root.
 # - Aliases override default resolution — use sparingly to avoid hiding what

@@ -40,7 +40,25 @@
         "phase": { "type": "string" },
         "gate": { "type": "string" },
         "last_completed_phase": { "type": ["string", "null"] },
-        "next_phase": { "type": ["string", "null"] }
+        "next_phase": { "type": ["string", "null"] },
+        "plan_status": { "type": ["string", "null"] }
+      }
+    },
+    "plans": {
+      "type": "object",
+      "additionalProperties": true,
+      "patternProperties": {
+        "^.+$": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "status": { "type": "string" },
+            "file": { "type": "string" },
+            "approved_by": { "type": ["string", "null"] },
+            "approved_at": { "type": ["string", "null"] },
+            "missions": { "type": "array", "items": { "type": "string" } }
+          }
+        }
       }
     },
     "missions": {
@@ -51,7 +69,19 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "status": { "type": "string" },
+            "status": {
+              "type": "string",
+              "description": "Mission lifecycle status. Canonical values: draft | ready | in-progress | review | complete | blocked | failed. A mission is authored as 'draft' and graduates to 'ready' via `harness mission ready <id>` (the only status `harness next` selects). Kept as a free string (not an enum) on purpose: older installed harnesses may emit other values and must not fail validation.",
+              "examples": [
+                "draft",
+                "ready",
+                "in-progress",
+                "review",
+                "complete",
+                "blocked",
+                "failed"
+              ]
+            },
             "priority": { "type": "string" },
             "file": { "type": "string" },
             "adr": { "type": "string" },

@@ -272,6 +272,223 @@ class TestHarnessScaffold(unittest.TestCase):
         self.assertEqual(out["error"], "invalid_mode")
 
 
+class TestModelTiersCheck(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-test-"))
+        make_minimal_project(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_missing_tiers_file_is_ok(self):
+        r = run_cli("-C", str(self.tmpdir), "check")
+        self.assertIn("single-model behavior", r.stdout)
+
+    def test_bad_default_tier_fails(self):
+        (self.tmpdir / ".harness/model-tiers.yml").write_text(
+            "tiers:\n  heavy: m-big\ndefault_tier: ghost\n"
+        )
+        r = run_cli("-C", str(self.tmpdir), "check")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("default_tier", r.stdout)
+
+    def test_undefined_role_tier_warns(self):
+        (self.tmpdir / ".harness/model-tiers.yml").write_text("tiers:\n  heavy: m-big\n")
+        (self.tmpdir / ".harness/agent-registry.yml").write_text(
+            "aliases: {}\nrole_tiers:\n  orchestrator: heavt\n"
+        )
+        r = run_cli("-C", str(self.tmpdir), "check")
+        self.assertIn("heavt", r.stdout)
+        self.assertIn("not a defined tier", r.stdout)
+
+
+class TestPlanCli(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-test-"))
+        make_minimal_project(self.tmpdir)
+        (self.tmpdir / ".harness/plan-index.yml").write_text("plans: {}\n")
+        (self.tmpdir / "docs/plans").mkdir(parents=True)
+        (self.tmpdir / "docs/plans/PRD-demo.md").write_text("# PRD: demo\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _decide(self, request_path: Path, *, decision: str, command_hash: str):
+        req = json.loads(request_path.read_text())
+        decided = self.tmpdir / ".harness/approvals/decided"
+        decided.mkdir(parents=True, exist_ok=True)
+        (decided / f"{req['id']}.json").write_text(
+            json.dumps(
+                {
+                    "id": req["id"],
+                    "schemaVersion": req["schemaVersion"],
+                    "decision": decision,
+                    "approver": "tester",
+                    "commandHash": command_hash,
+                    "decidedAt": "2026-05-31T00:00:00+00:00",
+                }
+            )
+        )
+
+    def _pending(self) -> Path:
+        return next((self.tmpdir / ".harness/approvals/pending").glob("*.json"))
+
+    def test_register_request_sync_approves(self):
+        r = run_cli("-C", str(self.tmpdir), "plan", "register", "PRD-demo",
+                    "--file", "docs/plans/PRD-demo.md")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        r = run_cli("-C", str(self.tmpdir), "plan", "request", "PRD-demo")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        req = self._pending()
+        chash = json.loads(req.read_text())["commandHash"]
+        self._decide(req, decision="allow", command_hash=chash)
+        r = run_cli("-C", str(self.tmpdir), "plan", "sync")
+        self.assertIn("approved", r.stdout)
+        r = run_cli("-C", str(self.tmpdir), "plan", "list", "--json")
+        self.assertEqual(json.loads(r.stdout)["PRD-demo"]["status"], "approved")
+
+    def test_sync_ignores_hash_mismatch(self):
+        run_cli("-C", str(self.tmpdir), "plan", "register", "PRD-demo",
+                "--file", "docs/plans/PRD-demo.md")
+        run_cli("-C", str(self.tmpdir), "plan", "request", "PRD-demo")
+        self._decide(self._pending(), decision="allow", command_hash="tampered")
+        r = run_cli("-C", str(self.tmpdir), "plan", "sync")
+        self.assertIn("mismatch", (r.stdout + r.stderr).lower())
+        r = run_cli("-C", str(self.tmpdir), "plan", "list", "--json")
+        self.assertEqual(json.loads(r.stdout)["PRD-demo"]["status"], "in-review")
+
+
+class TestMissionReady(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-test-"))
+        make_minimal_project(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _write_index(self, body: str):
+        (self.tmpdir / ".harness/mission-index.yml").write_text(body)
+
+    def _index(self) -> dict:
+        r = run_cli("-C", str(self.tmpdir), "status", "--json")
+        return json.loads(r.stdout)["missions"]
+
+    def test_ready_flips_draft_to_ready(self):
+        self._write_index(
+            "missions:\n"
+            "  MISSION-001-auth:\n"
+            "    status: draft\n"
+            "    file: runs/missions/MISSION-001-auth.md\n"
+        )
+        r = run_cli("-C", str(self.tmpdir), "mission", "ready", "MISSION-001-auth")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        self.assertEqual(self._index()["MISSION-001-auth"]["status"], "ready")
+
+    def test_ready_errors_when_not_found(self):
+        self._write_index("missions: {}\n")
+        r = run_cli("-C", str(self.tmpdir), "mission", "ready", "MISSION-ghost")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no mission", r.stderr.lower())
+
+    def test_ready_errors_when_not_draft(self):
+        self._write_index(
+            "missions:\n"
+            "  MISSION-001-auth:\n"
+            "    status: ready\n"
+            "    file: runs/missions/MISSION-001-auth.md\n"
+        )
+        r = run_cli("-C", str(self.tmpdir), "mission", "ready", "MISSION-001-auth")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not `draft`", r.stderr)
+        # Status is unchanged (still ready, not corrupted).
+        self.assertEqual(self._index()["MISSION-001-auth"]["status"], "ready")
+
+
+class TestApprove(unittest.TestCase):
+    """`harness approve <id> --allow|--deny` is the SINGLE writer of decided
+    files. It copies the pending request's commandHash (replay-proofing) and
+    writes a schema-valid approval-decision."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-test-"))
+        make_minimal_project(self.tmpdir)
+        self.pending_dir = self.tmpdir / ".harness/approvals/pending"
+        self.decided_dir = self.tmpdir / ".harness/approvals/decided"
+        self.pending_dir.mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _write_pending(self, request_id: str, command_hash: str = "abc123"):
+        (self.pending_dir / f"{request_id}.json").write_text(
+            json.dumps(
+                {
+                    "id": request_id,
+                    "schemaVersion": 2,
+                    "projectPath": str(self.tmpdir),
+                    "tool": "Bash",
+                    "command": "git push --force",
+                    "matchedPattern": "force-push",
+                    "riskLevel": "DESTRUCTIVE",
+                    "commandHash": command_hash,
+                    "requestedAt": "2026-06-04T12:00:00+00:00",
+                }
+            )
+        )
+
+    def _assert_schema_valid_decision(self, doc: dict):
+        # Mirror the required fields + enum of approval-decision.schema.json.
+        for field in ("id", "schemaVersion", "decision", "approver", "commandHash", "decidedAt"):
+            self.assertIn(field, doc, f"decision missing required field {field}")
+        self.assertIn(doc["decision"], ("allow", "deny"))
+        self.assertIsInstance(doc["schemaVersion"], int)
+
+    def test_approve_allow_writes_schema_valid_decision_with_matching_hash(self):
+        self._write_pending("req-allow", command_hash="HASH-ALLOW")
+        r = run_cli("-C", str(self.tmpdir), "approve", "req-allow", "--allow")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        decided = json.loads((self.decided_dir / "req-allow.json").read_text())
+        self._assert_schema_valid_decision(decided)
+        self.assertEqual(decided["id"], "req-allow")
+        self.assertEqual(decided["decision"], "allow")
+        self.assertEqual(decided["commandHash"], "HASH-ALLOW")
+        self.assertEqual(decided["approver"], "cockpit-fleet")
+
+    def test_approve_deny_writes_schema_valid_decision_with_matching_hash(self):
+        self._write_pending("req-deny", command_hash="HASH-DENY")
+        r = run_cli(
+            "-C", str(self.tmpdir), "approve", "req-deny", "--deny", "--approver", "alice"
+        )
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        decided = json.loads((self.decided_dir / "req-deny.json").read_text())
+        self._assert_schema_valid_decision(decided)
+        self.assertEqual(decided["decision"], "deny")
+        self.assertEqual(decided["commandHash"], "HASH-DENY")
+        self.assertEqual(decided["approver"], "alice")
+
+    def test_approve_missing_pending_errors(self):
+        r = run_cli("-C", str(self.tmpdir), "approve", "req-ghost", "--allow")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no pending approval", r.stderr.lower())
+        self.assertFalse((self.decided_dir / "req-ghost.json").exists())
+
+    def test_approve_already_decided_errors(self):
+        self._write_pending("req-twice")
+        r = run_cli("-C", str(self.tmpdir), "approve", "req-twice", "--allow")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        r2 = run_cli("-C", str(self.tmpdir), "approve", "req-twice", "--deny")
+        self.assertNotEqual(r2.returncode, 0)
+        self.assertIn("already decided", r2.stderr.lower())
+        # The original allow decision is untouched (not flipped to deny).
+        decided = json.loads((self.decided_dir / "req-twice.json").read_text())
+        self.assertEqual(decided["decision"], "allow")
+
+    def test_approve_requires_a_decision_flag(self):
+        self._write_pending("req-noflag")
+        r = run_cli("-C", str(self.tmpdir), "approve", "req-noflag")
+        self.assertNotEqual(r.returncode, 0)
+
+
 class TestWindowsGitBash(unittest.TestCase):
     @unittest.skipUnless(sys.platform == "win32", "Windows only")
     def test_find_git_bash_windows_prefers_git_over_wsl(self):

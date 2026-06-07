@@ -1,0 +1,61 @@
+pipeline: plan-review
+description: >
+  Produce a reviewed, phased PRD before any mission is written. Runs before the
+  implementation phases and ends in a human-approval gate. The phase `model:`
+  fields exercise model-tier routing: cheap distillation, mid planning, heavy
+  synthesis.
+
+phases:
+  - id: distill-context
+    agent: repo-analyzer
+    model: light
+    description: Pull only the context the plan needs; cheap, narrow distillation.
+    inputs:
+      - .harness/context-manifest.yml
+      - docs/product/product-brief.md
+    outputs:
+      - docs/plans/context-notes.md
+    gate:
+      required:
+        - context_distilled
+
+  - id: surface-assumptions
+    agent: intake
+    model: standard
+    description: Make implicit assumptions and open questions explicit.
+    inputs:
+      - docs/plans/context-notes.md
+    outputs:
+      - docs/product/assumptions.md
+      - docs/product/open-questions.md
+    gate:
+      required:
+        - assumptions_surfaced
+        - open_questions_listed
+
+  - id: draft-prd
+    agent: prd-writer
+    model: heavy
+    description: Synthesize a single phased, reviewable PRD; register it for approval.
+    inputs:
+      - docs/plans/context-notes.md
+      - docs/product/assumptions.md
+      - docs/product/open-questions.md
+    outputs:
+      - docs/plans/PRD-<slug>.md
+      - .harness/plan-index.yml
+    gate:
+      required:
+        - phased_plan_defined
+        - risks_flagged
+        - acceptance_criteria_defined
+
+  - id: plan-review
+    agent: orchestrator
+    description: >
+      Hold for human sign-off via the approval contract. No missions until the
+      PRD is approved (run `harness plan request`, then `harness plan sync`).
+    no_outputs_reason: gate-only phase; the decision is recorded in .harness/approvals/
+    gate:
+      required:
+        - human_approval_for_plan

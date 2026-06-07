@@ -180,6 +180,9 @@ def send_and_wait(agent, prompt: str) -> DriverResult:
 def config_from_env(**overrides) -> DriverConfig:
     cfg = DriverConfig(
         api_key=os.environ.get("CURSOR_API_KEY"),
+        # Precedence applied below: explicit overrides["model"] > HARNESS_MODEL
+        # env > DriverConfig default (so unset everywhere = today's behavior).
+        model=os.environ.get("HARNESS_MODEL") or DriverConfig.model,
         cwd=overrides.get("cwd", os.getcwd()),
         runtime=overrides.get("runtime", "local"),
         repo_url=overrides.get("repo_url") or os.environ.get("HARNESS_REPO_URL"),

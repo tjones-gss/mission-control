@@ -5,11 +5,8 @@ import { ConversationView } from './ConversationView.jsx'
 import { TimelineView } from './TimelineView.jsx'
 import { IntelView } from './IntelView.jsx'
 import { SessionControlBar } from './SessionControlBar.jsx'
-import { ConfigViewer } from './ConfigViewer.jsx'
-import { MemoryViewer } from './MemoryViewer.jsx'
 import { PlanViewer } from './PlanViewer.jsx'
-import { HooksPanel } from './HooksPanel.jsx'
-import { McpDashboard } from './McpDashboard.jsx'
+import { InspectPanel } from './InspectPanel/InspectPanel.jsx'
 import { TokenBreakdownFull } from './TokenBreakdown.jsx'
 import { CostSparkline } from './CostSparkline.jsx'
 import { formatCost } from '../utils/cost.js'
@@ -112,6 +109,9 @@ export function AgentTree({
   session,
   sessionUpdateVersion,
   intelligenceVersion,
+  configVersion,
+  memoryVersion,
+  hooksVersion,
   skills,
   streaming,
 }) {
@@ -166,17 +166,7 @@ export function AgentTree({
     <div className="h-full flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 shrink-0 overflow-x-auto no-scrollbar">
-        {[
-          'conversation',
-          'timeline',
-          'summary',
-          'intel',
-          'config',
-          'memory',
-          'plans',
-          'hooks',
-          'mcp',
-        ].map((tab) => (
+        {['conversation', 'timeline', 'summary', 'intel', 'plans', 'inspect'].map((tab) => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
@@ -233,33 +223,20 @@ export function AgentTree({
         </div>
       )}
 
-      {subTab === 'config' && (
-        <div className="flex-1 overflow-hidden">
-          <ConfigViewer sessionId={session?.sessionId} />
-        </div>
-      )}
-
-      {subTab === 'memory' && (
-        <div className="flex-1 overflow-hidden">
-          <MemoryViewer sessionId={session?.sessionId} />
-        </div>
-      )}
-
       {subTab === 'plans' && (
         <div className="flex-1 overflow-hidden">
           <PlanViewer />
         </div>
       )}
 
-      {subTab === 'hooks' && (
+      {subTab === 'inspect' && (
         <div className="flex-1 overflow-hidden">
-          <HooksPanel />
-        </div>
-      )}
-
-      {subTab === 'mcp' && (
-        <div className="flex-1 overflow-hidden">
-          <McpDashboard />
+          <InspectPanel
+            sessionId={session?.sessionId}
+            configVersion={configVersion}
+            memoryVersion={memoryVersion}
+            hooksVersion={hooksVersion}
+          />
         </div>
       )}
 

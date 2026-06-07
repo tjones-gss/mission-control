@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Circle, GitBranch, Loader2, Play } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Circle,
+  GitBranch,
+  Loader2,
+  Play,
+} from 'lucide-react'
 import { CompileRoadmapDialog } from './CompileRoadmapDialog.jsx'
 import { Toast } from './Toast.jsx'
 
@@ -8,7 +16,11 @@ const STATUS_BADGE = {
   complete: 'bg-green-900/60 text-green-200',
   completed: 'bg-green-900/60 text-green-200',
   in_progress: 'bg-indigo-900/60 text-indigo-200',
+  'in-progress': 'bg-indigo-900/60 text-indigo-200',
   active: 'bg-indigo-900/60 text-indigo-200',
+  review: 'bg-sky-900/60 text-sky-200',
+  ready: 'bg-emerald-900/60 text-emerald-200',
+  draft: 'bg-gray-700 text-gray-200',
   blocked: 'bg-amber-900/60 text-amber-200',
   pending: 'bg-gray-700 text-gray-200',
   todo: 'bg-gray-700 text-gray-200',
@@ -21,19 +33,57 @@ const PRIORITY_BADGE = {
   low: 'bg-gray-700 text-gray-300',
 }
 
+const PLAN_STATUS_BADGE = {
+  approved: 'bg-green-900/60 text-green-200',
+  rejected: 'bg-red-900/60 text-red-200',
+  'in-review': 'bg-amber-900/60 text-amber-200',
+  draft: 'bg-gray-700 text-gray-200',
+}
+
 // Statuses for which the mission is settled or already running — Run on-rails
-// should not be offered.
+// should not be offered. Stored with hyphens to match the canonical schema
+// values (draft | ready | in-progress | review | complete | …); normalizeStatus
+// collapses underscores → hyphens so older `in_progress`-style emitters match.
 const NON_RUNNABLE = new Set([
-  'in_progress',
+  'in-progress',
   'active',
   'running',
+  'review',
   'done',
   'complete',
   'completed',
 ])
 
+// Lifecycle the harness drives a mission through (see harness-status.schema.json
+// `missions.*.status`): authored as draft → graduated to ready via
+// `harness mission ready` → picked up (in-progress) → review → complete. We map
+// the various synonyms an older harness might emit onto these four columns so
+// the stepper renders consistently.
+const LIFECYCLE_STEPS = [
+  { key: 'draft', label: 'draft', match: new Set(['draft', 'pending', 'todo']) },
+  { key: 'ready', label: 'ready', match: new Set(['ready']) },
+  {
+    key: 'in-progress',
+    label: 'in-progress',
+    match: new Set(['in-progress', 'active', 'running', 'review']),
+  },
+  {
+    key: 'complete',
+    label: 'complete',
+    match: new Set(['complete', 'completed', 'done']),
+  },
+]
+
+// Lowercase + collapse underscores to hyphens so `in_progress` and `in-progress`
+// compare equal across the codebase and the canonical schema values.
 function normalizeStatus(value) {
-  return value == null ? '' : String(value).toLowerCase()
+  return value == null ? '' : String(value).toLowerCase().replace(/_/g, '-')
+}
+
+// Index of the lifecycle column a status belongs to, or -1 for off-track
+// statuses (blocked/failed) we render as a badge but not on the stepper.
+function lifecycleIndex(status) {
+  return LIFECYCLE_STEPS.findIndex((step) => step.match.has(status))
 }
 
 function Card({ label, value, hint }) {
@@ -72,15 +122,63 @@ function normalizeMissions(status) {
   return []
 }
 
+// PRDs (phased plans) ride along in the raw status under `plans` (see
+// packages/contracts/schemas/harness-status.schema.json). Normalize to a list.
+function normalizePlans(status) {
+  const plans = status?.plans
+  if (!plans || typeof plans !== 'object') return []
+  return Object.entries(plans).map(([id, p]) => ({
+    id,
+    ...(p && typeof p === 'object' ? p : {}),
+  }))
+}
+
+// Compact left-to-right view of where a mission sits in its lifecycle. The
+// current column glows; everything to its left is shown as already-passed.
+// Off-track statuses (blocked/failed, index -1) leave every step muted.
+function LifecycleStepper({ status }) {
+  const current = lifecycleIndex(status)
+  return (
+    <div className="flex items-center gap-1" aria-label={`lifecycle: ${status || 'unknown'}`}>
+      {LIFECYCLE_STEPS.map((step, i) => {
+        const reached = current >= 0 && i <= current
+        const isCurrent = i === current
+        return (
+          <span key={step.key} className="flex items-center gap-1">
+            {i > 0 && <ArrowRight size={9} className="text-gray-700" />}
+            <span
+              className={`px-1 py-0.5 rounded text-[9px] font-medium tracking-wide ${
+                isCurrent
+                  ? 'bg-indigo-900/70 text-indigo-100'
+                  : reached
+                    ? 'text-emerald-400/80'
+                    : 'text-gray-600'
+              }`}
+            >
+              {step.label}
+            </span>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 function MissionRow({ mission, projectKey, projectLabel, onToast }) {
   const validation = mission.validation ?? mission.validated
   const review = mission.review ?? mission.reviewed
   const status = normalizeStatus(mission.status)
   const isDraft = status === 'draft'
-  const runnable = !NON_RUNNABLE.has(status)
+  // Run on-rails is only offered once a draft has been graduated to ready (or a
+  // later still-runnable status). Draft missions must be marked ready first.
+  const runnable = !isDraft && !NON_RUNNABLE.has(status)
 
   const [confirming, setConfirming] = useState(false)
   const [starting, setStarting] = useState(false)
+  // Marking a draft ready is a quick synchronous state flip on the server; we
+  // disable the button while in flight and let the next status refetch swap the
+  // row out of the draft branch.
+  const [markingReady, setMarkingReady] = useState(false)
   // After a successful execute the server has spawned an implementer but the
   // mission status may not flip to in-progress until the next status refetch.
   // `pendingStart` keeps the button disabled / "starting…" across that window so
@@ -158,6 +256,46 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
     }
   }, [projectKey, mission.id, onToast])
 
+  // Graduate a draft mission to ready (Stage A endpoint). The harness owns the
+  // mission-index write — the server shells `harness mission ready <id>` and the
+  // next status refetch flips the row out of the draft branch.
+  const markReady = useCallback(async () => {
+    setMarkingReady(true)
+    try {
+      // projectKey is ALREADY encodeURIComponent(projectPath) — use it bare.
+      // mission.id is raw, so it still needs encoding.
+      const res = await fetch(
+        `/api/harness/${projectKey}/missions/${encodeURIComponent(mission.id)}/ready`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.ok === false) {
+        onToast?.({
+          tone: res.status === 409 ? 'info' : 'error',
+          message:
+            res.status === 409
+              ? `${mission.id} is already being marked ready.`
+              : `Could not mark ${mission.id} ready: ${
+                  data.error || data.detail || `HTTP ${res.status}`
+                }`,
+        })
+        return
+      }
+      onToast?.({
+        tone: 'success',
+        message: `${mission.id} marked ready — Run on-rails is now available.`,
+      })
+    } catch (e) {
+      onToast?.({ tone: 'error', message: `Could not mark ${mission.id} ready: ${e.message}` })
+    } finally {
+      setMarkingReady(false)
+    }
+  }, [projectKey, mission.id, onToast])
+
   // The button is "busy" while the request is in flight OR while we're waiting
   // for the refetch to confirm the spawn took.
   const busy = starting || pendingStart
@@ -169,10 +307,27 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
         <StatusPill value={mission.status} map={STATUS_BADGE} />
         {isDraft && (
           <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-amber-600/70 text-amber-300 bg-amber-950/30">
-            DRAFT · review before running
+            DRAFT · mark ready before running
           </span>
         )}
         {mission.priority != null && <StatusPill value={mission.priority} map={PRIORITY_BADGE} />}
+        {/* Draft missions: offer Mark ready instead of Run on-rails. Execute is
+            gated until the mission is graduated to ready. */}
+        {isDraft && (
+          <button
+            onClick={markReady}
+            disabled={markingReady}
+            className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-emerald-300 hover:text-emerald-200 hover:bg-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title={`Mark ${mission.id} ready to run`}
+          >
+            {markingReady ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : (
+              <ArrowRight size={11} />
+            )}
+            {markingReady ? 'Marking ready…' : 'Mark ready'}
+          </button>
+        )}
         {runnable && pendingStart && !confirming && (
           <span
             className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-500"
@@ -192,6 +347,9 @@ function MissionRow({ mission, projectKey, projectLabel, onToast }) {
             Run on-rails
           </button>
         )}
+      </div>
+      <div className="mt-1.5">
+        <LifecycleStepper status={status} />
       </div>
       <div className="mt-1.5 flex items-center gap-4 text-[10px] text-gray-500">
         <span className="flex items-center gap-1">
@@ -293,6 +451,7 @@ export function HarnessDetail({ project, harnessVersion }) {
   }, [project.projectKey, project.available, harnessVersion])
 
   const missions = useMemo(() => normalizeMissions(status), [status])
+  const plans = useMemo(() => normalizePlans(status), [status])
 
   const phase = status?.pipeline?.phase ?? project.pipeline?.phase
   const gate = status?.pipeline?.gate ?? project.pipeline?.gate
@@ -373,11 +532,51 @@ export function HarnessDetail({ project, harnessVersion }) {
             <Card label="Missions" value={missions.length} />
           </div>
 
+          {/* Plans / PRDs — only shown when the project has registered any. A
+              PRD is a reviewed, phased plan that gates mission-planning. */}
+          {plans.length > 0 && (
+            <div className="shrink-0 px-4 pt-1 pb-3">
+              <h3 className="text-[10px] uppercase tracking-wider text-gray-600 mb-2">
+                Plans / PRDs
+              </h3>
+              <ul className="space-y-2">
+                {plans.map((plan) => (
+                  <li
+                    key={plan.id}
+                    className="bg-gray-900 border border-gray-800 rounded px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs text-gray-200 truncate">{plan.id}</span>
+                      <StatusPill value={plan.status} map={PLAN_STATUS_BADGE} />
+                      {plan.approved_by && (
+                        <span className="text-[10px] text-gray-500">
+                          approved by {plan.approved_by}
+                        </span>
+                      )}
+                      {Array.isArray(plan.missions) && plan.missions.length > 0 && (
+                        <span className="ml-auto text-[10px] text-gray-500">
+                          {plan.missions.length} mission{plan.missions.length === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
+                    {plan.file && (
+                      <div className="mt-1 text-[10px] text-gray-600 font-mono truncate">
+                        {plan.file}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Missions list */}
           <div className="flex-1 min-h-0 overflow-auto px-4 py-3">
             <h3 className="text-[10px] uppercase tracking-wider text-gray-600 mb-2">Missions</h3>
             {missions.length === 0 ? (
-              <div className="text-[11px] text-gray-600">No missions reported for this project.</div>
+              <div className="text-[11px] text-gray-600">
+                No missions reported for this project.
+              </div>
             ) : (
               <ul className="space-y-2">
                 {missions.map((mission) => (
@@ -403,8 +602,7 @@ export function HarnessDetail({ project, harnessVersion }) {
             setShowCompile(false)
             pushToast({
               tone: 'success',
-              message:
-                'Roadmap compiled — new draft missions will appear as the list refreshes.',
+              message: 'Roadmap compiled — new draft missions will appear as the list refreshes.',
             })
           }}
         />

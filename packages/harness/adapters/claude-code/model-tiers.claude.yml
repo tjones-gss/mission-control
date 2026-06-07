@@ -1,0 +1,16 @@
+# Claude model-tier mapping for the mission-loop orchestrator.
+#
+# Copy this over .harness/model-tiers.yml when running the loop with the Claude
+# runtime (`harness-orchestrator run-loop --runtime claude`). The tier aliases
+# (heavy/standard/light) stay the neutral contract used by pipelines and roles;
+# here they resolve to Claude model aliases that `claude --model <model>`
+# accepts. This is the Opus-orchestrates / Sonnet-plans / Haiku-distills pattern.
+#
+# See packages/harness/harness_core/model_tiers.py for resolution precedence.
+
+tiers:
+  heavy: opus      # orchestration / strategy / PRD synthesis
+  standard: sonnet # structured planning, implementation, review, tests
+  light: haiku     # narrow context distillation, lookups
+
+default_tier: null
