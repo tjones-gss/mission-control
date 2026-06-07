@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
+import { revealAdvanced } from './helpers.js'
 
 async function goToWorkflows(page) {
   await page.goto('/')
+  await revealAdvanced(page)
   await page.getByRole('button', { name: 'Workflows' }).click()
   // Wait for the WorkflowsPanel "New" button to be visible (the most
   // reliable "panel mounted with data" signal). Under parallel

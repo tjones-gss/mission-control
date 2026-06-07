@@ -6,6 +6,12 @@ import { test, expect } from '@playwright/test'
 
 const API = 'http://localhost:3001'
 
+// State-changing routes are Origin-pinned by the server's originGuard (CSRF
+// defense) — a POST without an allowlisted Origin gets 403. The browser client
+// always sends one; the APIRequestContext does not, so pin it to the cockpit's
+// own client origin.
+test.use({ extraHTTPHeaders: { Origin: 'http://localhost:5173' } })
+
 test.describe('api: skill name validation', () => {
   test('rejects names starting with a hyphen', async ({ request }) => {
     const res = await request.post(`${API}/api/skills`, {

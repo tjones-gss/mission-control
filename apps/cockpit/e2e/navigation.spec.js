@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { revealAdvanced } from './helpers.js'
 
 test.describe('navigation', () => {
   test('app loads and shows header', async ({ page }) => {
@@ -9,8 +10,12 @@ test.describe('navigation', () => {
 
   test('all tabs are rendered in the header', async ({ page }) => {
     await page.goto('/')
+    // Agents and Tasks are Core tabs (always visible). Workflows and Skills are
+    // Advanced tabs, only rendered once Advanced is revealed (progressive
+    // disclosure — see App.jsx).
     await expect(page.getByRole('button', { name: 'Agents' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Tasks' })).toBeVisible()
+    await revealAdvanced(page)
     await expect(page.getByRole('button', { name: 'Workflows' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Skills' })).toBeVisible()
   })
@@ -25,6 +30,7 @@ test.describe('navigation', () => {
 
   test('can switch to Workflows tab', async ({ page }) => {
     await page.goto('/')
+    await revealAdvanced(page)
     await page.getByRole('button', { name: 'Workflows' }).click()
     // The Workflows panel has a "Workflows" heading in its left sidebar
     await expect(page.getByRole('button', { name: 'Workflows' })).toHaveClass(/bg-gray-800/)
@@ -36,6 +42,7 @@ test.describe('navigation', () => {
 
   test('can switch to Skills tab', async ({ page }) => {
     await page.goto('/')
+    await revealAdvanced(page)
     await page.getByRole('button', { name: 'Skills' }).click()
     await expect(page.getByRole('button', { name: 'Skills' })).toHaveClass(/bg-gray-800/)
     // SkillsPanel early-returns "Loading skills..." until /api/skills
@@ -52,6 +59,8 @@ test.describe('navigation', () => {
 
   test('can cycle through all tabs', async ({ page }) => {
     await page.goto('/')
+    // Workflows and Skills are Advanced tabs; reveal them before cycling.
+    await revealAdvanced(page)
 
     for (const tabName of ['Workflows', 'Skills', 'Tasks', 'Agents']) {
       // exact:true so 'Agents' doesn't also match session-card buttons

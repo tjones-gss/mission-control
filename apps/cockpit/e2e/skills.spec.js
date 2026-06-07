@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
+import { revealAdvanced } from './helpers.js'
 
 async function goToSkills(page) {
   await page.goto('/')
+  await revealAdvanced(page)
   await page.getByRole('button', { name: 'Skills' }).click()
   // Wait for the panel to finish its initial load. Under parallel
   // workers the dashboard's 6+ concurrent useApi calls saturate the
