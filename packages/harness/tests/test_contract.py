@@ -294,6 +294,27 @@ class TestSchemaVersionParity(unittest.TestCase):
             "APPROVAL_SCHEMA_VERSION constant drifted from the canonical sidecar",
         )
 
+    def test_fallback_constants_match_sidecar(self):
+        """The standalone-install fallback literals must not silently drift.
+
+        _*_FALLBACK are only USED when the sidecar is absent, but when it IS
+        present (CI) assert they agree, so bumping schema-version.json can never
+        leave a stale fallback behind (the exact drift a 5-vs-6 review caught).
+        """
+        if not self.sidecar_present:
+            self.skipTest("sidecar absent (standalone harness install)")
+        self.assertEqual(
+            self.mod._SCHEMA_VERSION_FALLBACK,
+            self.sidecar["schemaVersion"],
+            "_SCHEMA_VERSION_FALLBACK drifted from the canonical sidecar; bump it "
+            "when schema-version.json changes (it is the no-sidecar fallback).",
+        )
+        self.assertEqual(
+            self.mod._APPROVAL_SCHEMA_VERSION_FALLBACK,
+            self.sidecar["approvalSchemaVersion"],
+            "_APPROVAL_SCHEMA_VERSION_FALLBACK drifted from the canonical sidecar",
+        )
+
     def test_javascript_and_python_resolve_the_same_versions(self):
         """The actual cross-language gate: JS-exported == Python-resolved.
 
