@@ -1,7 +1,7 @@
 # Definition-of-Done ladder — the testable "2027 bar"
 
 Four rungs, each a **release gate**: you cannot tag L*n+1* until L*n* is green in CI **and** verified
-on the author's Windows 11 box. The existing 884 server / 498 client / 72 python suites stay green
+on the author's Windows 11 box. The existing 981 server / 504 client / 77 python suites stay green
 throughout; all new code is TDD-first. Each criterion is tied to the CI check / test that proves it and
 the council gap or premortem mode it closes.
 

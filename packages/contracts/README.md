@@ -35,6 +35,20 @@ validate against the same files.
 - `schemas/approval-decision.schema.json` — `.harness/approvals/decided/<uuid>.json`.
   Its `commandHash` must equal the matching request's `commandHash`, so a stale
   or replayed decision cannot unblock a different command.
+- `schemas/harness-scaffold.schema.json` — output of `harness scaffold --json`
+  (cockpit-driven new-project creation). Exported as `harnessScaffoldSchema`.
+- `schemas/fleet-run.schema.json` — a persisted Fleet run (per-run JSON). Run and
+  child status enums include the terminal `orphaned` state; children carry an
+  optional `pid`. Exported as `fleetRunSchema`.
+- `schemas/fleet-template.schema.json` — a saved, repeatable Fleet config.
+  Exported as `fleetTemplateSchema`.
+- `schemas/pipeline-phase.schema.json` — the canonical phase-contract object
+  (ADR-0006): a pipeline is ordered phases, each carrying its `id`, `agent`,
+  model `tier` (optional explicit `model`), `gate.required[]`, fan-out
+  `strategy` (`single` | `fleet`), and the `goal` it serves. Fleet is a phase
+  strategy; a Workflow is a degenerate single-phase pipeline compiled to this
+  same shape. **Defined and exported now; consumed by the Phase-2 spine** —
+  added additively (see `SCHEMA_VERSION` history below).
 
 ## Usage
 
