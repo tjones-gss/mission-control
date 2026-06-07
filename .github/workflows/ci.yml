@@ -30,12 +30,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # Node is needed for the cross-language schema-version parity check
+      # (test_contract.py shells out to read the JS-exported contract versions
+      # and asserts they equal the Python-resolved values — fail-closed on a
+      # one-sided change). The other Python tests don't need it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Install runtime deps
         run: python -m pip install --upgrade pip pyyaml jsonschema
       - name: Core + CLI tests
         # The `tests` package and the SDK's `sdk.python.tests` package share the
         # name `tests`, so they must be discovered in two separate invocations.
         run: python -m unittest tests.test_cli tests.test_gates tests.test_model_tiers tests.test_contract
+      - name: Schema-version cross-language parity
+        # Explicit gate (council MED #7): JS SCHEMA_VERSION / APPROVAL_SCHEMA_VERSION
+        # must equal the Python-resolved values, both derived from the single
+        # canonical packages/contracts/schema-version.json. Reds on drift.
+        run: python -m unittest tests.test_contract.TestSchemaVersionParity
       - name: SDK orchestrator tests
         env:
           PYTHONPATH: ${{ github.workspace }}/packages/harness/harness_core:${{ github.workspace }}/packages/harness/sdk/python

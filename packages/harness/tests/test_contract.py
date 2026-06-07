@@ -17,9 +17,10 @@ drift FAILS a test here too.
 Dev dependency:
     jsonschema  (pip install jsonschema)
 
-If jsonschema is not installed, the contract assertions are skipped with a
-clear message rather than failing — the suite stays green where the dev
-dependency is absent, but the check runs (and bites) wherever it is present.
+If jsonschema is not installed the contract assertions now ERROR (fail) with a
+clear install hint rather than silently skipping. CI installs `jsonschema`, so
+a silent skip would let the golden-sample/schema check quietly stop running and
+contract drift would ship unnoticed. Failing closed is the point.
 
 Run:
     python -m pytest packages/harness/tests/test_contract.py
@@ -28,6 +29,7 @@ Run:
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -47,22 +49,25 @@ SCHEMA_PATH = (
     / "harness-status.schema.json"
 )
 
-# jsonschema is a dev dependency. Import lazily so the module still loads (and
-# skips cleanly) on machines that don't have it installed.
+# jsonschema is a dev dependency. Import lazily so the module still LOADS on a
+# machine without it (so collection doesn't crash), but the contract test then
+# ERRORS rather than skipping — failing closed so the check can't silently stop
+# running in CI (which installs jsonschema).
 try:
     import jsonschema  # type: ignore
     from jsonschema import Draft202012Validator  # type: ignore
 
     _HAVE_JSONSCHEMA = True
-    _JSONSCHEMA_SKIP = ""
+    _JSONSCHEMA_ERROR = ""
 except ImportError:  # pragma: no cover - exercised only where dep is absent
     jsonschema = None  # type: ignore
     Draft202012Validator = None  # type: ignore
     _HAVE_JSONSCHEMA = False
-    _JSONSCHEMA_SKIP = (
+    _JSONSCHEMA_ERROR = (
         "jsonschema is required for the harness/cockpit contract test "
-        "(`pip install jsonschema`). Skipping so the suite stays green where "
-        "the dev dependency is absent."
+        "(`pip install jsonschema`). This test fails closed instead of "
+        "skipping: CI installs jsonschema, and a silent skip would let "
+        "contract drift ship unnoticed."
     )
 
 
@@ -80,10 +85,13 @@ def run_status_json():
     return proc
 
 
-@unittest.skipUnless(_HAVE_JSONSCHEMA, _JSONSCHEMA_SKIP)
 class TestStatusJsonContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Fail closed: if jsonschema is missing the whole class errors with a
+        # clear hint instead of silently skipping (CI installs jsonschema).
+        if not _HAVE_JSONSCHEMA:
+            raise AssertionError(_JSONSCHEMA_ERROR)
         cls.schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
         proc = run_status_json()
         if proc.returncode != 0:
@@ -202,6 +210,149 @@ class TestStatusJsonContract(unittest.TestCase):
             renamed,
             "rename simulation should have removed readiness_overall, so the "
             "presence assertion in the sibling test would fail on real drift",
+        )
+
+
+def _load_harness_module():
+    """Import the `tools/harness` CLI as a module.
+
+    `tools/harness` has no `.py` extension, so the default file finder won't
+    give it a loader. Use an explicit SourceFileLoader to read it as Python.
+    """
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
+
+    loader = SourceFileLoader("harness_cli_under_test", str(CLI))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+# The single canonical source of truth for the contracts package versions.
+# .../packages/harness/tests/test_contract.py
+#   parent(tests) -> harness, parent -> packages, /contracts/schema-version.json
+VERSION_SIDECAR_PATH = (
+    HARNESS_ROOT.parent / "contracts" / "schema-version.json"
+)
+
+
+class TestSchemaVersionParity(unittest.TestCase):
+    """Cross-language version parity (council MED #7, plan 1d).
+
+    The Python harness must DERIVE its version numbers from the single canonical
+    contracts sidecar (schema-version.json) rather than hand-copying them. This
+    test asserts the Python-resolved values equal that sidecar, so a one-sided
+    change (editing the Python constant OR the sidecar but not the other) turns
+    CI red. There are TWO independent version concepts and each is asserted:
+
+      - schemaVersion          : the contracts package version as a whole
+      - approvalSchemaVersion  : the per-document version stamped into
+                                 approval-request / approval-decision files
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sidecar_present = VERSION_SIDECAR_PATH.exists()
+        if cls.sidecar_present:
+            cls.sidecar = json.loads(
+                VERSION_SIDECAR_PATH.read_text(encoding="utf-8")
+            )
+        cls.mod = _load_harness_module()
+
+    def test_canonical_sidecar_exists(self):
+        self.assertTrue(
+            self.sidecar_present,
+            f"canonical version sidecar not found at {VERSION_SIDECAR_PATH}; "
+            "it is the single source both JS and Python derive from",
+        )
+
+    def test_python_does_not_hand_code_the_version(self):
+        """The CLI must expose a resolver that reads the sidecar, not a literal."""
+        self.assertTrue(
+            hasattr(self.mod, "_resolve_schema_versions"),
+            "harness CLI must expose `_resolve_schema_versions()` that derives "
+            "the versions from packages/contracts/schema-version.json",
+        )
+
+    def test_approval_schema_version_matches_sidecar(self):
+        if not self.sidecar_present:
+            self.skipTest("sidecar absent (standalone harness install)")
+        resolved = self.mod._resolve_schema_versions()
+        self.assertEqual(
+            resolved["approvalSchemaVersion"],
+            self.sidecar["approvalSchemaVersion"],
+            "Python-resolved approvalSchemaVersion drifted from the canonical "
+            "sidecar — a one-sided change. Update schema-version.json (the "
+            "single source), never hand-edit a copy.",
+        )
+        # The module-level constant the CLI actually stamps into files must
+        # equal the resolved value too (no stale hand-copied literal).
+        self.assertEqual(
+            self.mod.APPROVAL_SCHEMA_VERSION,
+            self.sidecar["approvalSchemaVersion"],
+            "APPROVAL_SCHEMA_VERSION constant drifted from the canonical sidecar",
+        )
+
+    def test_javascript_and_python_resolve_the_same_versions(self):
+        """The actual cross-language gate: JS-exported == Python-resolved.
+
+        Both sides DERIVE from the sidecar, so this is the test that bites a
+        one-sided change — e.g. someone re-hardcodes a literal on either side, or
+        the JS index stops reading the sidecar. It shells out to Node to read the
+        real exported constants from @mission-control/contracts and compares them
+        to the Python resolver. Skipped only if Node isn't on PATH (Python-only
+        CI lane); the cockpit lane always has Node.
+        """
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not on PATH (Python-only environment)")
+        contracts_index = (
+            HARNESS_ROOT.parent / "contracts" / "index.js"
+        ).resolve()
+        if not contracts_index.exists():
+            self.skipTest("contracts package absent (standalone harness install)")
+        script = (
+            "import('file://' + process.argv[1])"
+            ".then(m => process.stdout.write(JSON.stringify({"
+            "schemaVersion: m.SCHEMA_VERSION, "
+            "approvalSchemaVersion: m.APPROVAL_SCHEMA_VERSION})))"
+        )
+        proc = subprocess.run(
+            [node, "--input-type=module", "-e", script, str(contracts_index)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"failed to read JS contract versions:\nSTDERR:\n{proc.stderr}",
+        )
+        js = json.loads(proc.stdout)
+        py = self.mod._resolve_schema_versions()
+        self.assertEqual(
+            js["schemaVersion"],
+            py["schemaVersion"],
+            "JS SCHEMA_VERSION and Python-resolved schemaVersion DRIFTED — a "
+            "one-sided change. Both must derive from schema-version.json.",
+        )
+        self.assertEqual(
+            js["approvalSchemaVersion"],
+            py["approvalSchemaVersion"],
+            "JS APPROVAL_SCHEMA_VERSION and Python-resolved approvalSchemaVersion "
+            "DRIFTED — a one-sided change.",
+        )
+
+    def test_package_schema_version_matches_sidecar(self):
+        if not self.sidecar_present:
+            self.skipTest("sidecar absent (standalone harness install)")
+        resolved = self.mod._resolve_schema_versions()
+        self.assertEqual(
+            resolved["schemaVersion"],
+            self.sidecar["schemaVersion"],
+            "Python-resolved package schemaVersion drifted from the canonical "
+            "sidecar — update schema-version.json, the single source.",
         )
 
 

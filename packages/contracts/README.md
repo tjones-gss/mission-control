@@ -49,8 +49,25 @@ import {
 
 ## Versioning
 
-The current contract version is exported as `SCHEMA_VERSION` (and mirrored in
-`package.json` as `schemaVersion`). **Bump `schemaVersion` on any breaking
-change** to a schema (renamed/removed field, tightened required set, changed
-type or enum). Both the cockpit and the harness key off this number to detect an
-incompatible peer.
+`schema-version.json` is the **single canonical source of truth** for the
+contract versions. Both this JS package and the Python harness
+(`packages/harness/tools/harness`) DERIVE their numbers from it — neither
+hand-copies the other. A cross-language parity test
+(`packages/harness/tests/test_contract.py::TestSchemaVersionParity`) fails CI on
+a one-sided change. To bump a version, edit `schema-version.json` only.
+
+Two independent concepts live in the sidecar:
+
+- **`schemaVersion`** — the contracts package version as a whole, exported as
+  `SCHEMA_VERSION`. **Bump it on any breaking change** to a schema
+  (renamed/removed field, tightened required set, changed type or enum), and
+  additively when adding a new schema. Both the cockpit and the harness key off
+  this number to detect an incompatible peer.
+- **`approvalSchemaVersion`** — a *separate* version: the per-document
+  `schemaVersion` integer stamped into the `approval-request` /
+  `approval-decision` files the harness writes under `.harness/approvals/**`.
+  Exported as `APPROVAL_SCHEMA_VERSION`. It is versioned independently of
+  `schemaVersion` (the two are deliberately allowed to differ).
+
+`package.json`'s `schemaVersion` is kept in sync with the sidecar for display
+purposes but is not read by code.
