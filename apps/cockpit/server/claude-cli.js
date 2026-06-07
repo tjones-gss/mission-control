@@ -45,6 +45,30 @@ export function withStreamJsonVerbose(args) {
   return [...args, '--verbose']
 }
 
+// Resolve how to spawn the claude bin WITHOUT ever passing user-controlled args
+// through a shell. Spawning a .cmd/.bat/.ps1 directly needs shell:true on Node
+// >=20.12 (CVE-2024-27980), but shell:true splices the args into a command line
+// that cmd.exe/PowerShell then RE-PARSES — so shell metacharacters in the prompt,
+// --name, PRD/spec fields (`; & | > $() ` backticks ` %VAR%`) become host command
+// execution. Instead we invoke the interpreter explicitly and hand it the script
+// plus args as a DISCRETE argv array with shell:false, so Node quotes each element
+// and the interpreter receives them as literal arguments — closing the injection
+// vector on exactly the Windows install (npm-shim .cmd / PS-only .ps1) where it bites.
+// A resolved .exe is spawned directly (shell:false), which was always safe.
+export function buildSpawn(bin, args) {
+  if (!isShellScript(bin)) return { command: bin, commandArgs: args }
+  const lower = bin.toLowerCase()
+  if (lower.endsWith('.ps1')) {
+    return {
+      command: 'powershell.exe',
+      commandArgs: ['-NoProfile', '-NonInteractive', '-File', bin, ...args],
+    }
+  }
+  // .cmd / .bat — `cmd.exe /d /s /c <bin> <args...>`. /d skips AutoRun, /s + the
+  // discrete argv keeps cmd from stripping/!-expanding our quotes.
+  return { command: 'cmd.exe', commandArgs: ['/d', '/s', '/c', bin, ...args] }
+}
+
 /**
  * Like runClaude but also returns a cancel() function that kills the child
  * process. The promise rejects with an error if cancel() is called.
@@ -68,11 +92,11 @@ export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000 }) {
     }
     const spawnOpts = { env, stdio: ['pipe', 'pipe', 'pipe'] }
     if (cwd) spawnOpts.cwd = cwd
-    // Node >=20.12 refuses to spawn .cmd/.bat without shell:true (CVE-2024-27980).
-    // For a resolved .exe absolute path, shell:false is correct and safer.
-    if (isShellScript(bin)) spawnOpts.shell = true
-
-    const child = spawn(bin, withStreamJsonVerbose(args), spawnOpts)
+    // shell:false ALWAYS. For .cmd/.bat/.ps1, buildSpawn routes through the
+    // interpreter explicitly so args stay literal argv (no shell re-parse) — see
+    // buildSpawn for the CVE-2024-27980 / injection rationale.
+    const { command, commandArgs } = buildSpawn(bin, withStreamJsonVerbose(args))
+    const child = spawn(command, commandArgs, spawnOpts)
     childRef = child
 
     // Close stdin immediately — claude CLI waits for EOF on stdin when it is a pipe
