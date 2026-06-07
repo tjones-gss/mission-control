@@ -55,7 +55,10 @@ for destructive operations is OS-level sandboxing.
     and save/replay **templates** (`/api/fleet/templates`, `POST /api/fleet
     { template }`). These patterns are implemented **natively in the Fleet runner**,
     not by embedding the Claude Code Workflow engine (which is part of the agent
-    runtime, not an importable library for the Express server) — see ADR-003 §Phase 4.
+    runtime, not an importable library for the Express server) — see
+    `packages/harness/docs/adrs/ADR-003-fleet-meta-orchestrator.md` §Phase 4. (The
+    monorepo ADR index lives at `docs/adr/`; see ADR-0006 for the canonical
+    orchestration model.)
 - **`packages/harness`** — the harness control plane, "the rails." Python. An
   opt-in, per-project guardrail layer that agents can run *inside*. Not an npm
   workspace.
