@@ -78,7 +78,7 @@ export function buildSpawn(bin, args) {
  * @param {number} [options.timeoutMs=120000]
  * @returns {{ promise: Promise<{ stdout: string, stderr: string, exitCode: number }>, cancel: () => void }}
  */
-export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000 }) {
+export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000, onSpawn } = {}) {
   const env = CLEANED_ENV
   let childRef = null
   let cancelledFlag = false
@@ -98,6 +98,15 @@ export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000 }) {
     const { command, commandArgs } = buildSpawn(bin, withStreamJsonVerbose(args))
     const child = spawn(command, commandArgs, spawnOpts)
     childRef = child
+    // Optional spawn hook — lets a caller capture the live child (e.g. its pid for
+    // a durable registry). Best-effort: a throwing hook must never break the spawn.
+    if (typeof onSpawn === 'function') {
+      try {
+        onSpawn(child)
+      } catch {
+        /* a faulty hook must not abort the run */
+      }
+    }
 
     // Close stdin immediately — claude CLI waits for EOF on stdin when it is a pipe
     child.stdin.end()

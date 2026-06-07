@@ -47,6 +47,10 @@ export const pipelinePhaseSchema = loadSchema("pipeline-phase.schema.json");
 //   5: additive — added the `pipeline-phase` schema (ADR-0006 canonical
 //      phase-contract object). Non-breaking: a new optional schema, no change to
 //      existing shapes.
+//   6: additive — Durable Fleet (item 1g). Extended `fleet-run` with the TERMINAL
+//      `orphaned` run + child status (boot reconciler reaps non-terminal runs left
+//      by a restart) and the durable child `pid` registry field. Non-breaking: new
+//      optional values/field on the permissive (additionalProperties:true) schema.
 // Sourced from schema-version.json so the Python side derives the same number.
 export const SCHEMA_VERSION = versionSidecar.schemaVersion;
 

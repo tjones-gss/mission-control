@@ -12,10 +12,10 @@
 //   - the fixed diff is APPROVED and synthesis runs.
 //
 // It also carries the 1g ACCEPTANCE TEST: a kill-and-restart durability case that
-// encodes the invariant "no run wedged at status:'running' after a restart". The
-// reconciler is item 1g and does not exist yet, so that case is written with
-// it.fails(...) — it is EXPECTED to fail today and MUST be flipped to a normal
-// passing it() when 1g lands the boot reconciler (reconcileFleetRuns).
+// encodes the invariant "no run wedged at status:'running' after a restart". Item
+// 1g landed the boot reconciler (reconcileFleetRuns), so that case is now a normal
+// passing it(): after a simulated restart it asserts the wedged run is reaped to a
+// terminal status and its orphaned children are reported.
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
@@ -193,49 +193,46 @@ describe('e2e: real-child Fleet verify→reject→informed-retry→synthesis', (
 })
 
 describe('e2e: Fleet durability across a hard restart (1g ACCEPTANCE TEST)', () => {
-  // EXPECTED-TO-FAIL until item 1g lands the boot reconciler. The body encodes
-  // the invariant "no run is left wedged at status:'running' after a restart".
-  // Today nothing reconciles the on-disk run, so the wedged 'running' persists
-  // and the final assertion throws — which is exactly what it.fails asserts. When
-  // 1g ships reconcileFleetRuns, this MUST be converted to a normal passing it().
-  it.fails(
-    'leaves NO run wedged at status:running after a simulated restart [pending 1g]',
-    async () => {
-      // 1) Start a real run so a genuine run JSON lands on disk, then (step 2)
-      //    force it back to the wedged shape a hard mid-run kill would leave —
-      //    a persisted 'running' run whose in-memory lifecycle is gone.
-      const res = await startFleetRun({
-        goal: 'long running mid-flight work',
-        children: [{ cwd: repoDir, prompt: 'work that is interrupted' }],
-      })
-      expect(res.ok).toBe(true)
-      createdRunIds.push(res.id)
+  // The body encodes the invariant "no run is left wedged at status:'running'
+  // after a restart". Item 1g's boot reconciler scans DATA_DIR on boot and reaps
+  // any non-terminal run whose process is gone to the terminal 'orphaned' state.
+  it('leaves NO run wedged at status:running after a simulated restart', async () => {
+    // 1) Start a real run so a genuine run JSON lands on disk, then (step 2)
+    //    force it back to the wedged shape a hard mid-run kill would leave —
+    //    a persisted 'running' run whose in-memory lifecycle is gone.
+    const res = await startFleetRun({
+      goal: 'long running mid-flight work',
+      children: [{ cwd: repoDir, prompt: 'work that is interrupted' }],
+    })
+    expect(res.ok).toBe(true)
+    createdRunIds.push(res.id)
 
-      // Let the run settle in-memory first so no async persist races our forced
-      // write below (the runner early-acks; children settle on a later tick).
-      await waitForRun(res.id, (s) => s.status !== 'running', { timeoutMs: 20_000 })
+    // Let the run settle in-memory first so no async persist races our forced
+    // write below (the runner early-acks; children settle on a later tick).
+    await waitForRun(res.id, (s) => s.status !== 'running', { timeoutMs: 20_000 })
 
-      // 2) Simulate a hard kill mid-run: write the on-disk run back to a
-      //    non-terminal 'running' state with a 'running' child (as it would look
-      //    if the server died before children settled), then wipe in-memory state.
-      const onDisk = getFleetRun(res.id)
-      onDisk.status = 'running'
-      onDisk.children.forEach((c) => {
-        c.status = 'running'
-      })
-      fs.writeFileSync(path.join(DATA_DIR, `${res.id}.json`), JSON.stringify(onDisk, null, 2))
-      __resetFleet() // fresh module registries == a restarted process
+    // 2) Simulate a hard kill mid-run: write the on-disk run back to a
+    //    non-terminal 'running' state with a 'running' child (as it would look
+    //    if the server died before children settled), then wipe in-memory state.
+    const onDisk = getFleetRun(res.id)
+    onDisk.status = 'running'
+    onDisk.children.forEach((c) => {
+      c.status = 'running'
+    })
+    fs.writeFileSync(path.join(DATA_DIR, `${res.id}.json`), JSON.stringify(onDisk, null, 2))
+    __resetFleet() // fresh module registries == a restarted process
 
-      // 3) The boot reconciler (1g) must scan DATA_DIR, find this non-terminal
-      //    run whose process is gone, and move it to a terminal state (orphaned /
-      //    failed / succeeded) — never leaving it wedged at 'running'.
-      const mod = await import('../fleet/fleet-runner.js')
-      expect(typeof mod.reconcileFleetRuns).toBe('function') // 1g must export this
-      await mod.reconcileFleetRuns()
+    // 3) The boot reconciler (1g) scans DATA_DIR, finds this non-terminal run
+    //    whose process is gone, and moves it to the terminal 'orphaned' state.
+    const mod = await import('../fleet/fleet-runner.js')
+    expect(typeof mod.reconcileFleetRuns).toBe('function')
+    await mod.reconcileFleetRuns()
 
-      // THE INVARIANT: after a restart + reconcile, no run is wedged at 'running'.
-      const after = getFleetRun(res.id)
-      expect(after.status).not.toBe('running')
-    },
-  )
+    // THE INVARIANT: after a restart + reconcile, no run is wedged at 'running';
+    // the run is terminal and its interrupted children are reported as orphaned.
+    const after = getFleetRun(res.id)
+    expect(after.status).not.toBe('running')
+    expect(after.status).toBe('orphaned')
+    expect(after.children.every((c) => c.status === 'orphaned')).toBe(true)
+  })
 })

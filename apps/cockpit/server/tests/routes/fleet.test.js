@@ -75,7 +75,7 @@ import { awaitNewSession } from '../../lib/pending-session.js'
 import { atomicWriteJson } from '../../lib/atomic-write.js'
 import { getQueryStatus, resolveApproval } from '../../pty-session.js'
 import { router } from '../../routes/fleet.js'
-import { __resetFleet, DATA_DIR, TEMPLATES_DIR } from '../../fleet/fleet-runner.js'
+import { __resetFleet, resetKillSwitch, DATA_DIR, TEMPLATES_DIR } from '../../fleet/fleet-runner.js'
 
 const app = express()
 app.use(express.json())
@@ -105,6 +105,7 @@ beforeEach(() => {
   fsState.dirs.clear()
   fsState.files.clear()
   __resetFleet()
+  resetKillSwitch()
   // Default child spawn: stays pending so children remain 'running' and the run
   // key stays held (mirrors the execute "ack wins" path).
   runClaudeCancellable.mockReturnValue({ promise: new Promise(() => {}), cancel: vi.fn() })
@@ -600,5 +601,38 @@ describe('Fleet templates — save / list / launch-from-template', () => {
     const res = await request(app).get('/templates')
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('templates')
+  })
+})
+
+describe('global hard kill-switch route', () => {
+  it('GET /kill reports disengaged by default and is NOT matched as /:id', async () => {
+    const res = await request(app).get('/kill')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ engaged: false })
+  })
+
+  it('POST /kill engages the switch; afterwards a new run is refused with 503', async () => {
+    whitelist(A)
+    const kill = await request(app).post('/kill')
+    expect(kill.status).toBe(202)
+    expect(kill.body.ok).toBe(true)
+    expect(kill.body.engaged).toBe(true)
+
+    expect((await request(app).get('/kill')).body.engaged).toBe(true)
+
+    // A start request while engaged is refused before any spawn.
+    const res = await request(app)
+      .post('/')
+      .send({ goal: 'blocked', children: [{ cwd: A, prompt: 'x' }] })
+    expect(res.status).toBe(503)
+    expect(runClaudeCancellable).not.toHaveBeenCalled()
+  })
+
+  it('DELETE /kill disengages the switch and re-arms the line', async () => {
+    await request(app).post('/kill')
+    const res = await request(app).delete('/kill')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ ok: true, engaged: false })
+    expect((await request(app).get('/kill')).body.engaged).toBe(false)
   })
 })
