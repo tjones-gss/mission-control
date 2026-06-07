@@ -75,6 +75,18 @@ jobs:
       - name: Install client deps
         working-directory: apps/cockpit/client
         run: npm ci
+      # Root workspace install, LAST. This creates the
+      # node_modules/@mission-control/contracts symlink that the server suite
+      # imports (`@mission-control/contracts`) — without it the contract test
+      # fails with ERR_MODULE_NOT_FOUND in CI even though it passes locally,
+      # where a root `npm install` has already linked the workspace. It must run
+      # AFTER the apps/cockpit install above: a `npm ci` inside the apps/cockpit
+      # workspace member prunes this root symlink, so installing the root last
+      # is what keeps it intact for the test steps. The root lock
+      # (mission-control) covers the apps/cockpit + packages/contracts
+      # workspaces only.
+      - name: Install root workspaces (links @mission-control/contracts)
+        run: npm ci
       - name: Lint (prettier --check)
         working-directory: apps/cockpit
         run: npm run lint
@@ -112,6 +124,12 @@ jobs:
         run: npm ci
       - name: Install client deps
         working-directory: apps/cockpit/client
+        run: npm ci
+      # Root workspace install, LAST — same reason as the cockpit job: it links
+      # node_modules/@mission-control/contracts (imported transitively by the
+      # server e2e) and must run after the apps/cockpit install, which would
+      # otherwise prune the symlink.
+      - name: Install root workspaces (links @mission-control/contracts)
         run: npm ci
       # The Fleet e2e spawns a real (stub) subprocess in a temp git repo.
       - name: Fleet e2e (real-subprocess reject/retry lane)
