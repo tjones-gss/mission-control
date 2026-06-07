@@ -19,6 +19,10 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -28,6 +32,8 @@ import {
   getKnownConductorRoots,
   readRunFile,
 } from '../../parsers/conductor.js'
+import { emit } from '../../sse.js'
+import { isDegraded, _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 const PROJECTS = path.join(os.homedir(), '.claude', 'projects')
 const PROJECT_A = 'C:\\projects\\foo'
@@ -50,6 +56,7 @@ function statusJson(overrides = {}) {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 // getSessionCwds() moved to lib/session-discovery.js — see its own test there.
@@ -185,9 +192,52 @@ describe('getConductorRuns()', () => {
     expect(getConductorRuns()[0].taskIters).toEqual({ 't-1': 4 })
   })
 
-  it('returns [] when status.json is malformed', () => {
+  it('surfaces a degraded run (NOT a silent []) when status.json is present but unparseable', () => {
+    // A present-but-unparseable status.json must not silently drop the run —
+    // that renders the dashboard as "no conductor runs" when a run is in fact
+    // governing the project. Surface a distinguishable degraded run entry AND a
+    // persistent parser_degraded SSE event.
     setupSingleRunWithStatus('{not json')
-    expect(getConductorRuns()).toEqual([])
+    const runs = getConductorRuns()
+    expect(runs).toHaveLength(1)
+    expect(isDegraded(runs[0])).toBe(true)
+    expect(runs[0]).not.toEqual({})
+    // The degraded run still carries enough to locate it in the UI.
+    expect(runs[0].projectPath).toBe(PROJECT_A)
+    expect(runs[0].adr).toBe('0011')
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'conductor' }),
+    )
+  })
+
+  it('stays silent (no degrade) when status.json is absent — an empty .conductor dir is normal', () => {
+    // An ADR dir with no status.json yet is a normal in-flight state, not a
+    // format break. Drop it silently; do NOT emit parser_degraded.
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync
+      .mockReturnValueOnce([{ name: 'proj-a', isDirectory: () => true }])
+      .mockReturnValueOnce(['session-1.jsonl'])
+      .mockReturnValueOnce([{ name: '0011', isDirectory: () => true }])
+    fs.openSync.mockReturnValue(7)
+    fs.readSync.mockImplementation((_fd, buf) =>
+      buf.write(JSON.stringify({ cwd: PROJECT_A }) + '\n', 0, 'utf-8'),
+    )
+    fs.statSync.mockImplementation((p) => {
+      if (p === path.join(PROJECT_A, '.conductor')) {
+        return { isDirectory: () => true, isFile: () => false }
+      }
+      throw new Error('ENOENT')
+    })
+    // status.json read fails with ENOENT (absent), not a parse error
+    fs.readFileSync.mockImplementation(() => {
+      const err = new Error('ENOENT')
+      err.code = 'ENOENT'
+      throw err
+    })
+    const runs = getConductorRuns()
+    expect(runs).toEqual([])
+    expect(emit).not.toHaveBeenCalledWith('parser_degraded', expect.anything())
   })
 })
 

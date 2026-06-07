@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { getSessionCwds } from '../lib/session-discovery.js'
+import { signalDegraded } from '../lib/claude-format.js'
 
 const PHASES = new Set([
   'bootstrap',
@@ -54,13 +55,42 @@ function buildAdrPaths(projectPath, adr) {
 function buildRun(projectPath, adr) {
   const paths = buildAdrPaths(projectPath, adr)
 
-  let status
+  // Distinguish ABSENT status.json (a normal in-flight ADR dir — drop silently)
+  // from PRESENT-BUT-UNPARSEABLE (the run exists but we can't read its state).
+  // The latter must NOT silently vanish from the dashboard as "no runs"; that
+  // hides a governing run. Surface a degraded run marker + a persistent SSE.
+  let raw
   try {
-    status = JSON.parse(fs.readFileSync(paths.status, 'utf-8'))
+    raw = fs.readFileSync(paths.status, 'utf-8')
   } catch {
+    // ENOENT / unreadable — absent at this ADR. Normal; drop silently.
     return null
   }
-  if (!status || typeof status !== 'object') return null
+  if (!raw || !raw.trim()) {
+    // Present-but-empty status.json is an in-flight stub — also normal.
+    return null
+  }
+  let status
+  try {
+    status = JSON.parse(raw)
+  } catch {
+    return signalDegraded('conductor', 'parse-failed', {
+      filePath: paths.status,
+      projectPath,
+      adr,
+      projectLabel: path.basename(projectPath),
+    })
+  }
+  if (!status || typeof status !== 'object') {
+    // Valid JSON but not an object (e.g. a bare `null` or `42`) — the shape
+    // changed under us. Treat as degraded, not a silent drop.
+    return signalDegraded('conductor', 'format-change', {
+      filePath: paths.status,
+      projectPath,
+      adr,
+      projectLabel: path.basename(projectPath),
+    })
+  }
 
   const phase = PHASES.has(status.phase) ? status.phase : 'bootstrap'
   const escalationReason =

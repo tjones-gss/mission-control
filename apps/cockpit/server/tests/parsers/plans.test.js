@@ -22,11 +22,18 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getAllPlans, getPlanByFilename } from '../../parsers/plans.js'
+import { emit } from '../../sse.js'
+import { _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 describe('getAllPlans()', () => {
@@ -80,6 +87,38 @@ describe('getAllPlans()', () => {
     const result = getAllPlans()
     expect(result).toHaveLength(1)
     expect(result[0].filename).toBe('plan.md')
+  })
+
+  it('emits a persistent parser_degraded SSE event when the plans dir is present but unreadable', () => {
+    // The directory exists (existsSync true) but the listing itself fails — a
+    // permission flip or a race. That is NOT "no plans"; surface it as a
+    // persistent degraded signal rather than a silent empty list.
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockImplementation(() => {
+      throw new Error('EACCES')
+    })
+
+    expect(getAllPlans()).toEqual([])
+    expect(emit).toHaveBeenCalledTimes(1)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'plans' }),
+    )
+  })
+
+  it('does not emit parser_degraded when the plans dir is absent — that is normal', () => {
+    fs.existsSync.mockReturnValue(false)
+
+    expect(getAllPlans()).toEqual([])
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('does not emit parser_degraded when the dir is present but empty — that is normal', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue([])
+
+    expect(getAllPlans()).toEqual([])
+    expect(emit).not.toHaveBeenCalled()
   })
 
   it('skips files that throw during read', () => {

@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { signalDegraded } from '../lib/claude-format.js'
 
 const PLANS_DIR = path.join(os.homedir(), '.claude', 'plans')
 
@@ -25,7 +26,12 @@ export function getAllPlans() {
         // skip files that fail to read
       }
     }
-  } catch {
+  } catch (err) {
+    // The dir EXISTS (existsSync passed) but listing it threw — a permission
+    // flip or a race, not "no plans." An absent dir returns above and stays
+    // silent; this present-but-unreadable case is DEGRADED, surfaced as a
+    // persistent signal rather than a silent empty list.
+    signalDegraded('plans', 'read-failed', { dir: PLANS_DIR, err: String(err) })
     return []
   }
 

@@ -15,11 +15,18 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getSessionMessages } from '../../parsers/messages.js'
+import { emit } from '../../sse.js'
+import { isDegraded, _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 function makeProjectDirEntry(name) {
@@ -252,6 +259,35 @@ describe('getSessionMessages()', () => {
     const result = getSessionMessages('sess-1')
     expect(result.messages).toHaveLength(1)
     expect(result.messages[0].uuid).toBe('has-uuid')
+  })
+
+  it('returns a degraded marker (not an empty message list) when JSONL is present but no lines parse', () => {
+    // The session file has content (lines > 0) but not a single line is valid
+    // JSON — the JSONL shape likely changed under us. Returning messages:[]
+    // would render "no messages" when the conversation is actually there but
+    // unreadable. Surface a distinguishable degraded marker + a persistent SSE.
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
+    fs.readFileSync.mockReturnValue('{not json\n{also not json\nplain text')
+
+    const result = getSessionMessages('sess-1')
+    expect(isDegraded(result)).toBe(true)
+    expect(result).not.toMatchObject({ messages: [] })
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'messages' }),
+    )
+  })
+
+  it('stays silent (empty, not degraded) for a genuinely empty session file', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue([makeProjectDirEntry('C--project')])
+    fs.readFileSync.mockReturnValue('')
+
+    const result = getSessionMessages('sess-1')
+    expect(isDegraded(result)).toBe(false)
+    expect(result).toMatchObject({ sessionId: 'sess-1', messages: [] })
+    expect(emit).not.toHaveBeenCalled()
   })
 
   it('returns null when readFileSync throws', () => {

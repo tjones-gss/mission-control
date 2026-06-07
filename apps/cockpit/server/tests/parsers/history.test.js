@@ -15,11 +15,18 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getHistory } from '../../parsers/history.js'
+import { emit } from '../../sse.js'
+import { _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 describe('getHistory()', () => {
@@ -105,6 +112,51 @@ describe('getHistory()', () => {
 
     const result = getHistory()
     expect(result).toEqual([])
+  })
+})
+
+// ─── graceful-degrade: present-but-unparseable history.jsonl ──────────────────
+
+describe('getHistory() graceful degradation', () => {
+  it('emits a persistent parser_degraded SSE event when a non-empty history.jsonl has lines but none parse', () => {
+    // A format change leaves us with lines that no longer parse. We still return
+    // a tolerant [] (the route serializes an array), but the degradation must
+    // surface as a persistent SSE signal — NOT a silent empty history that reads
+    // as "you have run nothing."
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue('<<binary>>\n<<garbage>>')
+
+    expect(getHistory()).toEqual([])
+    expect(emit).toHaveBeenCalledTimes(1)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'history' }),
+    )
+  })
+
+  it('does not emit parser_degraded for an empty history.jsonl — that is normal', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue('')
+
+    expect(getHistory()).toEqual([])
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('does not emit parser_degraded when the file is absent — that is normal', () => {
+    fs.existsSync.mockReturnValue(false)
+
+    expect(getHistory()).toEqual([])
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('does not emit parser_degraded when at least one line parses (partial drift is tolerated silently)', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue(
+      JSON.stringify({ display: 'ok', timestamp: 1000 }) + '\n<<garbage>>',
+    )
+
+    expect(getHistory()).toHaveLength(1)
+    expect(emit).not.toHaveBeenCalled()
   })
 })
 

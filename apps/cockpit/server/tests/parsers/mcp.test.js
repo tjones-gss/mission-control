@@ -13,11 +13,18 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getMcpServers, getMcpServersForSession } from '../../parsers/mcp.js'
+import { emit } from '../../sse.js'
+import { _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 describe('getMcpServers()', () => {
@@ -79,11 +86,59 @@ describe('getMcpServers()', () => {
     expect(result).toHaveLength(3)
   })
 
-  it('handles malformed settings gracefully', () => {
+  it('flags degraded (NOT a silent empty list) when a present config is unparseable', () => {
+    // A present-but-unparseable MCP config must not read as "no servers" —
+    // tools/servers would silently vanish from the dashboard while the CLI is
+    // in fact loading them. Surface a distinguishable `degraded` flag on the
+    // returned list AND a persistent parser_degraded SSE event.
     fs.existsSync.mockReturnValue(true)
     fs.readFileSync.mockReturnValue('not json')
 
-    expect(getMcpServers()).toEqual([])
+    const result = getMcpServers()
+    // No servers could be read, but the list is FLAGGED degraded, not silent.
+    expect(result).toHaveLength(0)
+    expect(result.degraded).toBe(true)
+    expect(emit).toHaveBeenCalledWith('parser_degraded', expect.objectContaining({ parser: 'mcp' }))
+  })
+
+  it('does NOT flag degraded when configs are simply absent', () => {
+    // Absent files are normal (a fresh machine configures no MCP servers).
+    // Stay silent: no degraded flag, no SSE.
+    fs.existsSync.mockReturnValue(false)
+
+    const result = getMcpServers()
+    expect(result).toEqual([])
+    expect(result.degraded).toBeFalsy()
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('does NOT flag degraded for a present-but-empty config file', () => {
+    // A touched/empty config is normal, not a format break.
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockReturnValue('')
+
+    const result = getMcpServers()
+    expect(result).toHaveLength(0)
+    expect(result.degraded).toBeFalsy()
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('still surfaces valid servers but flags the list degraded when one source is unparseable', () => {
+    // ~/.claude.json is valid; ~/.claude/settings.json is broken. The valid
+    // servers must still render, but the list is flagged degraded so the UI can
+    // warn that some MCP state may be missing.
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockImplementation((p) => {
+      if (String(p).endsWith('.claude.json')) {
+        return JSON.stringify({ mcpServers: { good: { command: 'g' } } })
+      }
+      return '{broken json'
+    })
+
+    const result = getMcpServers()
+    expect(result.map((s) => s.name)).toEqual(['good'])
+    expect(result.degraded).toBe(true)
+    expect(emit).toHaveBeenCalledWith('parser_degraded', expect.objectContaining({ parser: 'mcp' }))
   })
 
   it('reads user-scope MCP servers from ~/.claude.json', () => {
@@ -143,6 +198,20 @@ describe('getMcpServersForSession()', () => {
     const names = result.map((s) => s.name)
     expect(names).toContain('global')
     expect(names).toContain('local-proj')
+  })
+
+  it('flags the list degraded when a project-level MCP config is unparseable', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockImplementation((p) => {
+      const s = String(p)
+      if (s.includes('myproject')) return '{broken'
+      return JSON.stringify({ mcpServers: { global: { command: 'g' } } })
+    })
+
+    const result = getMcpServersForSession('/tmp/myproject')
+    expect(result.map((s) => s.name)).toEqual(['global'])
+    expect(result.degraded).toBe(true)
+    expect(emit).toHaveBeenCalledWith('parser_degraded', expect.objectContaining({ parser: 'mcp' }))
   })
 
   it('returns user servers when cwd is null', () => {

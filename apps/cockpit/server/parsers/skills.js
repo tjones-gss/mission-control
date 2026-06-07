@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { signalDegraded } from '../lib/claude-format.js'
 
 const HOME = os.homedir()
 const CLAUDE_DIR = path.join(HOME, '.claude')
@@ -176,6 +177,7 @@ export function getAllSkills() {
   }
 
   // Plugin skills
+  let pluginsDegraded = null
   try {
     const settingsPath = path.join(CLAUDE_DIR, 'settings.json')
     const installedPath = path.join(CLAUDE_DIR, 'plugins', 'installed_plugins.json')
@@ -184,8 +186,22 @@ export function getAllSkills() {
       return buildResponse(userSkills, plugins, userCommands)
     }
 
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-    const installed = JSON.parse(fs.readFileSync(installedPath, 'utf-8'))
+    // settings.json + installed_plugins.json are PRESENT. Parse them with their
+    // own guard: if either is unparseable we must NOT silently fall through to
+    // plugins:[] — that reads as "no plugins installed" when plugins may in fact
+    // be installed. Surface a distinguishable degraded marker on the response +
+    // a persistent parser_degraded SSE so the dashboard can show a banner.
+    let settings
+    let installed
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      installed = JSON.parse(fs.readFileSync(installedPath, 'utf-8'))
+    } catch {
+      pluginsDegraded = signalDegraded('skills', 'parse-failed', {
+        filePath: `${settingsPath} | ${installedPath}`,
+      })
+      return buildResponse(userSkills, plugins, userCommands, pluginsDegraded)
+    }
     const enabledPlugins = settings.enabledPlugins || {}
 
     for (const [key, enabled] of Object.entries(enabledPlugins)) {
@@ -214,11 +230,15 @@ export function getAllSkills() {
     // ignore
   }
 
-  return buildResponse(userSkills, plugins, userCommands)
+  return buildResponse(userSkills, plugins, userCommands, pluginsDegraded)
 }
 
-function buildResponse(userSkills, plugins, userCommands = []) {
+function buildResponse(userSkills, plugins, userCommands = [], pluginsDegraded = null) {
   const totalSkillCount =
     userSkills.length + userCommands.length + plugins.reduce((sum, p) => sum + p.skillCount, 0)
-  return { userSkills, userCommands, plugins, totalSkillCount }
+  const response = { userSkills, userCommands, plugins, totalSkillCount }
+  // Only attach the flag when plugin config was present-but-unparseable. Absent
+  // config leaves it undefined so callers never confuse "broken" with "none."
+  if (pluginsDegraded) response.pluginsDegraded = pluginsDegraded
+  return response
 }

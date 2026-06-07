@@ -128,23 +128,27 @@ export function readClaudeJson(filePath, parser, opts = {}) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// FOLLOW-UP CHECKLIST (scope: 1e migrates the CRITICAL THREE only).
+// PARSER COVERAGE — every ~/.claude reader is now degrade-guarded (council HIGH #1).
 //
-// The critical three are migrated to use this module:
+// Critical three (1e):
 //   [x] parsers/sessions.js      — lines>0/parsed==0 → persistent degraded marker + SSE
 //   [x] parsers/config.js        — present-but-unparseable settings.json → degraded, not {}
 //   [x] parsers/hooks.js         — present-but-unparseable settings.json → degraded, not {}
 //   [x] lib/session-discovery.js — 8KB scan miss → degraded/diagnostic signal, not silent drop
 //
-// The REMAINING ~9 parsers still swallow format drift silently and should be
-// migrated in a follow-up (out of scope for 1e):
-//   [ ] parsers/mcp.js
-//   [ ] parsers/memory.js
-//   [ ] parsers/skills.js
-//   [ ] parsers/plans.js
-//   [ ] parsers/history.js
-//   [ ] parsers/tasks.js
-//   [ ] parsers/teams.js
-//   [ ] parsers/conductor.js
-//   [ ] parsers/messages.js
+// Remaining parsers (loose-end #3 — present-but-unparseable → degraded, never silent-empty):
+//   [x] parsers/mcp.js           — unparseable ~/.claude.json/settings → servers list flagged degraded
+//   [x] parsers/memory.js        — session JSONL all-lines-fail → degraded (cwd resolution)
+//   [x] parsers/skills.js        — unparseable installed_plugins.json/settings → response.pluginsDegraded
+//   [x] parsers/plans.js         — present-but-unreadable PLANS_DIR → degraded
+//   [x] parsers/history.js       — history.jsonl lines>0/parsed==0 → degraded
+//   [x] parsers/tasks.js         — task dir .json all-fail → degraded
+//   [x] parsers/teams.js         — unparseable team config.json / inbox → degraded element, not dropped
+//   [x] parsers/conductor.js     — unparseable status.json → degraded run, not a silent drop
+//   [x] parsers/messages.js      — session JSONL all-lines-fail → degraded, not empty message list
+//
+// Note: list-returning parsers (history/tasks/plans) keep returning the tolerant []
+// to their routes (wire contract) — the persistent deduped parser_degraded SSE event
+// IS the signal the client banner consumes. Object/array returns (mcp/memory/skills/
+// teams/conductor/messages) carry a distinguishable degraded marker/flag.
 // ───────────────────────────────────────────────────────────────────────────
