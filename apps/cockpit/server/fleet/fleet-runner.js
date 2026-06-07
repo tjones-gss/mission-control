@@ -49,7 +49,15 @@ export const HARD_REFUSE_CHILDREN = 8
 const CHILD_TIMEOUT_MS = 30 * 60 * 1000 // 30 min per child — long autonomous run.
 const SYNTH_TIMEOUT_MS = 10 * 60 * 1000
 const VERIFIER_TIMEOUT_MS = 10 * 60 * 1000
-const ACK_TIMEOUT_MS = 15_000
+// The session-ack wait. A child settles on CLI exit independently of this ack
+// (the ack only captures sessionId/cost), so a missed ack never wedges a run.
+// The gated e2e lane drives a stub bin with no watcher running, so the ack would
+// always burn the full timeout as a dangling timer; OVERSIGHT_FLEET_ACK_TIMEOUT_MS
+// lets that lane collapse it to a few ms. Unset in production = 15s, unchanged.
+const ACK_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.OVERSIGHT_FLEET_ACK_TIMEOUT_MS)
+  return Number.isFinite(raw) && raw > 0 ? raw : 15_000
+})()
 
 // Conservative pre-spawn cost estimate (USD) used when policy.perChildUsd is not
 // set but a budget IS. child.cost lags (Claude writes usage after the fact), so
