@@ -16,6 +16,14 @@ import { test, expect } from '@playwright/test'
 
 const API = 'http://localhost:3001'
 
+// State-changing routes are protected by the server's originGuard (CSRF
+// defense): a POST/PUT/DELETE is rejected with 403 forbidden_origin unless it
+// carries an Origin in the client allowlist (or a valid API key). A real
+// browser client always sends its Origin; the APIRequestContext does not, so
+// pin it to the cockpit's own client origin to exercise the routes as the
+// dashboard does.
+test.use({ extraHTTPHeaders: { Origin: 'http://localhost:5173' } })
+
 test.describe('api: dispatch surface', () => {
   test('GET /api/managers returns correct shape', async ({ request }) => {
     const res = await request.get(`${API}/api/managers`)

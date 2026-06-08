@@ -154,6 +154,68 @@ Optional on developer machines:
 
 ---
 
+## Track S — Runtime security hardening (Phase 1)
+
+This track is the cockpit **server runtime** security posture, not the eval framework.
+It records the Phase-1 hardening that closed the council HIGH gaps around how the
+cockpit spawns Claude and reads `~/.claude` state. The rails remain **best-effort
+accident-prevention, not a sandbox** — the real control for destructive operations
+is still OS-level sandboxing (per the project guide). These changes shrink the
+accidental-foot-gun surface; they do not make the cockpit adversary-proof.
+
+**Risks:** Shell-injection via spawned Claude CLI on Windows; an over-permissive
+default front-door spawn; an LLM in a deterministic approval-write path; a parse
+failure silently misreporting "no guardrails."
+
+**Checkboxes:**
+
+- [x] **1a — Windows `.cmd`/`.ps1` command-injection closed.** `claude-cli.js`
+      `buildSpawn()` spawns with `shell:false` **always**. A `.cmd`/`.bat` bin is invoked
+      via `cmd.exe /d /s /c <bin> <args…>` and a `.ps1` via
+      `powershell.exe -NoProfile -NonInteractive -File <bin> <args…>`, with the prompt /
+      `--name` / PRD/spec fields passed as **discrete literal argv** — never spliced into a
+      command line a shell re-parses. This removes the `shell:true`+raw-args path where
+      metacharacters (`; & | > $()` backticks `%VAR%`) in user fields became host command
+      execution (CVE-2024-27980 surface). `lib/claude-bin.js` `isShellScript()` is the
+      `.cmd/.bat/.ps1` discriminator; a resolved `.exe` is spawned directly (always safe).
+- [x] **1b — Front-door PTY no longer defaults to `--dangerously-skip-permissions`.**
+      `pty-session.js` `resolvePermissionArgs()` is now default-DENY: an explicit valid
+      `permissionMode` is honored; otherwise the new interactive session runs **guarded**
+      (`--permission-mode acceptEdits`) and only escalates to `--dangerously-skip-permissions`
+      when the operator has a **persisted per-cwd trust grant** in `lib/trust-store.js`
+      (default-deny: unknown cwd, missing/corrupt store, or any read failure all resolve to
+      "not trusted"; Windows paths case-folded so `C:\Foo` and `c:\foo\` are one entry).
+      Honest gap: **there is no UI/route to GRANT trust yet** — `trustCwd()` exists but is
+      unreachable from the dashboard, so in practice the front door currently runs guarded.
+- [x] **1c — LLM removed from the harness-approval trust path.** `fleet-runner.js`
+      `decideFleetEscalation()` (source `'harness'`) calls `runHarnessApprove()`
+      (`parsers/harness.js`) as a **direct `python` child_process subprocess** — no Claude
+      session in the deterministic approval-write path. The child cwd is whitelisted against
+      `getKnownHarnessRoots()` (`isKnownHarnessRoot`) before any shell-out, and the harness
+      CLI remains the **single writer** of the decided file (the cockpit never writes it).
+- [x] **1e — Parser degrade-guards: a parse failure can no longer misreport the safety
+      posture as "no hooks/guardrails."** `lib/claude-format.js` draws the load-bearing
+      distinction between ABSENT/EMPTY (normal — return the natural `[]`/`{}`) and
+      PRESENT-BUT-UNPARSEABLE (degraded — return a distinguishable `DEGRADED_MARKER` and emit
+      a deduped persistent `parser_degraded` SSE event). Every `~/.claude` reader is now
+      degrade-guarded (sessions, config, hooks, session-discovery, mcp, memory, skills, plans,
+      history, tasks, teams, conductor, messages), so a corrupt `settings.json` reads as
+      "we could not read your guardrails," never the dangerous silent "no guardrails active."
+      Client surfaces it via `ParserDegradedBanner` / a `parser_degraded` SSE channel.
+
+**Residual gaps (honest):** the trust-GRANT UI/route is deferred (1b above); the rails are
+accident-prevention, not an adversary-proof boundary; sandboxing is still the real control.
+
+**Key files:** [claude-cli.js](../../server/claude-cli.js),
+[lib/claude-bin.js](../../server/lib/claude-bin.js),
+[pty-session.js](../../server/pty-session.js),
+[lib/trust-store.js](../../server/lib/trust-store.js),
+[fleet/fleet-runner.js](../../server/fleet/fleet-runner.js),
+[parsers/harness.js](../../server/parsers/harness.js),
+[lib/claude-format.js](../../server/lib/claude-format.js)
+
+---
+
 ## Suggested session order (single maintainer)
 
 1. A + G — parser + YAML inventory.

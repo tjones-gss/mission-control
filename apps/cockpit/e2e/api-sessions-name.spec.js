@@ -7,6 +7,12 @@ import { test, expect } from '@playwright/test'
 
 const API = 'http://localhost:3001'
 
+// State-changing routes are Origin-pinned by the server's originGuard (CSRF
+// defense) — a POST without an allowlisted Origin gets 403. The browser client
+// always sends one; the APIRequestContext does not, so pin it to the cockpit's
+// own client origin.
+test.use({ extraHTTPHeaders: { Origin: 'http://localhost:5173' } })
+
 // Serial mode: all of these tests hit the shared session-names.json
 // file (which the server keeps in an in-memory cache + rewrites on
 // mutation). Running them in parallel produces last-write-wins races

@@ -1,0 +1,60 @@
+{
+  "id": "implement-oauth-2026-06-07t05-12-00-000z",
+  "goal": "implement OAuth login",
+  "createdAt": "2026-06-07T05:12:00.000Z",
+  "updatedAt": "2026-06-07T05:40:11.000Z",
+  "status": "orphaned",
+  "policy": { "maxConcurrency": 2 },
+  "spentUsd": 0.42,
+  "budgetRemaining": null,
+  "children": [
+    {
+      "idx": 0,
+      "cwd": "C:/proj/app",
+      "prompt": "wire up the OAuth callback route",
+      "workflow": null,
+      "childKind": "worker",
+      "quarantine": false,
+      "sessionId": "sess-abc123",
+      "pid": 48213,
+      "worktree": true,
+      "branch": "fleet/implement-oauth/c0",
+      "status": "orphaned",
+      "cost": {
+        "totalCost": 0.42,
+        "breakdown": { "input": 0.2, "output": 0.22 },
+        "family": "sonnet"
+      },
+      "escalation": null,
+      "error": "orphaned by server restart",
+      "rounds": 0,
+      "verdicts": [],
+      "verifiedBy": null
+    },
+    {
+      "idx": 1,
+      "cwd": "C:/proj/app",
+      "prompt": "add the token-refresh middleware",
+      "workflow": null,
+      "childKind": "worker",
+      "quarantine": false,
+      "sessionId": "sess-def456",
+      "pid": null,
+      "worktree": true,
+      "branch": "fleet/implement-oauth/c1",
+      "status": "succeeded",
+      "cost": null,
+      "escalation": null,
+      "error": null,
+      "rounds": 0,
+      "verdicts": [],
+      "verifiedBy": null
+    }
+  ],
+  "synthesis": {
+    "status": "skipped",
+    "sessionId": null,
+    "summary": "run orphaned by server restart — synthesis skipped",
+    "completedAt": "2026-06-07T05:40:11.000Z"
+  }
+}

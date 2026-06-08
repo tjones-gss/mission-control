@@ -1,25 +1,40 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { signalDegraded } from '../lib/claude-format.js'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude')
 const HOOKS_DIR = path.join(CLAUDE_DIR, 'hooks')
 const SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json')
 
 export function getHooksConfig() {
-  const config = readSettings()
+  const { settings, degraded } = readSettings()
   const scripts = readHookScripts()
-  const matrix = buildMatrix(config)
+  const matrix = buildMatrix(settings)
 
-  return { config: config.hooks || {}, scripts, matrix }
+  // `degraded` is critical: a present-but-unparseable settings.json must NOT be
+  // rendered as "no hooks active." When degraded, config:{} means "unknown",
+  // not "none" — the UI keys off the degraded flag to say so.
+  return { config: settings.hooks || {}, scripts, matrix, degraded }
 }
 
 function readSettings() {
+  let raw
   try {
-    if (!fs.existsSync(SETTINGS_PATH)) return {}
-    return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'))
+    if (!fs.existsSync(SETTINGS_PATH)) return { settings: {}, degraded: false }
+    raw = fs.readFileSync(SETTINGS_PATH, 'utf-8')
   } catch {
-    return {}
+    // Present (existsSync true) but unreadable → degraded, not "none".
+    signalDegraded('hooks', 'read-failed', { filePath: SETTINGS_PATH })
+    return { settings: {}, degraded: true }
+  }
+  if (!raw || !raw.trim()) return { settings: {}, degraded: false }
+  try {
+    const parsed = JSON.parse(raw)
+    return { settings: parsed && typeof parsed === 'object' ? parsed : {}, degraded: false }
+  } catch {
+    signalDegraded('hooks', 'parse-failed', { filePath: SETTINGS_PATH })
+    return { settings: {}, degraded: true }
   }
 }
 

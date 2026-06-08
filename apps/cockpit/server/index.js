@@ -23,6 +23,7 @@ import { router as healthRouter, setHealthReady } from './routes/health.js'
 import { router as conductorRouter } from './routes/conductor.js'
 import { router as harnessRouter } from './routes/harness.js'
 import { router as fleetRouter } from './routes/fleet.js'
+import { reconcileFleetRuns } from './fleet/fleet-runner.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
 import './intelligence/triggers.js'
@@ -88,4 +89,10 @@ const server = app.listen(config.port, config.host, () => {
   const watcher = startWatcher()
   setHealthReady()
   registerShutdown({ server, watcher })
+  // BOOT RECONCILER (item 1g) — symmetric to the lifecycle shutdown seam: on
+  // start, reap any Fleet run left non-terminal by a previous crash/restart so no
+  // run is wedged at 'running'. Fire-and-forget; a failure is logged, never fatal.
+  reconcileFleetRuns().catch((err) =>
+    logger.warn({ detail: err?.message || err }, 'fleet_boot_reconcile_failed'),
+  )
 })

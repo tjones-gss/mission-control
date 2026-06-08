@@ -15,11 +15,18 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getTasksForSession, getAllTaskSessions } from '../../parsers/tasks.js'
+import { emit } from '../../sse.js'
+import { _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 describe('getTasksForSession()', () => {
@@ -72,6 +79,51 @@ describe('getTasksForSession()', () => {
     const result = getTasksForSession('sess-abc')
     expect(result).toHaveLength(1)
     expect(fs.readFileSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('emits a persistent parser_degraded SSE event when .json task files are present but none parse', () => {
+    // The session has task files on disk, but every one fails to parse — a
+    // format change under us. We still return a tolerant [], but the degradation
+    // must surface as a persistent SSE signal rather than reading as "this
+    // session has no tasks."
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue(['1.json', '2.json'])
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error('bad JSON')
+    })
+
+    expect(getTasksForSession('sess-abc')).toEqual([])
+    expect(emit).toHaveBeenCalledTimes(1)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'tasks' }),
+    )
+  })
+
+  it('does not emit parser_degraded when the dir has no .json files — that is normal', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue(['notes.txt'])
+
+    expect(getTasksForSession('sess-abc')).toEqual([])
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('does not emit parser_degraded when the session dir is absent — that is normal', () => {
+    fs.existsSync.mockReturnValue(false)
+
+    expect(getTasksForSession('sess-abc')).toEqual([])
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('does not emit parser_degraded when at least one task file parses (partial drift tolerated)', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync.mockReturnValue(['1.json', 'bad.json'])
+    fs.readFileSync.mockReturnValueOnce(JSON.stringify({ id: '1' })).mockImplementationOnce(() => {
+      throw new Error('bad JSON')
+    })
+
+    expect(getTasksForSession('sess-abc')).toHaveLength(1)
+    expect(emit).not.toHaveBeenCalled()
   })
 
   it('returns tasks sorted correctly with single-digit and multi-digit ids', () => {

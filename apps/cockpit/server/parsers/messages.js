@@ -3,6 +3,7 @@ import path from 'path'
 import os from 'os'
 import { config } from '../lib/config.js'
 import { redact, hasSecrets } from '../utils/secretScanner.js'
+import { signalDegraded } from '../lib/claude-format.js'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude', 'projects')
 
@@ -128,6 +129,19 @@ export function getSessionMessages(sessionId, { limit, offset = 0 } = {}) {
         }
       })
       .filter(Boolean)
+
+    // Lines present but NONE parsed → the JSONL shape likely changed under us.
+    // (An empty file yields zero lines and is unremarkable — that falls through
+    // to the normal empty-messages response below.) Returning messages:[] here
+    // would render "no messages" when the conversation is in fact there but
+    // unreadable. Surface a distinguishable degraded marker + persistent SSE.
+    if (records.length === 0 && lines.length > 0) {
+      return signalDegraded('messages', 'format-change', {
+        filePath,
+        sessionId,
+        lineCount: lines.length,
+      })
+    }
 
     // Main thread only
     const mainRecords = records.filter((r) => !r.isSidechain).filter((r) => r.uuid)

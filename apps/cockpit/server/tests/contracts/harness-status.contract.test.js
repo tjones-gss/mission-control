@@ -27,10 +27,10 @@ const PROJECT = 'C:/golden-proj'
 // We exercise the REAL parser end-to-end (shapeSummary is private, so we go
 // through the public getHarnessProjects/getHarnessProjectByPath). To do that
 // without spawning a real python process, we mock:
-//   - conductor.getSessionCwds → the whitelisted root
+//   - session-discovery.getSessionCwds → the whitelisted root
 //   - fs.statSync → make the root look like a valid .harness project
 //   - node:child_process.spawn → emit the golden sample as stdout, exit 0
-vi.mock('../../parsers/conductor.js', () => ({
+vi.mock('../../lib/session-discovery.js', () => ({
   getSessionCwds: vi.fn(() => [PROJECT]),
 }))
 

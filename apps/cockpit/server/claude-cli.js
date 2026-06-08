@@ -26,6 +26,49 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
   return runClaudeCancellable({ args, cwd, timeoutMs }).promise
 }
 
+// The claude CLI rejects `--output-format stream-json` in print (-p) mode unless
+// `--verbose` is also present ("When using --print, --output-format=stream-json
+// requires --verbose"). Every stream-json spawn in the cockpit flows through
+// runClaudeCancellable, so we enforce that invariant ONCE here, at the spawn
+// boundary, instead of at each call site — scattering it across arg-builders is
+// exactly the drift that let three sites (compile, mission-execute, new-session)
+// ship without it. Idempotent, and a no-op for `--output-format json`
+// (intelligence/analyzer.js), which does not require --verbose.
+export function withStreamJsonVerbose(args) {
+  if (!Array.isArray(args)) return args
+  const i = args.indexOf('--output-format')
+  // Handle both the two-token form (--output-format stream-json) and the
+  // equals form (--output-format=stream-json) that the CLI also accepts.
+  const usesStreamJson =
+    (i !== -1 && args[i + 1] === 'stream-json') || args.includes('--output-format=stream-json')
+  if (!usesStreamJson || args.includes('--verbose')) return args
+  return [...args, '--verbose']
+}
+
+// Resolve how to spawn the claude bin WITHOUT ever passing user-controlled args
+// through a shell. Spawning a .cmd/.bat/.ps1 directly needs shell:true on Node
+// >=20.12 (CVE-2024-27980), but shell:true splices the args into a command line
+// that cmd.exe/PowerShell then RE-PARSES — so shell metacharacters in the prompt,
+// --name, PRD/spec fields (`; & | > $() ` backticks ` %VAR%`) become host command
+// execution. Instead we invoke the interpreter explicitly and hand it the script
+// plus args as a DISCRETE argv array with shell:false, so Node quotes each element
+// and the interpreter receives them as literal arguments — closing the injection
+// vector on exactly the Windows install (npm-shim .cmd / PS-only .ps1) where it bites.
+// A resolved .exe is spawned directly (shell:false), which was always safe.
+export function buildSpawn(bin, args) {
+  if (!isShellScript(bin)) return { command: bin, commandArgs: args }
+  const lower = bin.toLowerCase()
+  if (lower.endsWith('.ps1')) {
+    return {
+      command: 'powershell.exe',
+      commandArgs: ['-NoProfile', '-NonInteractive', '-File', bin, ...args],
+    }
+  }
+  // .cmd / .bat — `cmd.exe /d /s /c <bin> <args...>`. /d skips AutoRun, /s + the
+  // discrete argv keeps cmd from stripping/!-expanding our quotes.
+  return { command: 'cmd.exe', commandArgs: ['/d', '/s', '/c', bin, ...args] }
+}
+
 /**
  * Like runClaude but also returns a cancel() function that kills the child
  * process. The promise rejects with an error if cancel() is called.
@@ -35,7 +78,7 @@ export function runClaude({ args, cwd, timeoutMs = 120_000 }) {
  * @param {number} [options.timeoutMs=120000]
  * @returns {{ promise: Promise<{ stdout: string, stderr: string, exitCode: number }>, cancel: () => void }}
  */
-export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000 }) {
+export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000, onSpawn } = {}) {
   const env = CLEANED_ENV
   let childRef = null
   let cancelledFlag = false
@@ -49,12 +92,21 @@ export function runClaudeCancellable({ args, cwd, timeoutMs = 120_000 }) {
     }
     const spawnOpts = { env, stdio: ['pipe', 'pipe', 'pipe'] }
     if (cwd) spawnOpts.cwd = cwd
-    // Node >=20.12 refuses to spawn .cmd/.bat without shell:true (CVE-2024-27980).
-    // For a resolved .exe absolute path, shell:false is correct and safer.
-    if (isShellScript(bin)) spawnOpts.shell = true
-
-    const child = spawn(bin, args, spawnOpts)
+    // shell:false ALWAYS. For .cmd/.bat/.ps1, buildSpawn routes through the
+    // interpreter explicitly so args stay literal argv (no shell re-parse) — see
+    // buildSpawn for the CVE-2024-27980 / injection rationale.
+    const { command, commandArgs } = buildSpawn(bin, withStreamJsonVerbose(args))
+    const child = spawn(command, commandArgs, spawnOpts)
     childRef = child
+    // Optional spawn hook — lets a caller capture the live child (e.g. its pid for
+    // a durable registry). Best-effort: a throwing hook must never break the spawn.
+    if (typeof onSpawn === 'function') {
+      try {
+        onSpawn(child)
+      } catch {
+        /* a faulty hook must not abort the run */
+      }
+    }
 
     // Close stdin immediately — claude CLI waits for EOF on stdin when it is a pipe
     child.stdin.end()

@@ -43,6 +43,7 @@ import { ShortcutHelpOverlay } from './components/ShortcutHelpOverlay.jsx'
 import { DispatchDrawer, DispatchDrawerHandle } from './components/DispatchDrawer.jsx'
 import { DispatchSignal } from './components/DispatchSignal.jsx'
 import { NewSessionForm } from './components/NewSessionForm.jsx'
+import { ParserDegradedBanner } from './components/ParserDegradedBanner.jsx'
 import { projectLabel } from './utils/session.js'
 
 // Progressive disclosure: the core loop is always visible; power surfaces live
@@ -170,6 +171,10 @@ export default function App() {
   const [conductorVersion, setConductorVersion] = useState(0)
   const [harnessVersion, setHarnessVersion] = useState(0)
   const [fleetVersion, setFleetVersion] = useState(0)
+  // Parsers that reported a present-but-unparseable (degraded) ~/.claude read.
+  // Keyed by `${parser}:${reason}` so a banner shows the distinct failures
+  // without churning on repeated emits of the same one.
+  const [degradedParsers, setDegradedParsers] = useState([])
   // Per-run escalation dedupe: only fire sound + notification on the
   // transition into a paused/escalated state, not on every status.json
   // rewrite that keeps the same escalation_reason. Key = `${projectPath}::${adr}`,
@@ -299,6 +304,16 @@ export default function App() {
         }
         if (evt.type === 'fleet_update') {
           setFleetVersion((v) => v + 1)
+        }
+        if (evt.type === 'parser_degraded') {
+          const { parser, reason } = evt.data || {}
+          if (parser) {
+            setDegradedParsers((prev) => {
+              const key = `${parser}:${reason || ''}`
+              if (prev.some((d) => `${d.parser}:${d.reason || ''}` === key)) return prev
+              return [...prev, { parser, reason }]
+            })
+          }
         }
         if (evt.type === 'workflows_update') {
           refetchWorkflows?.()
@@ -516,6 +531,7 @@ export default function App() {
           </button>
         </nav>
       </header>
+      <ParserDegradedBanner degraded={degradedParsers} />
       {showNewSession && (
         <div className="md:hidden border-b border-gray-800 bg-gray-950/95">
           <NewSessionForm

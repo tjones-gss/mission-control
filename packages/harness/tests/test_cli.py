@@ -190,6 +190,88 @@ class TestHarnessStatus(unittest.TestCase):
         self.assertIn("missions", d)
 
 
+class TestHarnessScaffold(unittest.TestCase):
+    """`harness scaffold <mode>` creates a NEW harness project in an uninitialized dir."""
+
+    def setUp(self):
+        # A brand-new, empty target directory — NOT a harness project yet.
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-scaffold-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_scaffold_creates_project_in_empty_dir(self):
+        r = run_cli("-C", str(self.tmpdir), "scaffold", "idea-to-mvp", "--json")
+        self.assertEqual(r.returncode, 0, msg=f"{r.stdout}\n{r.stderr}")
+        # Core files exist.
+        self.assertTrue((self.tmpdir / ".harness/project-state.yml").exists())
+        self.assertTrue((self.tmpdir / ".harness/quality-gates.yml").exists(),
+                        "reusable config templates should be copied")
+        self.assertTrue((self.tmpdir / "pipelines/idea-to-mvp.yml").exists(),
+                        "the active mode's pipeline file must be present")
+        self.assertTrue((self.tmpdir / "AGENTS.md").exists())
+        # JSON contract.
+        out = json.loads(r.stdout)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["mode"], "idea-to-mvp")
+        self.assertIn("stage", out)
+        self.assertIn("phase", out)
+        self.assertIsInstance(out["created"], list)
+        self.assertTrue(len(out["created"]) > 0)
+
+    def test_scaffold_writes_clean_identity_not_the_harness_own_state(self):
+        """A fresh project must NOT inherit the harness package's own live state."""
+        r = run_cli("-C", str(self.tmpdir), "scaffold", "bugfix", "--json")
+        self.assertEqual(r.returncode, 0, msg=f"{r.stdout}\n{r.stderr}")
+        state = (self.tmpdir / ".harness/project-state.yml").read_text()
+        self.assertIn(f"name: {self.tmpdir.name}", state, "project name should be the target dir")
+        self.assertIn("mode: bugfix", state)
+        # None of the harness's own live-state leakage.
+        self.assertNotIn("MISSION-001-example", state)
+        self.assertNotIn("mock-run", state)
+        self.assertNotIn("adaptive-agentic-engineering-harness", state)
+        index = (self.tmpdir / ".harness/mission-index.yml").read_text()
+        self.assertNotIn("MISSION-001-example", index)
+
+    def test_scaffolded_project_is_a_working_harness_project(self):
+        sc = run_cli("-C", str(self.tmpdir), "scaffold", "feature-development", "--json")
+        self.assertEqual(sc.returncode, 0, msg=f"{sc.stdout}\n{sc.stderr}")
+        # The scaffolded tree must satisfy the CLI: status --json works end-to-end.
+        st = run_cli("-C", str(self.tmpdir), "status", "--json")
+        self.assertEqual(st.returncode, 0, msg=f"{st.stdout}\n{st.stderr}")
+        d = json.loads(st.stdout)
+        self.assertEqual(d["project"]["mode"], "feature-development")
+
+    def test_scaffolded_project_passes_check_cleanly(self):
+        """A fresh scaffold should be healthy — agent roles resolved, check exits 0."""
+        sc = run_cli("-C", str(self.tmpdir), "scaffold", "idea-to-mvp", "--json")
+        self.assertEqual(sc.returncode, 0, msg=f"{sc.stdout}\n{sc.stderr}")
+        chk = run_cli("-C", str(self.tmpdir), "check")
+        self.assertEqual(chk.returncode, 0,
+                         msg=f"scaffolded project is not healthy:\n{chk.stdout}\n{chk.stderr}")
+        self.assertNotIn("unresolved", chk.stdout.lower(),
+                         "pipeline agents should resolve to copied role files")
+
+    def test_scaffold_rejects_existing_without_force(self):
+        first = run_cli("-C", str(self.tmpdir), "scaffold", "bugfix", "--json")
+        self.assertEqual(first.returncode, 0, msg=f"{first.stdout}\n{first.stderr}")
+        second = run_cli("-C", str(self.tmpdir), "scaffold", "bugfix", "--json")
+        self.assertNotEqual(second.returncode, 0, "re-scaffolding without --force must fail")
+        out = json.loads(second.stdout)
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["error"], "already_initialized")
+        # --force lets it through.
+        forced = run_cli("-C", str(self.tmpdir), "scaffold", "bugfix", "--json", "--force")
+        self.assertEqual(forced.returncode, 0, msg=f"{forced.stdout}\n{forced.stderr}")
+
+    def test_scaffold_rejects_unknown_mode(self):
+        r = run_cli("-C", str(self.tmpdir), "scaffold", "wonky-mode", "--json")
+        self.assertNotEqual(r.returncode, 0)
+        out = json.loads(r.stdout)
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["error"], "invalid_mode")
+
+
 class TestModelTiersCheck(unittest.TestCase):
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-test-"))

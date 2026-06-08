@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { useApi } from '../../hooks/useApi.js'
 import { HarnessDetail } from './HarnessDetail.jsx'
+import { NewHarnessProjectDialog } from './NewHarnessProjectDialog.jsx'
 
 const MODE_BADGE = {
   'idea-to-mvp': 'bg-blue-900/60 text-blue-200',
@@ -60,8 +62,9 @@ function MasterRow({ project, selected, onSelect }) {
 }
 
 export function MissionControlTab({ harnessVersion }) {
-  const { data, loading, error } = useApi('/api/harness', [harnessVersion])
+  const { data, loading, error, refetch } = useApi('/api/harness', [harnessVersion])
   const [selectedKey, setSelectedKey] = useState(null)
+  const [showNewDialog, setShowNewDialog] = useState(false)
 
   const projects = useMemo(() => {
     const list = data?.projects || []
@@ -89,15 +92,32 @@ export function MissionControlTab({ harnessVersion }) {
             Mission Control
           </span>
           {data && <span className="ml-2 text-xs text-gray-500">{projects.length}</span>}
+          <button
+            onClick={() => setShowNewDialog(true)}
+            className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 hover:text-gray-100 hover:bg-gray-800 transition-colors"
+            title="Create a new harness project"
+          >
+            <Plus size={12} />
+            New
+          </button>
         </div>
         <div className="flex-1 overflow-auto px-2 py-2 space-y-1">
           {loading && !data && <div className="px-2 py-1 text-xs text-gray-600">Loading…</div>}
           {error && <div className="px-2 py-1 text-xs text-red-400">{error}</div>}
           {data && projects.length === 0 && (
-            <div className="px-2 py-3 text-xs text-gray-600">
-              No governed projects found. A project becomes visible here once it has a{' '}
-              <code className="text-gray-400">.harness/</code> directory and the harness CLI can
-              report its status.
+            <div className="px-2 py-3 space-y-2 text-xs text-gray-600">
+              <p>
+                No governed projects found. A project becomes visible here once it has a{' '}
+                <code className="text-gray-400">.harness/</code> directory and the harness CLI can
+                report its status.
+              </p>
+              <button
+                onClick={() => setShowNewDialog(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-500 transition-colors"
+              >
+                <Plus size={12} />
+                New harness project
+              </button>
             </div>
           )}
           {projects.map((project) => (
@@ -121,6 +141,18 @@ export function MissionControlTab({ harnessVersion }) {
           </div>
         )}
       </div>
+
+      {showNewDialog && (
+        <NewHarnessProjectDialog
+          onClose={() => setShowNewDialog(false)}
+          onCreated={() => {
+            setShowNewDialog(false)
+            // The watcher's harness_update will also bump harnessVersion, but
+            // refetch immediately so the new project shows without waiting.
+            refetch()
+          }}
+        />
+      )}
     </div>
   )
 }

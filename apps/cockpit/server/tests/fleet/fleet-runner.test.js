@@ -4,8 +4,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // a real claude session, never create a real worktree.
 vi.mock('../../parsers/harness.js', () => ({
   getKnownHarnessRoots: vi.fn().mockReturnValue([]),
+  runHarnessApprove: vi.fn(),
 }))
 vi.mock('../../claude-cli.js', () => ({
+  runClaude: vi.fn(),
   runClaudeCancellable: vi.fn(),
 }))
 vi.mock('../../lib/atomic-write.js', () => ({
@@ -52,8 +54,8 @@ vi.mock('fs', () => {
   return { ...api, default: { ...api } }
 })
 
-import { getKnownHarnessRoots } from '../../parsers/harness.js'
-import { runClaudeCancellable } from '../../claude-cli.js'
+import { getKnownHarnessRoots, runHarnessApprove } from '../../parsers/harness.js'
+import { runClaude, runClaudeCancellable } from '../../claude-cli.js'
 import { awaitNewSession } from '../../lib/pending-session.js'
 import { atomicWriteJson } from '../../lib/atomic-write.js'
 import { emit } from '../../sse.js'
@@ -62,6 +64,7 @@ import { getSessionById } from '../../parsers/sessions.js'
 import {
   startFleetRun,
   validateFleetRequest,
+  decideFleetEscalation,
   reconcileEscalationStatus,
   parseVerdict,
   spentUsd,
@@ -711,5 +714,122 @@ describe('fleet templates', () => {
         .status,
     ).toBe(400)
     expect((await saveFleetTemplate({ name: 'ok', goal: 'g', children: [] })).status).toBe(400)
+  })
+})
+
+describe('decideFleetEscalation — source "harness" is a DIRECT subprocess (no LLM)', () => {
+  // Seed a run with one escalated child rooted at a (mockable) known harness root.
+  function seedHarnessRun() {
+    seedRun({
+      id: 'fr-1',
+      goal: 'g',
+      status: 'running',
+      children: [{ idx: 0, cwd: A, status: 'escalated' }],
+    })
+  }
+
+  it('invokes the harness CLI with [approve, <requestId>, --allow] in child.cwd', async () => {
+    getKnownHarnessRoots.mockReturnValue([A])
+    runHarnessApprove.mockResolvedValue({ ok: true, stdout: 'approval rq-1 allow', stderr: '' })
+    seedHarnessRun()
+
+    const res = await decideFleetEscalation('fr-1', {
+      childIdx: 0,
+      source: 'harness',
+      decision: 'allow',
+      requestId: 'rq-1',
+    })
+
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(200)
+    expect(runHarnessApprove).toHaveBeenCalledTimes(1)
+    expect(runHarnessApprove).toHaveBeenCalledWith(A, 'rq-1', 'allow')
+    // The raw CLI output is surfaced back to the caller.
+    expect(res.raw).toContain('approval rq-1 allow')
+  })
+
+  it('passes --deny through for a deny decision', async () => {
+    getKnownHarnessRoots.mockReturnValue([A])
+    runHarnessApprove.mockResolvedValue({ ok: true, stdout: 'approval rq-1 deny', stderr: '' })
+    seedHarnessRun()
+
+    const res = await decideFleetEscalation('fr-1', {
+      childIdx: 0,
+      source: 'harness',
+      decision: 'deny',
+      requestId: 'rq-1',
+    })
+
+    expect(res.ok).toBe(true)
+    expect(runHarnessApprove).toHaveBeenCalledWith(A, 'rq-1', 'deny')
+  })
+
+  it('spawns NO claude session for a harness decision', async () => {
+    getKnownHarnessRoots.mockReturnValue([A])
+    runHarnessApprove.mockResolvedValue({ ok: true, stdout: 'ok', stderr: '' })
+    seedHarnessRun()
+
+    await decideFleetEscalation('fr-1', {
+      childIdx: 0,
+      source: 'harness',
+      decision: 'allow',
+      requestId: 'rq-1',
+    })
+
+    expect(runClaude).not.toHaveBeenCalled()
+    expect(runClaudeCancellable).not.toHaveBeenCalled()
+  })
+
+  it('404s on a non-known-root cwd without shelling out', async () => {
+    getKnownHarnessRoots.mockReturnValue([]) // child.cwd A is NOT a known root
+    seedHarnessRun()
+
+    const res = await decideFleetEscalation('fr-1', {
+      childIdx: 0,
+      source: 'harness',
+      decision: 'allow',
+      requestId: 'rq-1',
+    })
+
+    expect(res.ok).toBe(false)
+    expect(res.status).toBe(404)
+    expect(runHarnessApprove).not.toHaveBeenCalled()
+    expect(runClaude).not.toHaveBeenCalled()
+  })
+
+  it('maps a CLI failure to a 502 and surfaces its message', async () => {
+    getKnownHarnessRoots.mockReturnValue([A])
+    runHarnessApprove.mockResolvedValue({
+      ok: false,
+      error: 'pending rq-1 not found or already decided',
+      stdout: '',
+      stderr: 'pending rq-1 not found or already decided',
+    })
+    seedHarnessRun()
+
+    const res = await decideFleetEscalation('fr-1', {
+      childIdx: 0,
+      source: 'harness',
+      decision: 'allow',
+      requestId: 'rq-1',
+    })
+
+    expect(res.ok).toBe(false)
+    expect(res.status).toBe(502)
+    expect(runClaude).not.toHaveBeenCalled()
+  })
+
+  it('requires requestId for source "harness" (400 before any shell-out)', async () => {
+    getKnownHarnessRoots.mockReturnValue([A])
+    seedHarnessRun()
+
+    const res = await decideFleetEscalation('fr-1', {
+      childIdx: 0,
+      source: 'harness',
+      decision: 'allow',
+    })
+
+    expect(res.status).toBe(400)
+    expect(runHarnessApprove).not.toHaveBeenCalled()
   })
 })

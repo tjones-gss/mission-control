@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.dev/schemas/pipeline-phase.schema.json",
+  "title": "PipelinePhase",
+  "description": "The canonical phase-contract object (ADR-0006). A pipeline is ordered phases; each phase carries its id, the agent and model tier that run it, the gate set that must pass, its fan-out strategy (single|fleet), and the original goal it serves. Fleet is a phase strategy; a Workflow is a degenerate single-phase pipeline compiled to this same shape.",
+  "type": "object",
+  "required": ["id", "agent", "tier", "gate", "strategy", "goal"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable phase identifier, unique within a pipeline."
+    },
+    "agent": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The agent/role that executes this phase."
+    },
+    "tier": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model tier for this phase (resolved by harness_core/model_tiers.py, e.g. 'planning', 'implementation', 'review')."
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional explicit model id, overriding the tier when a concrete model is pinned."
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required"],
+      "description": "The gate set that must pass before this phase is allowed to proceed/hand off.",
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Names of gates (from the harness gate registry) that must be green. May be empty."
+        }
+      }
+    },
+    "strategy": {
+      "type": "string",
+      "enum": ["single", "fleet"],
+      "description": "Fan-out strategy: a single agent, or a Fleet of worktree-isolated workers."
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The original goal this phase serves (carried through for goal-alignment checks)."
+    }
+  }
+}

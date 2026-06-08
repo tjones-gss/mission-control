@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.dev/schemas/harness-scaffold.schema.json",
+  "title": "HarnessScaffoldResult",
+  "description": "Output of `harness scaffold <mode> --json`, shelled out by the cockpit's POST /api/harness/create. A single object: ok:true on success (carrying the new project's mode/stage/phase and the list of created files), or ok:false on a refusal/error (carrying a machine-readable error code). The canonical mode set lives in the CLI (packages/harness/tools/harness VALID_MODES) — keep this enum in sync.",
+  "type": "object",
+  "required": ["ok"],
+  "additionalProperties": true,
+  "properties": {
+    "ok": { "type": "boolean" },
+    "root": {
+      "type": "string",
+      "description": "Absolute path of the scaffolded project root."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "idea-to-mvp",
+        "mvp-sketch",
+        "existing-repo-retrofit",
+        "feature-development",
+        "bugfix",
+        "refactor",
+        "release-readiness"
+      ]
+    },
+    "stage": { "type": "string" },
+    "phase": { "type": "string" },
+    "created": {
+      "type": "array",
+      "description": "Project-relative (POSIX) paths created by the scaffold.",
+      "items": { "type": "string" }
+    },
+    "error": {
+      "type": "string",
+      "enum": ["invalid_mode", "no_target", "already_initialized", "pipeline_missing"]
+    },
+    "message": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+      "then": { "required": ["root", "mode", "stage", "phase", "created"] }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+      "then": { "required": ["error"] }
+    }
+  ]
+}

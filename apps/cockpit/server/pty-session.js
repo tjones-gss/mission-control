@@ -6,6 +6,7 @@ import os from 'os'
 import { emit, onEvent } from './sse.js'
 import { classify as classifyCommand } from './utils/commandClassifier.js'
 import { getClaudeBin } from './lib/claude-bin.js'
+import { isCwdTrusted } from './lib/trust-store.js'
 
 // Validation whitelists (shared with routes/sessions.js)
 export const VALID_PERMISSION_MODES = new Set([
@@ -17,6 +18,20 @@ export const VALID_PERMISSION_MODES = new Set([
   'bypassPermissions',
 ])
 export const VALID_MODEL_SHORTCUTS = new Set(['sonnet', 'opus', 'haiku'])
+
+// Decide the permission CLI args for a NEW interactive session (the front door).
+// Policy (default-DENY): an explicit, valid permissionMode is honored as-is. Otherwise
+// we run GUARDED (--permission-mode acceptEdits) — never disabling prompts by default —
+// and only escalate to --dangerously-skip-permissions when the operator has granted a
+// deliberate, persisted per-cwd trust (trust-store.js). Choosing a cwd is NOT consent to
+// run unattended with full Bash/Write against a possibly prompt-injected repo.
+export function resolvePermissionArgs(sdkOptions = {}, cwd) {
+  if (sdkOptions.permissionMode && VALID_PERMISSION_MODES.has(sdkOptions.permissionMode)) {
+    return ['--permission-mode', sdkOptions.permissionMode]
+  }
+  if (cwd && isCwdTrusted(cwd)) return ['--dangerously-skip-permissions']
+  return ['--permission-mode', 'acceptEdits']
+}
 
 // Active PTY sessions keyed by sessionId
 const sessions = new Map()
@@ -224,20 +239,12 @@ export async function spawnNewSession({ prompt, cwd, name, sdkOptions = {} }) {
   if (name && typeof name === 'string' && name.trim()) {
     args.push('--name', name.trim())
   }
-  if (sdkOptions.permissionMode && VALID_PERMISSION_MODES.has(sdkOptions.permissionMode)) {
-    args.push('--permission-mode', sdkOptions.permissionMode)
-  }
+  args.push(...resolvePermissionArgs(sdkOptions, cwd))
   if (
     sdkOptions.model &&
     (VALID_MODEL_SHORTCUTS.has(sdkOptions.model) || /^claude-/.test(sdkOptions.model))
   ) {
     args.push('--model', sdkOptions.model)
-  }
-
-  // Skip the interactive trust prompt for new session creation — the user
-  // already chose the CWD in the dashboard UI, which is an implicit trust.
-  if (!args.includes('--dangerously-skip-permissions') && !args.includes('--permission-mode')) {
-    args.push('--dangerously-skip-permissions')
   }
 
   const bin = getClaudeBin()

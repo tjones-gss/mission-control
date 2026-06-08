@@ -47,6 +47,16 @@ vi.mock('../lib/claude-bin.js', () => ({
 
 vi.mock('../sse.js', () => ({ emit: vi.fn(), onEvent: vi.fn(() => vi.fn()) }))
 
+// Per-cwd trust store, controllable per test. Default-deny: nothing trusted, so the
+// guarded default (acceptEdits) applies unless a test explicitly trusts a cwd.
+const { trustState } = vi.hoisted(() => ({ trustState: { trusted: new Set() } }))
+vi.mock('../lib/trust-store.js', () => ({
+  isCwdTrusted: (cwd) => trustState.trusted.has(cwd),
+  trustCwd: (cwd) => trustState.trusted.add(cwd) && true,
+  untrustCwd: () => true,
+  listTrustedCwds: () => [...trustState.trusted],
+}))
+
 // Mock Node's crypto so randomUUID returns a predictable value.
 // Using a literal string here because vi.mock factories are hoisted before
 // variable declarations — the APPROVAL_UUID const below must match this value.
@@ -74,6 +84,7 @@ import {
   cancelQuery,
   VALID_PERMISSION_MODES,
   VALID_MODEL_SHORTCUTS,
+  resolvePermissionArgs,
 } from '../pty-session.js'
 
 // ─── Test ID counter — each test uses a unique session so module state doesn't leak ──
@@ -90,6 +101,7 @@ const APPROVAL_UUID = 'approval-uuid-1234'
 
 beforeEach(() => {
   vi.useFakeTimers()
+  trustState.trusted.clear()
   mockTerm = createMockTerm()
   vi.mocked(pty.spawn).mockReturnValue(mockTerm)
   vi.mocked(emit).mockClear()
@@ -275,7 +287,7 @@ describe('startQuery()', () => {
     expect(result).toEqual({ ok: true, streaming: true })
   })
 
-  it('ignores invalid permissionMode — not passed to PTY args', async () => {
+  it('ignores invalid permissionMode — not passed to PTY args (resume path)', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { sdkOptions: { permissionMode: 'HACKED; rm -rf /' } })
 
@@ -284,7 +296,7 @@ describe('startQuery()', () => {
     expect(spawnArgs).not.toContain('HACKED; rm -rf /')
   })
 
-  it('passes valid permissionMode to PTY args', async () => {
+  it('passes valid permissionMode to PTY args (resume path)', async () => {
     const sid = uniqueSession()
     await bootSession(sid, { sdkOptions: { permissionMode: 'plan' } })
 
@@ -720,5 +732,41 @@ describe('10-minute safety timeout', () => {
       'sdk_result',
       expect.objectContaining({ subtype: 'timeout' }),
     )
+  })
+})
+
+describe('resolvePermissionArgs (new-session permission policy)', () => {
+  it('defaults to guarded acceptEdits for an UNTRUSTED cwd (no skip-permissions)', () => {
+    expect(resolvePermissionArgs({}, '/some/untrusted/project')).toEqual([
+      '--permission-mode',
+      'acceptEdits',
+    ])
+  })
+
+  it('escalates to --dangerously-skip-permissions ONLY for a persisted-trusted cwd', () => {
+    trustState.trusted.add('/trusted/project')
+    expect(resolvePermissionArgs({}, '/trusted/project')).toEqual([
+      '--dangerously-skip-permissions',
+    ])
+  })
+
+  it('honors an explicit valid permissionMode and never escalates', () => {
+    trustState.trusted.add('/trusted/project')
+    // even in a trusted cwd, an explicit mode wins and skip-permissions is NOT added
+    expect(resolvePermissionArgs({ permissionMode: 'plan' }, '/trusted/project')).toEqual([
+      '--permission-mode',
+      'plan',
+    ])
+  })
+
+  it('drops an invalid permissionMode and falls back to guarded acceptEdits', () => {
+    expect(resolvePermissionArgs({ permissionMode: 'HACKED; rm -rf /' }, '/x')).toEqual([
+      '--permission-mode',
+      'acceptEdits',
+    ])
+  })
+
+  it('is guarded when there is no cwd', () => {
+    expect(resolvePermissionArgs({}, undefined)).toEqual(['--permission-mode', 'acceptEdits'])
   })
 })

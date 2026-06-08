@@ -35,6 +35,20 @@ validate against the same files.
 - `schemas/approval-decision.schema.json` — `.harness/approvals/decided/<uuid>.json`.
   Its `commandHash` must equal the matching request's `commandHash`, so a stale
   or replayed decision cannot unblock a different command.
+- `schemas/harness-scaffold.schema.json` — output of `harness scaffold --json`
+  (cockpit-driven new-project creation). Exported as `harnessScaffoldSchema`.
+- `schemas/fleet-run.schema.json` — a persisted Fleet run (per-run JSON). Run and
+  child status enums include the terminal `orphaned` state; children carry an
+  optional `pid`. Exported as `fleetRunSchema`.
+- `schemas/fleet-template.schema.json` — a saved, repeatable Fleet config.
+  Exported as `fleetTemplateSchema`.
+- `schemas/pipeline-phase.schema.json` — the canonical phase-contract object
+  (ADR-0006): a pipeline is ordered phases, each carrying its `id`, `agent`,
+  model `tier` (optional explicit `model`), `gate.required[]`, fan-out
+  `strategy` (`single` | `fleet`), and the `goal` it serves. Fleet is a phase
+  strategy; a Workflow is a degenerate single-phase pipeline compiled to this
+  same shape. **Defined and exported now; consumed by the Phase-2 spine** —
+  added additively (see `SCHEMA_VERSION` history below).
 
 ## Usage
 
@@ -49,8 +63,25 @@ import {
 
 ## Versioning
 
-The current contract version is exported as `SCHEMA_VERSION` (and mirrored in
-`package.json` as `schemaVersion`). **Bump `schemaVersion` on any breaking
-change** to a schema (renamed/removed field, tightened required set, changed
-type or enum). Both the cockpit and the harness key off this number to detect an
-incompatible peer.
+`schema-version.json` is the **single canonical source of truth** for the
+contract versions. Both this JS package and the Python harness
+(`packages/harness/tools/harness`) DERIVE their numbers from it — neither
+hand-copies the other. A cross-language parity test
+(`packages/harness/tests/test_contract.py::TestSchemaVersionParity`) fails CI on
+a one-sided change. To bump a version, edit `schema-version.json` only.
+
+Two independent concepts live in the sidecar:
+
+- **`schemaVersion`** — the contracts package version as a whole, exported as
+  `SCHEMA_VERSION`. **Bump it on any breaking change** to a schema
+  (renamed/removed field, tightened required set, changed type or enum), and
+  additively when adding a new schema. Both the cockpit and the harness key off
+  this number to detect an incompatible peer.
+- **`approvalSchemaVersion`** — a *separate* version: the per-document
+  `schemaVersion` integer stamped into the `approval-request` /
+  `approval-decision` files the harness writes under `.harness/approvals/**`.
+  Exported as `APPROVAL_SCHEMA_VERSION`. It is versioned independently of
+  `schemaVersion` (the two are deliberately allowed to differ).
+
+`package.json`'s `schemaVersion` is kept in sync with the sidecar for display
+purposes but is not read by code.
