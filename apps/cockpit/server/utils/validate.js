@@ -1,5 +1,25 @@
 // Shared validation helpers for route handlers
 
+import path from 'node:path'
+
+// Trusting a folder grants future spawns in it --dangerously-skip-permissions, so
+// the trust route validates HARD at the HTTP boundary: an absolute path only, no
+// '..' traversal segment, no NUL byte. We do NOT normalize/lowercase here — the
+// trust store owns canonicalization (so the route can't double-transform a path).
+export function validateCwd(cwd, res) {
+  const reject = (msg) => {
+    res.status(400).json({ error: msg })
+    return false
+  }
+  if (!cwd || typeof cwd !== 'string') return reject('cwd is required (absolute path)')
+  if (/\0/.test(cwd)) return reject('cwd must not contain a NUL byte')
+  if (!path.isAbsolute(cwd)) return reject('cwd must be an absolute path')
+  // Reject any '..' path segment (forward- or back-slash separated).
+  const segments = cwd.split(/[\\/]/)
+  if (segments.includes('..')) return reject("cwd must not contain a '..' segment")
+  return true
+}
+
 // Skill names: letters, digits, underscores, hyphens. Colons used to be
 // allowed for namespaced skills like "plugin:skill-name" but that's
 // only ever produced by the plugin loader (read-only path); user-authored

@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { NotificationsTab } from './NotificationsTab.jsx'
 import { SoundsVoiceTab } from './SoundsVoiceTab.jsx'
 import { ShortcutsTab } from './ShortcutsTab.jsx'
+import { TrustedFoldersTab } from './TrustedFoldersTab.jsx'
 
 const TABS = [
   { id: 'notifications', label: 'Notifications' },
   { id: 'sounds', label: 'Sounds & Voice' },
   { id: 'shortcuts', label: 'Shortcuts' },
+  { id: 'security', label: 'Security' },
 ]
 
 export function SettingsTabs({ soundEngine, shortcuts, updateShortcut, resetShortcuts }) {
@@ -39,6 +41,7 @@ export function SettingsTabs({ soundEngine, shortcuts, updateShortcut, resetShor
             resetShortcuts={resetShortcuts}
           />
         )}
+        {activeTab === 'security' && <TrustedFoldersTab />}
       </div>
     </div>
   )
