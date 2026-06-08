@@ -82,6 +82,43 @@ export function getScaffoldCandidates() {
   return cwds.filter((cwd) => typeof cwd === 'string' && cwd && !roots.has(cwd) && existsAsDir(cwd))
 }
 
+// Candidate directories for rails ADOPTION (the in-cockpit one-click "Add rails"):
+// session cwds that are real directories but do NOT yet have a Claude adapter
+// installed (no .claude/settings.json). This is the "needs rails" set the UI
+// offers. Independent of .harness — a project can already be a harness root and
+// still be missing the Claude adapter. Tolerant: any scan failure yields [].
+export function getAdoptCandidates() {
+  let cwds = []
+  try {
+    cwds = getSessionCwds()
+  } catch {
+    return []
+  }
+  return cwds.filter(
+    (cwd) =>
+      typeof cwd === 'string' &&
+      cwd &&
+      existsAsDir(cwd) &&
+      !existsAsFile(path.join(cwd, '.claude', 'settings.json')),
+  )
+}
+
+// Security whitelist for the adopt WRITE: is this path a real directory the user
+// actually has a session in? Broader than getAdoptCandidates on purpose — an
+// already-adopted dir still passes here so re-adopt resolves to a clean 409
+// "already present" (from the installer) rather than a confusing 403. We never
+// write to a path that isn't one of the user's own session cwds.
+export function isAdoptableTarget(projectPath) {
+  if (typeof projectPath !== 'string' || !projectPath) return false
+  let cwds = []
+  try {
+    cwds = getSessionCwds()
+  } catch {
+    return false
+  }
+  return cwds.includes(projectPath) && existsAsDir(projectPath)
+}
+
 // Run the harness CLI under one interpreter and resolve with its parsed JSON
 // status, or a reason on any failure. Never throws and never hangs: the async
 // spawn is bounded by a timer that hard-kills the child, and every failure mode

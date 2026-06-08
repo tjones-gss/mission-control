@@ -65,6 +65,7 @@ jobs:
           tests.test_cost_ledger
           tests.test_fleet_dispatch
           tests.test_hook_parity
+          tests.test_install_adapter
       - name: Pure-Node hook unit tests
         # The authoritative behavioral suite for the .mjs hooks (zero-dep node:test).
         # Runs everywhere node is present, independent of jq/bash.

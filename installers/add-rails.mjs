@@ -56,14 +56,17 @@ function warn(m) { console.log(`  ${c.yellow}${warnMark}${c.reset} ${m}`); }
 function info(m) { console.log(`    ${c.dim}${m}${c.reset}`); }
 
 function parseArgs(argv) {
-  const out = { project: null, print: false, help: false };
+  const out = { project: null, print: false, help: false, hooks: "auto" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") out.help = true;
     else if (a === "--print") out.print = true;
     else if (a === "--project") out.project = argv[++i] ?? null;
     else if (a.startsWith("--project=")) out.project = a.slice("--project=".length);
+    else if (a === "--hooks") out.hooks = argv[++i] ?? "auto";
+    else if (a.startsWith("--hooks=")) out.hooks = a.slice("--hooks=".length);
   }
+  if (!["shell", "node", "auto"].includes(out.hooks)) out.hooks = "auto";
   return out;
 }
 
@@ -96,19 +99,29 @@ function printHelp() {
 
 Usage:
   node installers/add-rails.mjs --project <path>
+  node installers/add-rails.mjs --project <path> --hooks node
   node installers/add-rails.mjs --project <path> --print
 
 This reuses the harness's own adapter installer
 (packages/harness/tools/install-claude-adapter.py) — it does not reimplement
 hook copying or the Windows Git-Bash logic.
 
-Requires Python (3.10+ recommended). On Windows the rails' .sh hooks also need
-Git Bash; the adapter installer wires settings.json to Git Bash automatically.`);
+  --hooks shell|node|auto   Which hook implementation to wire (default: auto).
+                            shell = .sh hooks (need bash + jq); node = pure-Node
+                            .mjs hooks (no bash/jq); auto = node when bash/jq are
+                            absent (e.g. a Windows box without jq).
+
+Requires Python (3.10+ recommended). With --hooks shell on Windows the .sh hooks
+also need Git Bash; the adapter installer wires settings.json to Git Bash
+automatically. --hooks node needs neither bash nor jq.
+
+(The cockpit's one-click "Add rails" uses a pure-Node installer that needs no
+Python at all — this CLI is the terminal/cross-tool path.)`);
 }
 
 /** The exact manual command, for documentation/fallback. */
-function manualCommand(pythonCmd, projectAbs) {
-  return `${pythonCmd} "${ADAPTER_INSTALLER}" --root "${projectAbs}"`;
+function manualCommand(pythonCmd, projectAbs, hooks) {
+  return `${pythonCmd} "${ADAPTER_INSTALLER}" --root "${projectAbs}" --hooks ${hooks}`;
 }
 
 function main() {
@@ -175,7 +188,7 @@ function main() {
     }
   }
 
-  const cmdStr = manualCommand(py.cmd, projectAbs);
+  const cmdStr = manualCommand(py.cmd, projectAbs, args.hooks);
 
   if (args.print) {
     console.log("");
@@ -187,7 +200,7 @@ function main() {
   console.log("");
   console.log(`${c.bold}-> Wiring rails via harness adapter installer${c.reset}`);
   info(cmdStr);
-  const r = spawnSync(py.cmd, [ADAPTER_INSTALLER, "--root", projectAbs], {
+  const r = spawnSync(py.cmd, [ADAPTER_INSTALLER, "--root", projectAbs, "--hooks", args.hooks], {
     cwd: HARNESS_ROOT,
     stdio: "inherit",
     windowsHide: true,

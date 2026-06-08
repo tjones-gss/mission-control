@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, ShieldCheck } from 'lucide-react'
 import { useApi } from '../../hooks/useApi.js'
 import { HarnessDetail } from './HarnessDetail.jsx'
 import { NewHarnessProjectDialog } from './NewHarnessProjectDialog.jsx'
+import { AddRailsDialog } from './AddRailsDialog.jsx'
 
 const MODE_BADGE = {
   'idea-to-mvp': 'bg-blue-900/60 text-blue-200',
@@ -65,6 +66,7 @@ export function MissionControlTab({ harnessVersion }) {
   const { data, loading, error, refetch } = useApi('/api/harness', [harnessVersion])
   const [selectedKey, setSelectedKey] = useState(null)
   const [showNewDialog, setShowNewDialog] = useState(false)
+  const [showAddRails, setShowAddRails] = useState(false)
 
   const projects = useMemo(() => {
     const list = data?.projects || []
@@ -93,8 +95,16 @@ export function MissionControlTab({ harnessVersion }) {
           </span>
           {data && <span className="ml-2 text-xs text-gray-500">{projects.length}</span>}
           <button
-            onClick={() => setShowNewDialog(true)}
+            onClick={() => setShowAddRails(true)}
             className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 hover:text-gray-100 hover:bg-gray-800 transition-colors"
+            title="Add the opt-in rails (hooks) to an existing project"
+          >
+            <ShieldCheck size={12} />
+            Add rails
+          </button>
+          <button
+            onClick={() => setShowNewDialog(true)}
+            className="ml-1 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 hover:text-gray-100 hover:bg-gray-800 transition-colors"
             title="Create a new harness project"
           >
             <Plus size={12} />
@@ -149,6 +159,16 @@ export function MissionControlTab({ harnessVersion }) {
             setShowNewDialog(false)
             // The watcher's harness_update will also bump harnessVersion, but
             // refetch immediately so the new project shows without waiting.
+            refetch()
+          }}
+        />
+      )}
+
+      {showAddRails && (
+        <AddRailsDialog
+          onClose={() => setShowAddRails(false)}
+          onAdopted={() => {
+            setShowAddRails(false)
             refetch()
           }}
         />
