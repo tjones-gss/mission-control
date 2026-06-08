@@ -3,9 +3,14 @@ name: CI
 # First automated gate for the monorepo. Two independent halves of the product,
 # two jobs:
 #   - harness: the Python control plane (stdlib unittest; no network, no API key)
-#   - cockpit: the Node dashboard (prettier + server/client vitest suites)
+#   - cockpit: the Node dashboard (prettier + server/client vitest + coverage gate)
+#   - e2e:     real-subprocess Fleet + Playwright (needs: cockpit)
 # Both run on every push and PR. The commands mirror what the repo's own npm
 # scripts run locally, so a green checkout stays green here.
+#
+# REQUIRED CHECKS (manual GitHub setting — see docs/ci.md): mark "cockpit (Node)"
+# and "cockpit e2e (Fleet + Playwright)" as required status checks on main so the
+# coverage gate and the e2e suite actually BLOCK merge (the L2 criterion).
 
 on:
   push:
@@ -117,12 +122,15 @@ jobs:
       - name: Lint (prettier --check)
         working-directory: apps/cockpit
         run: npm run lint
-      - name: Server tests
+      # --coverage runs the v8 coverage gate (Phase 3 / L2): a measure-then-floor
+      # threshold miss fails the job, so coverage can only ratchet up. Floors live
+      # in each suite's vitest config (server vitest.config.js, client vite.config.js).
+      - name: Server tests + coverage gate
         working-directory: apps/cockpit/server
-        run: npx vitest run
-      - name: Client tests
+        run: npx vitest run --coverage
+      - name: Client tests + coverage gate
         working-directory: apps/cockpit/client
-        run: npx vitest run
+        run: npx vitest run --coverage
 
   # GATED end-to-end lane (council HIGH #3). Its own job so the fast unit lane
   # above stays untouched. Two parts:

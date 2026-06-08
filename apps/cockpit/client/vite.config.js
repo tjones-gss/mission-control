@@ -21,6 +21,23 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/tests/setup.js'],
     include: ['src/tests/**/*.test.{js,jsx}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'text'],
+      // Scope to the load-bearing UI: components + hooks. Tests, entry/bootstrap,
+      // and config are excluded so the global % reflects tested UI code.
+      include: ['src/components/**', 'src/hooks/**'],
+      exclude: ['src/tests/**', '**/*.config.js'],
+      // Measure-then-floor (Phase 3 / L2): floors a few points below the measured
+      // baseline (lines 74.6 / branches 63.4 / funcs 69.7 / stmts 71.6). Ratchet
+      // UP over time — never down.
+      thresholds: {
+        lines: 70,
+        functions: 64,
+        branches: 58,
+        statements: 67,
+      },
+    },
     server: {
       deps: {
         inline: [
