@@ -231,6 +231,39 @@ describe('getHarnessProjects()', () => {
     })
   })
 
+  it('surfaces the Phase-2 pipeline goal/strategy/transitionedAt when present', async () => {
+    const GOAL_PROJECT = 'C:\\projects\\shape-goal'
+    const GOAL_STATE = path.join(GOAL_PROJECT, '.harness', 'project-state.yml')
+    getSessionCwds.mockReturnValue([GOAL_PROJECT])
+    fs.statSync.mockImplementation((p) => {
+      if (p === GOAL_STATE) return { isFile: () => true }
+      throw new Error('ENOENT')
+    })
+    spawnReturns({
+      exit: 0,
+      stdout: JSON.stringify({
+        project: { mode: 'idea-to-mvp' },
+        pipeline: {
+          active: 'next-mission-loop',
+          phase: 'execute',
+          gate: 'scope_adherence',
+          goal: 'Ship the auth slice',
+          strategy: 'fleet',
+          transitioned_at: '2026-06-07T12:00:00+00:00',
+        },
+      }),
+    })
+    const projects = await getHarnessProjects()
+    expect(projects[0].pipeline).toMatchObject({
+      active: 'next-mission-loop',
+      phase: 'execute',
+      gate: 'scope_adherence',
+      goal: 'Ship the auth slice',
+      strategy: 'fleet',
+      transitionedAt: '2026-06-07T12:00:00+00:00',
+    })
+  })
+
   it('produces an available:false summary with all contract fields when CLI fails', async () => {
     getSessionCwds.mockReturnValue([FAIL_PROJECT])
     fs.statSync.mockImplementation((p) => {

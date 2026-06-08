@@ -519,6 +519,12 @@ function shapeSummary(projectPath, result) {
   const pipelineActive = get(status, 'pipeline', 'active')
   const pipelinePhase = get(status, 'pipeline', 'phase')
   const pipelineGate = get(status, 'pipeline', 'gate')
+  // Phase 2: the loop also surfaces the current phase's goal/strategy and the
+  // transition timestamp (harness-status.schema v7) so the dashboard can show
+  // what the live phase is working toward, not just its id.
+  const pipelineGoal = get(status, 'pipeline', 'goal')
+  const pipelineStrategy = get(status, 'pipeline', 'strategy')
+  const pipelineTransitionedAt = get(status, 'pipeline', 'transitioned_at')
   const hasPipeline =
     pipelineActive !== undefined || pipelinePhase !== undefined || pipelineGate !== undefined
 
@@ -544,6 +550,9 @@ function shapeSummary(projectPath, result) {
           active: asStringOrNull(pipelineActive),
           phase: asStringOrNull(pipelinePhase),
           gate: asStringOrNull(pipelineGate),
+          goal: asStringOrNull(pipelineGoal),
+          strategy: asStringOrNull(pipelineStrategy),
+          transitionedAt: asStringOrNull(pipelineTransitionedAt),
         }
       : null,
     currentMission: asStringOrNull(get(status, 'current', 'mission')),

@@ -41,7 +41,10 @@
         "gate": { "type": "string" },
         "last_completed_phase": { "type": ["string", "null"] },
         "next_phase": { "type": ["string", "null"] },
-        "plan_status": { "type": ["string", "null"] }
+        "plan_status": { "type": ["string", "null"] },
+        "goal": { "type": ["string", "null"] },
+        "strategy": { "type": ["string", "null"] },
+        "transitioned_at": { "type": ["string", "null"] }
       }
     },
     "plans": {

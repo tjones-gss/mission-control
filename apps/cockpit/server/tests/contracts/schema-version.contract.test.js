@@ -110,4 +110,49 @@ describe('pipeline-phase contract (ADR-0006)', () => {
     })
     expect(ok).toBe(false)
   })
+
+  // Phase 2: the schema becomes the CONSUMED spine. It must accept the real
+  // authored pipeline YAML shapes (which carry description/inputs/outputs/rules/
+  // loop and do NOT hand-declare tier/strategy/goal — those default/resolve at
+  // load time) while still rejecting typos in known fields.
+  it('accepts a real authored phase (no tier/strategy/goal, with authored fields)', () => {
+    const validate = compile(pipelinePhaseSchema)
+    const ok = validate({
+      id: 'execute',
+      agent: 'implementer',
+      description: 'Either run a ready mission or create a missing planning artifact.',
+      inputs: ['runs/missions/MISSION-<id>-*.md'],
+      outputs: ['<files-per-mission-or-new-artifact>'],
+      gate: { required: ['work_completed_within_scope_or_stop_reason_documented'] },
+    })
+    if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2))
+    expect(ok).toBe(true)
+  })
+
+  it('accepts authored extras (rules list, loop, model) alongside canonical fields', () => {
+    const validate = compile(pipelinePhaseSchema)
+    const ok = validate({
+      id: 'build-loop',
+      agent: 'orchestrator',
+      description: 'Run the next-mission loop until MVP gate.',
+      outputs: ['runs/missions/', 'runs/reviews/'],
+      rules: ['prefer_critical_mvp_items', 'prefer_smallest_reviewable_unit'],
+      loop: { pipeline: 'pipelines/next-mission-loop.yml' },
+      model: 'claude-opus-4-8',
+      gate: { required: ['mvp_checklist_satisfied'] },
+    })
+    if (!ok) throw new Error(JSON.stringify(validate.errors, null, 2))
+    expect(ok).toBe(true)
+  })
+
+  it('still rejects an unknown field even after relaxation (typo guard)', () => {
+    const validate = compile(pipelinePhaseSchema)
+    const ok = validate({
+      id: 'x',
+      agent: 'y',
+      gate: { required: [] },
+      inputz: ['typo'], // not a known field -> additionalProperties:false
+    })
+    expect(ok).toBe(false)
+  })
 })

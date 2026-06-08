@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mission-control.dev/schemas/pipeline-phase.schema.json",
   "title": "PipelinePhase",
-  "description": "The canonical phase-contract object (ADR-0006). A pipeline is ordered phases; each phase carries its id, the agent and model tier that run it, the gate set that must pass, its fan-out strategy (single|fleet), and the original goal it serves. Fleet is a phase strategy; a Workflow is a degenerate single-phase pipeline compiled to this same shape.",
+  "description": "The canonical phase-contract object (ADR-0006). A pipeline is ordered phases; each phase carries its id, the agent and (optionally) the model tier that run it, the gate set that must pass, its fan-out strategy (single|fleet), and the original goal it serves. Fleet is a phase strategy; a Workflow is a degenerate single-phase pipeline compiled to this same shape. Phase 2 makes this the CONSUMED spine: it validates real authored pipeline YAML, so only id and agent are hard-required; gate/tier/strategy/goal and the authored fields (description/inputs/outputs/rules/checks/loop/no_gate_reason/no_outputs_reason) are optional — the harness loader (harness_core/pipelines.py::pipeline_phases) materializes their canonical defaults (strategy=single, goal carried from the pipeline, empty gate) at load time and model_tiers.py resolves the model. A gateless phase documents itself with no_gate_reason. additionalProperties stays false so a typo in a known field is still rejected.",
   "type": "object",
-  "required": ["id", "agent", "tier", "gate", "strategy", "goal"],
+  "required": ["id", "agent"],
   "additionalProperties": false,
   "properties": {
     "id": {
@@ -20,7 +20,7 @@
     "tier": {
       "type": "string",
       "minLength": 1,
-      "description": "Model tier for this phase (resolved by harness_core/model_tiers.py, e.g. 'planning', 'implementation', 'review')."
+      "description": "Optional model tier for this phase (resolved by harness_core/model_tiers.py, e.g. 'planning', 'implementation', 'review'). When omitted the harness resolves a default tier."
     },
     "model": {
       "type": "string",
@@ -46,12 +46,57 @@
     "strategy": {
       "type": "string",
       "enum": ["single", "fleet"],
-      "description": "Fan-out strategy: a single agent, or a Fleet of worktree-isolated workers."
+      "description": "Fan-out strategy: a single agent, or a Fleet of worktree-isolated workers. Optional in authored YAML; defaults to 'single' at load time."
     },
     "goal": {
       "type": "string",
       "minLength": 1,
-      "description": "The original goal this phase serves (carried through for goal-alignment checks)."
+      "description": "The original goal this phase serves (carried through for goal-alignment checks). Optional in authored YAML; the loader carries the pipeline description/goal into each phase when omitted."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-authored description of what this phase does."
+    },
+    "inputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Authored list of input artifacts/paths this phase reads."
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Authored list of output artifacts/paths this phase produces."
+    },
+    "rules": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Authored ordered heuristics/policies the agent applies during this phase."
+    },
+    "checks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Authored list of things this phase inspects/looks for (e.g. retrospective signals)."
+    },
+    "loop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pipeline"],
+      "description": "Marks this phase as delegating to a sub-pipeline (a nested loop).",
+      "properties": {
+        "pipeline": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the sub-pipeline YAML this phase loops over."
+        }
+      }
+    },
+    "no_outputs_reason": {
+      "type": "string",
+      "description": "Documented reason a phase legitimately produces no outputs."
+    },
+    "no_gate_reason": {
+      "type": "string",
+      "description": "Documented reason a phase legitimately has no required gates."
     }
   }
 }

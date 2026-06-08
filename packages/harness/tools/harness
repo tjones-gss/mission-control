@@ -70,7 +70,12 @@ def load_yaml(path: Path) -> dict:
         raise SystemExit(f"error: failed to parse {path}: {e}") from e
 
 
-from harness_core.missions import list_ready_missions, select_next_mission
+from harness_core.missions import (
+    allowed_patterns as _shared_allowed_patterns,
+    list_ready_missions,
+    select_next_mission,
+)
+from harness_core.pipelines import validate_phase
 from harness_core.yaml_utils import find_harness_root, get, save_yaml
 
 def _run_cursor_adapter_install(root: Path, *, hooks_only: bool = True) -> int:
@@ -114,28 +119,11 @@ def emoji_or_ascii(emoji: str, ascii_: str) -> str:
 def _allowed_patterns(mission_path: Path) -> list[str]:
     """Return bullet entries under `## Allowed Files` in a mission markdown.
 
-    Mirrors the strip logic in adapters/claude-code/.claude/hooks/require-mission.sh
-    so the lint sees what the hook sees. Tolerant: returns [] on read errors.
+    Delegates to the single shared implementation in harness_core.missions so
+    the CLI lint, the scope_adherence gate, and the require-mission.sh hook all
+    parse Allowed Files the same way (one definition, no drift).
     """
-    patterns: list[str] = []
-    in_sec = False
-    try:
-        for line in mission_path.read_text().splitlines():
-            if line.startswith("##"):
-                in_sec = line.strip().lower().startswith("## allowed files")
-                continue
-            if in_sec:
-                m = re.match(r"^\s*-\s+(.+?)\s*$", line)
-                if m:
-                    p = m.group(1).strip()
-                    # Strip a single layer of surrounding ", ', or `
-                    if len(p) >= 2 and p[0] in "\"'`" and p[-1] == p[0]:
-                        p = p[1:-1]
-                    if p:
-                        patterns.append(p)
-    except OSError:
-        pass
-    return patterns
+    return _shared_allowed_patterns(mission_path)
 
 
 # ---------- commands ----------
@@ -526,6 +514,13 @@ def cmd_check(args, root: Path) -> int:
                         phase_problems.append(
                             f"phase {pid}: gate has no `required` list"
                         )
+                # Shared contract validation (single definition in
+                # harness_core.pipelines.validate_phase — same check the
+                # orchestrator loader runs). Catches typos in known fields, bad
+                # enums, and wrong types the semantic checks above don't. No-op
+                # when the contracts schema is unavailable (standalone install).
+                for schema_err in validate_phase(ph):
+                    phase_problems.append(f"phase {pid}: {schema_err}")
             if phase_problems:
                 fail(f"{pp.name}: {len(phase_problems)} issue(s)")
                 for pb in phase_problems:
@@ -1247,7 +1242,7 @@ Assumptions:
 # Fallback defaults are only used if the sidecar is absent (e.g. a standalone
 # harness install detached from the monorepo); they match the committed sidecar
 # at the time of writing.
-_SCHEMA_VERSION_FALLBACK = 6
+_SCHEMA_VERSION_FALLBACK = 7
 _APPROVAL_SCHEMA_VERSION_FALLBACK = 2
 
 
@@ -1463,12 +1458,63 @@ def _save_yaml_atomic(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
+# Canonical mission lifecycle states (mirrors the harness-status contract). The
+# single writer of mission-index.yml; the cockpit/Fleet shell this rather than
+# editing YAML, so outcome write-back stays on one atomic path.
+_MISSION_STATES = (
+    "draft",
+    "ready",
+    "in-progress",
+    "review",
+    "complete",
+    "blocked",
+    "failed",
+)
+
+
 def cmd_mission(args, root: Path) -> int:
     action = getattr(args, "mission_action", None)
     if action == "ready":
         return _mission_ready(args, root)
+    if action == "status":
+        return _mission_status(args, root)
     print(f"error: unknown mission action: {action}", file=sys.stderr)
     return 2
+
+
+def _mission_status(args, root: Path) -> int:
+    """Set a mission's status to a canonical lifecycle state (single writer).
+
+    Fleet/loop record a mission outcome (complete/review/failed/blocked/…) via
+    this CLI instead of editing mission-index.yml directly, preserving the
+    single-writer contract. Errors if the mission is unknown or the target state
+    is not canonical. Writes the index back atomically."""
+    if args.state not in _MISSION_STATES:
+        print(
+            f"error: `{args.state}` is not a canonical mission state "
+            f"(one of: {', '.join(_MISSION_STATES)})",
+            file=sys.stderr,
+        )
+        return 2
+    index = load_yaml(_mission_index_path(root))
+    missions = index.get("missions")
+    if not isinstance(missions, dict):
+        missions = {}
+    entry = missions.get(args.id)
+    if not isinstance(entry, dict):
+        print(f"error: no mission `{args.id}` in mission-index.yml", file=sys.stderr)
+        return 2
+    entry["status"] = args.state
+    missions[args.id] = entry
+    index["missions"] = missions
+    _save_yaml_atomic(_mission_index_path(root), index)
+    print(
+        colorize(
+            f"{emoji_or_ascii('✓', '[ok]')} mission {args.id} status -> {args.state}",
+            "green",
+        )
+    )
+    return 0
 
 
 def _mission_ready(args, root: Path) -> int:
@@ -2479,6 +2525,14 @@ def main():
     p_mission_sub = p_mission.add_subparsers(dest="mission_action")
     pm_ready = p_mission_sub.add_parser("ready", help="Mark a draft mission ready (draft -> ready)")
     pm_ready.add_argument("id", help="Mission id (e.g. MISSION-001-auth)")
+    pm_status = p_mission_sub.add_parser(
+        "status", help="Set a mission's lifecycle status (single writer; used by Fleet write-back)"
+    )
+    pm_status.add_argument("id", help="Mission id (e.g. MISSION-001-auth)")
+    pm_status.add_argument(
+        "state",
+        help="Canonical state: draft|ready|in-progress|review|complete|blocked|failed",
+    )
 
     p_approve = sub.add_parser(
         "approve",

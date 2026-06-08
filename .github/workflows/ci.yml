@@ -42,7 +42,22 @@ jobs:
       - name: Core + CLI tests
         # The `tests` package and the SDK's `sdk.python.tests` package share the
         # name `tests`, so they must be discovered in two separate invocations.
-        run: python -m unittest tests.test_cli tests.test_gates tests.test_model_tiers tests.test_contract
+        # Phase 2 added test_pipelines (spine schema consumption), test_gates
+        # (scope_adherence + evidence verdicts — same module, more cases),
+        # test_loop_halt (gates HALT), test_cost_ledger (ledger + ceiling abort),
+        # and test_fleet_dispatch (fleet-as-strategy). They MUST be listed here or
+        # CI's green signal would not cover the new spine.
+        run: >-
+          python -m unittest
+          tests.test_cli
+          tests.test_gates
+          tests.test_model_tiers
+          tests.test_contract
+          tests.test_pipelines
+          tests.test_loop_halt
+          tests.test_loop_e2e
+          tests.test_cost_ledger
+          tests.test_fleet_dispatch
       - name: Schema-version cross-language parity
         # Explicit gate (council MED #7): JS SCHEMA_VERSION / APPROVAL_SCHEMA_VERSION
         # must equal the Python-resolved values, both derived from the single
