@@ -22,16 +22,23 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { getMemoryForSession, parseFrontmatter } from '../../parsers/memory.js'
+import { emit } from '../../sse.js'
+import { _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude')
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects')
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 // Helpers
@@ -287,6 +294,66 @@ Always write tests first.`
     expect(result.memoryIndex.content).toBe('# Memory Index\n- note.md')
     expect(result.memories).toHaveLength(1)
     expect(result.memories[0].filename).toBe('note.md')
+  })
+
+  it('flags degraded when the session JSONL is present but every line is unparseable', () => {
+    // The session JSONL is read directly here to resolve cwd → project
+    // CLAUDE.md. If the file is present with content but NO line parses, the
+    // JSONL shape likely changed under us; cwd silently becomes null and the
+    // project's CLAUDE.md / memory vanish from the panel with no clue why.
+    // Surface a distinguishable `degraded` flag + a persistent parser_degraded
+    // SSE event instead of a silent partial result.
+    fs.existsSync.mockImplementation((p) => {
+      if (p === PROJECTS_DIR) return true
+      if (typeof p === 'string' && p.endsWith('test-session.jsonl')) return true
+      return false
+    })
+    fs.readdirSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p === PROJECTS_DIR) return [makeProjectDirEntry('C--project')]
+      return []
+    })
+    fs.readFileSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.endsWith('test-session.jsonl')) {
+        // Non-empty content, but not valid JSONL.
+        return '{garbage not json\n}also not json'
+      }
+      return ''
+    })
+    fs.statSync.mockReturnValue(makeStat())
+
+    const result = getMemoryForSession('test-session')
+    expect(result).not.toBeNull()
+    expect(result.degraded).toBe(true)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'memory' }),
+    )
+  })
+
+  it('does NOT flag degraded when the session JSONL is present but simply has no cwd record', () => {
+    // A valid JSONL whose records just don't carry a cwd is normal (e.g. a
+    // metadata-only stub) — not a format break. Stay silent.
+    fs.existsSync.mockImplementation((p) => {
+      if (p === PROJECTS_DIR) return true
+      if (typeof p === 'string' && p.endsWith('test-session.jsonl')) return true
+      return false
+    })
+    fs.readdirSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p === PROJECTS_DIR) return [makeProjectDirEntry('C--project')]
+      return []
+    })
+    fs.readFileSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.endsWith('test-session.jsonl')) {
+        return JSON.stringify({ uuid: 'rec-1', type: 'user' }) // valid, no cwd
+      }
+      return ''
+    })
+    fs.statSync.mockReturnValue(makeStat())
+
+    const result = getMemoryForSession('test-session')
+    expect(result).not.toBeNull()
+    expect(result.degraded).toBeFalsy()
+    expect(emit).not.toHaveBeenCalled()
   })
 
   it('returns null global and empty project when CLAUDE.md files do not exist', () => {

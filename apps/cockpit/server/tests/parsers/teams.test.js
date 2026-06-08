@@ -9,11 +9,18 @@ vi.mock('fs', () => ({
   readFileSync: vi.fn(),
 }))
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getAllTeams } from '../../parsers/teams.js'
+import { emit } from '../../sse.js'
+import { isDegraded, _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 describe('getAllTeams()', () => {
@@ -63,8 +70,15 @@ describe('getAllTeams()', () => {
     expect(getAllTeams()).toEqual([])
   })
 
-  it('skips teams with malformed config JSON', () => {
-    fs.existsSync.mockReturnValue(true)
+  it('surfaces a present-but-unparseable team config.json as degraded (not silently dropped)', () => {
+    // A team dir exists with a config.json we cannot parse. Silently dropping it
+    // (returning []) would render "no teams" when a team is in fact configured —
+    // a blank that looks like a fact. It must surface as a distinguishable
+    // degraded marker AND emit a persistent parser_degraded SSE event.
+    fs.existsSync.mockImplementation((p) => {
+      if (p.includes('inboxes')) return false
+      return true
+    })
     fs.readdirSync.mockImplementation((p, opts) => {
       if (opts?.withFileTypes) {
         return [{ name: 'bad-team', isDirectory: () => true }]
@@ -73,7 +87,27 @@ describe('getAllTeams()', () => {
     })
     fs.readFileSync.mockReturnValue('not valid json{{{')
 
+    const result = getAllTeams()
+    expect(result).toHaveLength(1)
+    expect(isDegraded(result[0])).toBe(true)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'teams' }),
+    )
+  })
+
+  it('stays silent (no degrade) for a team dir with no config.json — nothing configured', () => {
+    fs.existsSync.mockImplementation((p) => {
+      if (p.includes('config.json')) return false
+      return true
+    })
+    fs.readdirSync.mockImplementation((p, opts) => {
+      if (opts?.withFileTypes) return [{ name: 'no-config', isDirectory: () => true }]
+      return []
+    })
+
     expect(getAllTeams()).toEqual([])
+    expect(emit).not.toHaveBeenCalled()
   })
 
   it('returns empty inboxes when inboxes dir does not exist', () => {
@@ -96,7 +130,10 @@ describe('getAllTeams()', () => {
     expect(result[0].inboxes).toEqual({})
   })
 
-  it('handles malformed inbox JSON gracefully (defaults to empty array)', () => {
+  it('surfaces a present-but-unparseable inbox as degraded (not a misreported empty inbox)', () => {
+    // An inbox file that exists but cannot be parsed must NOT read as [] — that
+    // would render "no messages waiting" when messages may in fact be queued.
+    // It must be a distinguishable degraded marker + a persistent SSE event.
     const config = { name: 'team-bad-inbox' }
 
     fs.existsSync.mockReturnValue(true)
@@ -115,7 +152,12 @@ describe('getAllTeams()', () => {
 
     const result = getAllTeams()
     expect(result).toHaveLength(1)
-    expect(result[0].inboxes).toEqual({ broken: [] })
+    expect(isDegraded(result[0].inboxes.broken)).toBe(true)
+    expect(result[0].inboxes.broken).not.toEqual([])
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'teams' }),
+    )
   })
 
   it('ignores non-directory entries in teams dir', () => {

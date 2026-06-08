@@ -16,8 +16,8 @@
     "updatedAt": { "type": "string", "format": "date-time" },
     "status": {
       "type": "string",
-      "description": "Derived run status. Canonical values: pending | running | partial | succeeded | failed | cancelled | budget_exceeded. budget_exceeded means a running cost total crossed policy.budgetUsd and no further children were spawned (in-flight children were allowed to finish). Kept a free string (not an enum) so the shape can grow without breaking validation.",
-      "examples": ["pending", "running", "partial", "succeeded", "failed", "cancelled", "budget_exceeded"]
+      "description": "Derived run status. Canonical values: pending | running | partial | succeeded | failed | cancelled | budget_exceeded | orphaned. budget_exceeded means a running cost total crossed policy.budgetUsd and no further children were spawned (in-flight children were allowed to finish). orphaned is a TERMINAL state set by the boot reconciler (reconcileFleetRuns) when a server restart left a run in a non-terminal status whose live process/lifecycle is gone: the run can never settle itself, so it is honestly closed as orphaned rather than left wedged at 'running'. Kept a free string (not an enum) so the shape can grow without breaking validation.",
+      "examples": ["pending", "running", "partial", "succeeded", "failed", "cancelled", "budget_exceeded", "orphaned"]
     },
     "spentUsd": {
       "type": "number",
@@ -62,12 +62,16 @@
           "prompt": { "type": ["string", "null"] },
           "workflow": { "type": ["string", "null"] },
           "sessionId": { "type": ["string", "null"] },
+          "pid": {
+            "type": ["number", "null"],
+            "description": "OS process id of the spawned child, captured into the durable registry at spawn time so the boot reconciler can cross-check liveness (process.kill(pid, 0)) after a restart. Null until captured / when unknown."
+          },
           "worktree": { "type": "boolean" },
           "branch": { "type": ["string", "null"] },
           "status": {
             "type": "string",
-            "description": "Per-child status: starting | running | escalated | succeeded | failed | cancelled | verifying | rejected | budget_skipped. verifying = a worker settled succeeded and a verifier is reviewing it. rejected = a verifier rejected it and re-dispatch is exhausted. budget_skipped = the child (worker or verifier) was never spawned because its projected cost would exceed the budget.",
-            "examples": ["starting", "running", "escalated", "succeeded", "failed", "cancelled", "verifying", "rejected", "budget_skipped"]
+            "description": "Per-child status: starting | running | escalated | succeeded | failed | cancelled | verifying | rejected | budget_skipped | orphaned. verifying = a worker settled succeeded and a verifier is reviewing it. rejected = a verifier rejected it and re-dispatch is exhausted. budget_skipped = the child (worker or verifier) was never spawned because its projected cost would exceed the budget. orphaned = the child was non-terminal when a server restart killed its process; the boot reconciler reaped it to this terminal state.",
+            "examples": ["starting", "running", "escalated", "succeeded", "failed", "cancelled", "verifying", "rejected", "budget_skipped", "orphaned"]
           },
           "childKind": {
             "type": "string",

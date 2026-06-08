@@ -46,6 +46,11 @@ describe('QuickActions', () => {
     render(<QuickActions sessionId="s1" />)
     await userEvent.click(screen.getByText('yes'))
     expect(screen.getByText('...')).toBeInTheDocument()
+    // Let the in-flight request settle before the test ends. Otherwise the
+    // delayed fetch resolves after jsdom has torn down `window`, and the
+    // `finally { setSending(null) }` state update throws an unhandled
+    // `ReferenceError: window is not defined` that flakes the whole run.
+    await waitFor(() => expect(screen.getByText('yes')).toBeInTheDocument())
   })
 
   it('shows "failed" on error response', async () => {

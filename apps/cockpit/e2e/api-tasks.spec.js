@@ -7,6 +7,12 @@ import { test, expect } from '@playwright/test'
 
 const API = 'http://localhost:3001'
 
+// State-changing routes are Origin-pinned by the server's originGuard (CSRF
+// defense) — a POST/PUT/DELETE without an allowlisted Origin gets 403. The
+// browser client always sends one; the APIRequestContext does not, so pin it
+// to the cockpit's own client origin.
+test.use({ extraHTTPHeaders: { Origin: 'http://localhost:5173' } })
+
 // Each test block gets its own session id so parallel workers never
 // step on each other's task files.
 function freshSessionId() {

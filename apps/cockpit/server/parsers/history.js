@@ -1,13 +1,14 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { signalDegraded } from '../lib/claude-format.js'
 
 const HISTORY_FILE = path.join(os.homedir(), '.claude', 'history.jsonl')
 
 function parseAll() {
   if (!fs.existsSync(HISTORY_FILE)) return []
   const lines = fs.readFileSync(HISTORY_FILE, 'utf-8').trim().split('\n').filter(Boolean)
-  return lines
+  const parsed = lines
     .map((l) => {
       try {
         return JSON.parse(l)
@@ -16,6 +17,20 @@ function parseAll() {
       }
     })
     .filter(Boolean)
+
+  if (parsed.length === 0 && lines.length > 0) {
+    // Lines present but none parsed → the JSONL shape likely changed under us
+    // (an empty file, by contrast, yields zero lines and is unremarkable).
+    // Surface this as a PERSISTENT degraded signal (deduped per process) so the
+    // dashboard can show a banner instead of silently rendering an empty history
+    // that reads as "you have run nothing."
+    signalDegraded('history', 'format-change', {
+      filePath: HISTORY_FILE,
+      lineCount: lines.length,
+    })
+  }
+
+  return parsed
 }
 
 export function getHistory(limit = 100, offset = 0, { project, from, to } = {}) {

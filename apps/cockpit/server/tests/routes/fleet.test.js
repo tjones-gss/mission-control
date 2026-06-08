@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // never create a real worktree. ───────────────────────────────────────────────
 vi.mock('../../parsers/harness.js', () => ({
   getKnownHarnessRoots: vi.fn().mockReturnValue([]),
+  runHarnessApprove: vi.fn(),
 }))
 vi.mock('../../claude-cli.js', () => ({
   runClaude: vi.fn().mockResolvedValue({
@@ -68,13 +69,13 @@ vi.mock('fs', () => {
 
 import express from 'express'
 import request from 'supertest'
-import { getKnownHarnessRoots } from '../../parsers/harness.js'
+import { getKnownHarnessRoots, runHarnessApprove } from '../../parsers/harness.js'
 import { runClaude, runClaudeCancellable } from '../../claude-cli.js'
 import { awaitNewSession } from '../../lib/pending-session.js'
 import { atomicWriteJson } from '../../lib/atomic-write.js'
 import { getQueryStatus, resolveApproval } from '../../pty-session.js'
 import { router } from '../../routes/fleet.js'
-import { __resetFleet, DATA_DIR, TEMPLATES_DIR } from '../../fleet/fleet-runner.js'
+import { __resetFleet, resetKillSwitch, DATA_DIR, TEMPLATES_DIR } from '../../fleet/fleet-runner.js'
 
 const app = express()
 app.use(express.json())
@@ -104,6 +105,7 @@ beforeEach(() => {
   fsState.dirs.clear()
   fsState.files.clear()
   __resetFleet()
+  resetKillSwitch()
   // Default child spawn: stays pending so children remain 'running' and the run
   // key stays held (mirrors the execute "ack wins" path).
   runClaudeCancellable.mockReturnValue({ promise: new Promise(() => {}), cancel: vi.fn() })
@@ -115,6 +117,8 @@ beforeEach(() => {
     stderr: '',
     exitCode: 0,
   })
+  // Default harness-approve subprocess: a clean decided write.
+  runHarnessApprove.mockResolvedValue({ ok: true, code: 0, stdout: 'approval ok', stderr: '' })
   // Round-trip persists back into the in-memory fs so a subsequent read sees the
   // updated state (the runner persists via atomicWriteJson, then re-reads on the
   // next request). Mirrors what a real atomic write would do on disk.
@@ -410,7 +414,7 @@ describe('POST /api/fleet/:id/decide — route a human Allow/Deny', () => {
     expect(runClaude).not.toHaveBeenCalled()
   })
 
-  it('source "harness" shells `harness approve <id> --allow` in the child cwd, never the resolver', async () => {
+  it('source "harness" runs the harness CLI DIRECTLY (no claude session) in the child cwd, never the resolver', async () => {
     whitelist(A)
     seedRun({
       id: 'goal-d2',
@@ -428,12 +432,11 @@ describe('POST /api/fleet/:id/decide — route a human Allow/Deny', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.ok).toBe(true)
-    // Shelled the harness CLI in the CHILD's cwd with the approve subcommand.
-    expect(runClaude).toHaveBeenCalledTimes(1)
-    const call = runClaude.mock.calls[0][0]
-    expect(call.cwd).toBe(A)
-    const promptArg = call.args[call.args.indexOf('-p') + 1]
-    expect(promptArg).toContain('harness approve req-9 --deny')
+    // Shelled the harness CLI DIRECTLY in the CHILD's cwd — a child_process
+    // subprocess, NOT an LLM/claude session in the deterministic trust path.
+    expect(runHarnessApprove).toHaveBeenCalledTimes(1)
+    expect(runHarnessApprove).toHaveBeenCalledWith(A, 'req-9', 'deny')
+    expect(runClaude).not.toHaveBeenCalled()
     // The cockpit NEVER writes the decided file directly, and never uses the
     // in-memory resolver for a harness-source decision.
     expect(resolveApproval).not.toHaveBeenCalled()
@@ -499,6 +502,7 @@ describe('POST /api/fleet/:id/decide — route a human Allow/Deny', () => {
       .send({ childIdx: 0, source: 'harness', decision: 'allow', requestId: 'req-1' })
     expect(res.status).toBe(404)
     expect(runClaude).not.toHaveBeenCalled()
+    expect(runHarnessApprove).not.toHaveBeenCalled()
   })
 })
 
@@ -597,5 +601,38 @@ describe('Fleet templates — save / list / launch-from-template', () => {
     const res = await request(app).get('/templates')
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('templates')
+  })
+})
+
+describe('global hard kill-switch route', () => {
+  it('GET /kill reports disengaged by default and is NOT matched as /:id', async () => {
+    const res = await request(app).get('/kill')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ engaged: false })
+  })
+
+  it('POST /kill engages the switch; afterwards a new run is refused with 503', async () => {
+    whitelist(A)
+    const kill = await request(app).post('/kill')
+    expect(kill.status).toBe(202)
+    expect(kill.body.ok).toBe(true)
+    expect(kill.body.engaged).toBe(true)
+
+    expect((await request(app).get('/kill')).body.engaged).toBe(true)
+
+    // A start request while engaged is refused before any spawn.
+    const res = await request(app)
+      .post('/')
+      .send({ goal: 'blocked', children: [{ cwd: A, prompt: 'x' }] })
+    expect(res.status).toBe(503)
+    expect(runClaudeCancellable).not.toHaveBeenCalled()
+  })
+
+  it('DELETE /kill disengages the switch and re-arms the line', async () => {
+    await request(app).post('/kill')
+    const res = await request(app).delete('/kill')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ ok: true, engaged: false })
+    expect((await request(app).get('/kill')).body.engaged).toBe(false)
   })
 })

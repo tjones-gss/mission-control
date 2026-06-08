@@ -78,6 +78,19 @@ describe('useSSE', () => {
     })
   })
 
+  it('calls onMessage for parser_degraded events', () => {
+    const onMessage = vi.fn()
+    renderHook(() => useSSE(onMessage))
+    const es = global.EventSource.instance
+    act(() => {
+      es.emit('parser_degraded', { parser: 'sessions', reason: 'format-change' })
+    })
+    expect(onMessage).toHaveBeenCalledWith({
+      type: 'parser_degraded',
+      data: { parser: 'sessions', reason: 'format-change' },
+    })
+  })
+
   it('closes EventSource on unmount', () => {
     const onMessage = vi.fn()
     const { unmount } = renderHook(() => useSSE(onMessage))
@@ -314,6 +327,7 @@ describe('useSSE', () => {
       'conductor_update',
       'harness_update',
       'fleet_update',
+      'parser_degraded',
     ]
 
     expectedEvents.forEach((eventType) => {

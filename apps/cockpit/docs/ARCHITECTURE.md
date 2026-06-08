@@ -67,6 +67,25 @@ threads a single live-refetch version per section (`configVersion` / `hooksVersi
 `TimelineView` stays paired with `ConversationView` (the one inspector reached for
 live) rather than being folded in.
 
+### Shared contracts (`packages/contracts`)
+
+The shapes the cockpit and the Python harness exchange live in the workspace's
+`packages/contracts`, imported as `@mission-control/contracts`. Both sides DERIVE
+their version numbers from one committed sidecar, `schema-version.json`
+(`{ schemaVersion, approvalSchemaVersion }`) — neither hand-copies the other, and a
+cross-language parity test reds CI on drift. `index.js` exports `SCHEMA_VERSION`
+(currently **6** — versions the contracts package as a whole; bumped by Durable
+Fleet, which added the `orphaned` run/child status and the child `pid` field) and
+`APPROVAL_SCHEMA_VERSION` (currently **2**) — these are **DISTINCT concepts** (the
+package version vs the per-approval-document version stamped into
+`.harness/approvals/**`), deliberately allowed to differ. Schemas exported include
+`harnessStatus`, `harnessScaffold`, `approvalRequest`, `approvalDecision`,
+`fleetRun`, `fleetTemplate`, and `pipelinePhase`. The new
+`pipeline-phase.schema.json` (`{ id, agent, tier, optional model, gate.required[],
+strategy: single\|fleet, goal }`) is the canonical phase-contract object (ADR-0006):
+it is **defined and exported but NOT YET consumed** — it is the Phase-2 spine
+contract.
+
 ---
 
 ## Data Flow
@@ -128,6 +147,8 @@ live) rather than being folded in.
 | `server/lib/apiError.js` | Standardized `ApiError` class + factory helpers (badRequest, notFound, conflict, unauthorized) |
 | `server/lib/claude-bin.js` | Locates the `claude` CLI on PATH (`claude.exe` → `claude.cmd` → `claude.ps1` on Windows, `claude` elsewhere). Exposes a lazy, memoized `getClaudeBin()` so the server boots even if the CLI is missing — routes fail with a clean 503 at call time instead of crashing at import. |
 | `server/lib/atomic-write.js` | Atomic JSON writer (write-temp + rename) used by any state file that must never be half-written |
+| `server/lib/claude-format.js` | Parser version-guard / graceful-degrade layer. Draws the one distinction that matters when reading `~/.claude` (whose format Claude Code owns and can change under us): **absent/empty is NORMAL** (return the natural `[]`/`{}`), but **present-but-unparseable is DEGRADED** (a parse failure, lines>0 yet parsed==0, a scan that should have found a field and didn't). On degradation it returns a distinguishable degraded MARKER (`makeDegraded`/`isDegraded`, keyed on `DEGRADED_MARKER` — never a bare `[]`/`{}`) AND emits a persistent, per-`(parser, reason)`-deduped `parser_degraded` SSE event (`signalDegraded`), so a blank can never silently misreport "nothing configured." `readClaudeJson(filePath, parser)` is the shared read helper returning `{ status: 'absent'\|'ok'\|'degraded', value }`. **EVERY** `~/.claude` parser is now degrade-guarded through this layer (sessions, config, hooks, session-discovery + mcp, memory, skills, plans, history, tasks, teams, conductor, messages). |
+| `server/lib/trust-store.js` | Persisted, default-DENY per-cwd trust store. `isCwdTrusted(cwd)` gates whether the interactive front door may escalate to `--dangerously-skip-permissions` (see PTY Session Control). No grant UI/route yet (deferred) — every cwd reads as untrusted. |
 | `server/lib/pending-session.js` | `awaitNewSession(cwd, { timeoutMs })` returns a Promise that resolves with the new sessionId as soon as the chokidar watcher emits `new_session` for a matching encoded cwd. Snapshots existing JSONL IDs before subscribing so a pre-existing file doesn't short-circuit the current spawn. Case-insensitive cwd match on win32. Powers the POST /new early-ack path (job 013). |
 | `server/middleware/security.js` | Helmet security headers, express-rate-limit, optional API key auth |
 | `server/middleware/requestLogger.js` | pino-http request logging with correlation IDs (X-Request-Id) |
@@ -165,7 +186,7 @@ Each parser reads a specific file format from `~/.claude/` and returns structure
 | `routes/fs.js` | `GET /api/fs/home`, `GET /api/fs/list?path=…` — host filesystem enumeration used by the sidebar folder picker. Returns `sep` so the client stays platform-agnostic. Absolute-only, NUL-reject, UNC-reject on Windows. Unrestricted directory listing is intentional for a local-only dashboard; documented inline. |
 | `routes/managers.js` | `GET /api/managers` — manager/team/standalone session groupings surfaced by the Dispatch Manager. |
 | `routes/conductor.js` | `GET /api/conductor` (list all runs), `GET /api/conductor/:projectKey/:adr` (single run), `GET /api/conductor/:projectKey/:adr/:kind` (file content, kind ∈ `journal`, `ratification`, `skill-diff`, `plan`, `status`). `projectKey` is `encodeURIComponent`-encoded absolute path; server decodes and whitelists it against known roots. File content returned as `text/plain` to avoid JSON parsing on malformed content. |
-| `routes/fleet.js` | **`POST /api/fleet`** (start a run — early-ack `202 { ok, id, status, children }`; children spawn in the background. Accepts either an inline `{ goal, children, policy }` body OR `{ template: name }` to instantiate a saved template; inline fields override template defaults), `GET /api/fleet` (list run summaries), `GET /api/fleet/:id` (full persisted run state, 404 if unknown), **`POST /api/fleet/templates`** (save a repeatable fleet config — `{ name, goal, children, policy }`; the name is validated like a workflow name at the route AND re-validated with the body in the runner before any write), **`GET /api/fleet/templates`** (list saved templates), `GET /api/fleet/:id/escalations` (merged escalation list — live SDK tool-approval requests tagged `source:'tool'` + harness `.harness/approvals/pending/*.json` tagged `source:'harness'`; reconciles the per-child `running↔escalated` status as a side effect so the badge survives a reload), **`POST /api/fleet/:id/decide`** (route ONE human Allow/Deny — body `{ childIdx, source:'tool'\|'harness', decision:'allow'\|'deny', approvalId?, requestId?, message? }`), **`POST /api/fleet/:id/cancel`** (cancel in-flight children, `202`). A thin Express layer over `server/fleet/fleet-runner.js`, which owns all lifecycle/spawn/persistence/safety. **Route-ordering note:** the `/templates` routes are registered *before* the `/:id` param routes so Express does not match `templates` as an `:id`. **`/decide` is a dispatch-only endpoint, not a new approval store** — it routes the decision through the EXISTING write paths: the in-memory SDK `resolveApproval` (the same one `POST /api/sessions/:id/tool-approval` uses) for `source:'tool'`, and the harness CLI (`harness approve <requestId> --allow\|--deny`, shelled in the whitelisted child cwd) for `source:'harness'`. The cockpit NEVER writes a `.harness/approvals/decided/` file itself — the harness CLI is the single writer, and it copies the pending request's `commandHash` onto the decision (replay-proofing). Fleet has no auto-approve branch. |
+| `routes/fleet.js` | **`POST /api/fleet`** (start a run — early-ack `202 { ok, id, status, children }`; children spawn in the background. Accepts either an inline `{ goal, children, policy }` body OR `{ template: name }` to instantiate a saved template; inline fields override template defaults), `GET /api/fleet` (list run summaries), `GET /api/fleet/:id` (full persisted run state, 404 if unknown), **`POST /api/fleet/templates`** (save a repeatable fleet config — `{ name, goal, children, policy }`; the name is validated like a workflow name at the route AND re-validated with the body in the runner before any write), **`GET /api/fleet/templates`** (list saved templates), `GET /api/fleet/:id/escalations` (merged escalation list — live SDK tool-approval requests tagged `source:'tool'` + harness `.harness/approvals/pending/*.json` tagged `source:'harness'`; reconciles the per-child `running↔escalated` status as a side effect so the badge survives a reload), **`POST /api/fleet/:id/decide`** (route ONE human Allow/Deny — body `{ childIdx, source:'tool'\|'harness', decision:'allow'\|'deny', approvalId?, requestId?, message? }`), **`POST /api/fleet/:id/cancel`** (cancel in-flight children, `202`), **`GET\|POST\|DELETE /api/fleet/kill`** (global hard kill-switch — GET reports `{ engaged }`, POST engages it + cancels all in-flight children, DELETE re-arms; registered before the `/:id` param routes so `kill` isn't matched as an `:id`). A thin Express layer over `server/fleet/fleet-runner.js`, which owns all lifecycle/spawn/persistence/safety. **Route-ordering note:** the `/templates` routes are registered *before* the `/:id` param routes so Express does not match `templates` as an `:id`. **`/decide` is a dispatch-only endpoint, not a new approval store** — it routes the decision through the EXISTING write paths: the in-memory SDK `resolveApproval` (the same one `POST /api/sessions/:id/tool-approval` uses) for `source:'tool'`, and the harness CLI for `source:'harness'` — via `runHarnessApprove()` (`parsers/harness.js`), a **direct `python <harness> approve <requestId> --allow\|--deny` subprocess** in the whitelisted child cwd (no Claude session in the deterministic approval write path). The cockpit NEVER writes a `.harness/approvals/decided/` file itself — the harness CLI is the single writer, and it copies the pending request's `commandHash` onto the decision (replay-proofing). Fleet has no auto-approve branch. |
 
 ### Intelligence
 
@@ -184,9 +205,11 @@ AI-powered session analysis using the `claude` CLI.
 | `watcher.js` | chokidar file watcher on `~/.claude/`, detects changes, triggers parser re-reads |
 | `sse.js` | SSE connection manager, broadcasts typed events to all connected clients |
 
-**SSE Event Types:** `session_update`, `new_session`, `task_update`, `team_update`, `intelligence_update`, `history_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`, `conductor_update`, `fleet_update`
+**SSE Event Types:** `session_update`, `new_session`, `task_update`, `team_update`, `intelligence_update`, `history_update`, `sdk_message`, `sdk_result`, `sdk_error`, `tool_approval_request`, `tool_approval_resolved`, `conductor_update`, `fleet_update`, `parser_degraded`
 
 **`fleet_update`:** emitted by `server/fleet/fleet-runner.js` after every persisted-state write (write THEN emit, mirroring `conductor_update`). The payload is a *summary*, not the full state — `{ id, goal, status, createdAt, updatedAt, childCount, settledCount, verifyingCount, rejectedCount, spentUsd, budgetUsd, budgetRemaining, synthesis }` (`childCount` stays the *worker* count so the left-rail "N children" matches what the user launched — verifier children are an internal review detail) — and the client uses it only as a refresh signal (`App.jsx` bumps a `fleetVersion`, `FleetTab` refetches `GET /api/fleet[/:id]`). The allowed-event list in `client/src/hooks/useSSE.js` includes `fleet_update`.
+
+**`parser_degraded`:** emitted by `server/lib/claude-format.js` (`signalDegraded`) when a `~/.claude` file is PRESENT but unparseable — deduped per `(parser, reason)` per process so a repeated bad read announces once, not on every poll. Payload `{ parser, reason, ...detail }`. The client allows it in `useSSE.js` and surfaces it via the `ParserDegradedBanner` component so a present-but-unreadable file shows "we couldn't read your data" rather than a silent empty state.
 
 **Conductor watching:** On startup and on every `new_session` event, `watcher.js` calls `getKnownConductorRoots()` and dynamically `chokidar.add()`s any `.conductor/` directories it finds. `chokidar.add()` is idempotent so no dedup logic is needed. Changes to files under those directories emit `conductor_update` with `{ projectPath, adr, filePath, ts }` and skip the normal `~/.claude/` path handling.
 
@@ -194,13 +217,17 @@ AI-powered session analysis using the `claude` CLI.
 
 | File | Purpose |
 |------|---------|
-| `claude-cli.js` | Spawns `claude` CLI as subprocess for new sessions, fork, worktree creation, and intel analysis. Resolves the binary via `lib/claude-bin.js` (lazy + memoized). On non-zero exit the rejected error carries both `stderrOutput` and `stdoutOutput` so callers can surface structured failures (e.g. the 429 quota JSON the CLI writes to stdout). Exposes both `runClaude(...)` (returns a bare Promise, legacy shape) and `runClaudeCancellable(...)` (returns `{ promise, cancel }` so callers can kill the child when a timeout fires). Concurrent writes to the same session are blocked at the route layer (409 Conflict). |
+| `claude-cli.js` | Spawns `claude` CLI as subprocess for new sessions, fork, worktree creation, and intel analysis. Resolves the binary via `lib/claude-bin.js` (lazy + memoized). On non-zero exit the rejected error carries both `stderrOutput` and `stdoutOutput` so callers can surface structured failures (e.g. the 429 quota JSON the CLI writes to stdout). Exposes both `runClaude(...)` (returns a bare Promise, legacy shape) and `runClaudeCancellable(...)` (returns `{ promise, cancel }` so callers can kill the child when a timeout fires; an optional `onSpawn(child)` hook hands the live child to the caller — used by Fleet to capture `child.pid` for its durable registry). Concurrent writes to the same session are blocked at the route layer (409 Conflict). |
+
+**Spawn boundary — injection-safe, `shell:false` ALWAYS (`buildSpawn`).** Every spawn routes through `buildSpawn(bin, args)`, which never passes user-controlled args through a shell. A resolved `.exe` (or POSIX `claude`) is spawned directly. The Windows install shapes that previously needed `shell:true` are routed through the interpreter explicitly instead: a `.cmd`/`.bat` via `cmd.exe /d /s /c <bin> <args…>`, a `.ps1` via `powershell.exe -NoProfile -NonInteractive -File <bin> <args…>` — args passed as a **discrete literal argv** array with `shell:false`, so the interpreter receives them as literal arguments and never re-parses shell metacharacters (`; & | > $() ` backticks, `%VAR%`) embedded in a prompt, `--name`, or PRD/spec field. This closes the Windows `.cmd`/`.ps1` command-injection vector (CVE-2024-27980-class) at the single spawn seam. `withStreamJsonVerbose(args)` likewise enforces the `--output-format stream-json` → `--verbose` invariant once, here, rather than at each call site.
 
 ### PTY Session Control
 
 | File | Purpose |
 |------|---------|
 | `pty-session.js` | Spawns `claude --resume` in a pseudo-terminal for interactive messaging. Uses subscription auth (not API credits). Detects tool approval prompts via pattern matching on PTY output, emits SSE events for real-time UI updates. |
+
+**Front-door permission default (`resolvePermissionArgs`).** The interactive front door is **default-DENY** and no longer defaults to `--dangerously-skip-permissions`. `resolvePermissionArgs(sdkOptions, cwd)` resolves the permission CLI args: an explicit, valid `permissionMode` (one of `VALID_PERMISSION_MODES`) is honored as-is; otherwise the session runs GUARDED with `--permission-mode acceptEdits` — prompts are never disabled by default. It only escalates to `--dangerously-skip-permissions` when the operator has granted a deliberate, persisted **per-cwd trust** via `lib/trust-store.js` (`isCwdTrusted(cwd)`). Choosing a cwd is not consent to run unattended with full Bash/Write against a possibly prompt-injected repo. **NOTE:** there is not yet a UI/route to *grant* trust (deferred) — the store defaults to deny for every cwd.
 
 **Why PTY instead of SDK?** The Agent SDK's `query()` function creates synthetic API calls billed against API credits. The PTY approach types into an interactive CLI session, which uses the user's existing subscription — same as typing in a terminal.
 
@@ -219,9 +246,13 @@ AI-powered session analysis using the `claude` CLI.
 
 **Spawn safety:** Fleet spawns several autonomous agents, so an absurd N is refused server-side *before* any spawn. `MAX_FLEET_CHILDREN` (4) is the default cap; `policy.maxConcurrency` may only *lower* it, never raise it. `HARD_REFUSE_CHILDREN` (8) is an absolute refusal line. `validateFleetRequest()` fails closed (all-or-nothing): it requires a non-empty `goal`, a non-empty `children` array within the caps, a `prompt` or `workflow` per child, and — for **every** child cwd — both a known-harness-root whitelist hit (else 404) and a `.git` precondition (else 404, since `--worktree` against a non-git tree is unsafe). A `workflow` value is passed as a `/workflow <name>` slash command, never used to build a filesystem path, so a tampered name cannot traverse.
 
-**In-memory registries** (the server is the single spawner/writer): `inFlight` keys each run so a double-submit gets a clean 409; `cancels` maps `fleetId → [cancel,…]` so `cancelFleet` can kill in-flight children; `pendingCounts` tracks not-yet-settled children so the run key is released and synthesis runs exactly once. `__resetFleet()` clears them in tests.
+**In-memory registries** (the server is the single spawner/writer): `inFlight` keys each run so a double-submit gets a clean 409; `cancels` maps `fleetId → [cancel,…]` so `cancelFleet` can kill in-flight children; a global `killSwitch` flag (the `/api/fleet/kill` endpoints) is checked before every spawn/verifier/re-dispatch and synthesis. `__resetFleet()` clears them in tests.
 
-**Escalation surfacing is read-only; deciding is dispatch-only.** `listEscalations(id)` merges, per child, the live SDK tool-approval requests for that child's session (`source:'tool'`) and the harness rails' `.harness/approvals/pending/*.json` (`source:'harness'`). `reconcileEscalationStatus(id)` (called from `GET /:id/escalations`) flips a `running` child to `escalated` while it has a live escalation and back to `running` once it clears, persisting only when the status actually changes. `decideFleetEscalation(id, body)` (called from `POST /:id/decide`) routes ONE human Allow/Deny through the EXISTING write paths and adds NO approval logic of its own: `source:'tool'` calls the in-memory SDK `resolveApproval` (same function `POST /api/sessions/:id/tool-approval` uses); `source:'harness'` shells `harness approve <requestId> --allow\|--deny` in the child's whitelisted cwd via `runClaude` (like the mission-ready route). The harness CLI is the SINGLE WRITER of `.harness/approvals/decided/<requestId>.json` and copies the pending request's `commandHash` onto the decision so a stale/replayed decision cannot unblock a different command. Fleet never writes a decided file directly and never auto-approves.
+**Settle is a PURE predicate, finalize is idempotent.** The hand-counted `pendingCounts` model (a double-settle / stuck-settle hazard) is gone. `allChildrenSettled(state)` is a pure predicate derived from the persisted child statuses; `maybeFinalize(state, lockKey)` is called after every child-settle callback and is idempotent — the first call that observes `allChildrenSettled` releases the run lock and spawns synthesis exactly once; every later call is a no-op (fuzz-proven against double/stuck settle).
+
+**Durable Fleet — boot reconciler + the `orphaned` terminal status.** Fleet runs persist across restarts, so each child's live process `pid` is captured via `runClaudeCancellable`'s `onSpawn` hook and written onto `child.pid`. On startup `index.js` calls `reconcileFleetRuns()` (`fleet-runner.js`): it scans every persisted run JSON, and for any run still in a non-terminal status it reaps each non-terminal child to the new TERMINAL status **`orphaned`** (cross-checking `pid` liveness — a still-alive pid is logged as a stray detached process but the child is still marked orphaned, because nothing in the new process owns its lifecycle), marks the run `orphaned`, skips synthesis, and emits a `fleet_update`. No run is left silently wedged at `running` after a crash/restart.
+
+**Escalation surfacing is read-only; deciding is dispatch-only.** `listEscalations(id)` merges, per child, the live SDK tool-approval requests for that child's session (`source:'tool'`) and the harness rails' `.harness/approvals/pending/*.json` (`source:'harness'`). `reconcileEscalationStatus(id)` (called from `GET /:id/escalations`) flips a `running` child to `escalated` while it has a live escalation and back to `running` once it clears, persisting only when the status actually changes. `decideFleetEscalation(id, body)` (called from `POST /:id/decide`) routes ONE human Allow/Deny through the EXISTING write paths and adds NO approval logic of its own: `source:'tool'` calls the in-memory SDK `resolveApproval` (same function `POST /api/sessions/:id/tool-approval` uses); `source:'harness'` calls `runHarnessApprove(child.cwd, requestId, decision)` (`parsers/harness.js`), which shells `harness approve <requestId> --allow\|--deny` as a **direct python child-process** in the child's whitelisted cwd (tries `python` then `python3`; never throws/hangs) — no Claude session is in this deterministic approval write path. The harness CLI is the SINGLE WRITER of `.harness/approvals/decided/<requestId>.json` and copies the pending request's `commandHash` onto the decision so a stale/replayed decision cannot unblock a different command. Fleet never writes a decided file directly and never auto-approves.
 
 #### Phase 4 — dynamic-workflow patterns, native (policy surface)
 
@@ -265,8 +296,8 @@ authorship** (its prompt never says who produced the work), is itself quarantine
 (read-only), and must return only a JSON verdict `{ verdict:'approve'|'reject',
 reasons, rubricScores }`. `parseVerdict` **fails closed to `reject`** on anything
 unparseable — a malformed or failed verifier can never silently pass work. The
-verifier is appended to `state.children` (so synthesis still waits for it via
-`pendingCounts`) but is excluded from the run-level outcome (`deriveStatus` filters
+verifier is appended to `state.children` (so synthesis still waits for it — an
+in-flight verifier keeps `allChildrenSettled` false) but is excluded from the run-level outcome (`deriveStatus` filters
 verifiers out; only worker outcomes define the run). `routeVerdict` then: **approve +
 enough approvals** → worker final `succeeded`; **approve but `minApprovals` not yet
 met** → spawn another independent verifier (budget permitting); **reject** →
@@ -306,7 +337,7 @@ of its own. The name is traversal-guarded before any path is built.
   "goal": "the original goal (the supervisor holds it)",
   "createdAt": "ISO",
   "updatedAt": "ISO",
-  "status": "running",   // running | succeeded | failed | partial | cancelled | budget_exceeded (derived)
+  "status": "running",   // running | succeeded | failed | partial | cancelled | budget_exceeded | orphaned (derived)
   "policy": {                              // resolved/persisted policy (what was enforced)
     "maxConcurrency": 4,                   // effective cap (clamped to MAX_FLEET_CHILDREN)
     "budgetUsd": 5,                        // optional — hard dollar cap; omitted = no budget enforcement
@@ -324,10 +355,13 @@ of its own. The name is traversal-guarded before any path is built.
       "childKind": "worker",                 // worker | verifier (verifiers appended at runtime)
       "quarantine": false,                   // best-effort read-only stance (NOT a sandbox)
       "sessionId": null,                     // filled on watcher ack
+      "pid": null,                           // child process pid, captured via runClaudeCancellable's
+                                             //   onSpawn hook — read by reconcileFleetRuns for liveness
       "worktree": true,                      // children ALWAYS run with --worktree
       "branch": "fleet/<id>/c0",
       "status": "starting",                  // starting | running | escalated | succeeded | failed |
-                                             //   cancelled | verifying | rejected | budget_skipped
+                                             //   cancelled | verifying | rejected | budget_skipped |
+                                             //   orphaned (reaped by the boot reconciler)
       "cost": null,                          // null until the session id is known/settles, then the
                                              //   cockpit's canonical session-cost shape:
                                              //   { totalCost, breakdown:{ input, output, cacheWrite, cacheRead }, family }
@@ -348,7 +382,7 @@ of its own. The name is traversal-guarded before any path is built.
 }
 ```
 
-The run `status` is *derived* from the **worker** children only (verifiers are tracked for `pendingCounts`/cost but never define the run outcome): all-cancelled → `cancelled`; any worker still unsettled OR a verifier still in flight → `running`; otherwise `succeeded` (all ok), `failed` (all failed/rejected/budget_skipped), or `partial` (mixed). `budget_exceeded` supersedes the derived status when the running cost total crossed `policy.budgetUsd`. Synthesis is `skipped` when the run was cancelled, the budget was exceeded, or no primary (non-quarantined) cwd exists.
+The run `status` is *derived* from the **worker** children only (verifiers are tracked for settle/cost but never define the run outcome): all-cancelled → `cancelled`; any worker still unsettled OR a verifier still in flight → `running`; otherwise `succeeded` (all ok), `failed` (all failed/rejected/budget_skipped), or `partial` (mixed). `budget_exceeded` supersedes the derived status when the running cost total crossed `policy.budgetUsd`. `orphaned` is the TERMINAL status the boot reconciler (`reconcileFleetRuns`) assigns to a non-terminal run/child it finds after a restart. Synthesis is `skipped` when the run was cancelled, the budget was exceeded, the run was orphaned, or no primary (non-quarantined) cwd exists.
 
 ---
 
@@ -418,6 +452,7 @@ The run `status` is *derived* from the **worker** children only (verifiers are t
 | `ConductorTab/ConductorTab.jsx` | Master list of all discovered Conductor runs across projects — phase pill, validator iter count, split count, escalation badge |
 | `ConductorTab/RunDetail.jsx` | Detail view for a single run — acceptance-command checklist, sub-tabs for journal/ratification/skill-diff rendered via `Markdown.jsx` |
 | `ConductorTab/StartConductorDialog.jsx` | Launch dialog — validates 4-digit ADR, POSTs `/conductor NNNN` to `POST /api/sessions/new` |
+| `ParserDegradedBanner.jsx` | Banner surfaced when a `parser_degraded` SSE event fires — tells the user a `~/.claude` file is present but unreadable (Claude Code may have changed its format) instead of letting the view misreport an empty state |
 | `ErrorBoundary.jsx` | React error boundary with retry |
 | `LiveFeed.jsx` | Right sidebar — real-time SSE event stream |
 | `LegendModal.jsx` | Help overlay with layout, color, shortcut reference |
@@ -467,7 +502,10 @@ All data is read from the local filesystem. The server never modifies `~/.claude
 
 ## Testing
 
-**1,136 total tests** — 691 server (46 files) + 445 client (40 files). All must pass before pushing.
+**1,485 cockpit tests** — 981 server + 504 client (Vitest). Plus a gated Fleet e2e lane
+(`RUN_E2E=1`, 2 tests: verify→reject→retry→synthesis + the kill-and-restart durability case). All
+must pass before pushing. (The harness Python suite — 77 passed / 1 skipped — lives in
+`packages/harness`.) The per-suite counts below are approximate.
 
 | Suite | Runner | Count | Location |
 |-------|--------|-------|----------|

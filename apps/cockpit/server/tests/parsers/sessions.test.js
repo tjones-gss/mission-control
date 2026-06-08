@@ -22,11 +22,18 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getAllSessions, getSessionById } from '../../parsers/sessions.js'
+import { emit } from '../../sse.js'
+import { _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 // Helpers
@@ -80,10 +87,11 @@ describe('getAllSessions()', () => {
     expect(getAllSessions()).toEqual([])
   })
 
-  it('warns when a non-empty .jsonl has lines but none parse as JSON', () => {
-    // A format change would leave us with lines that no longer parse. We still
-    // return [] (tolerant), but must warn loudly rather than degrade silently.
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('emits a persistent parser_degraded SSE event when a non-empty .jsonl has lines but none parse', () => {
+    // A format change leaves us with lines that no longer parse. The session
+    // list still tolerantly omits the unreadable file (returns []), but the
+    // degradation must surface as a persistent SSE signal — NOT a silent empty
+    // list and NOT a one-shot console.warn buried in stdout.
     fs.existsSync.mockReturnValue(true)
     fs.readdirSync
       .mockReturnValueOnce([makeProjectDirEntry('C--project')])
@@ -93,10 +101,23 @@ describe('getAllSessions()', () => {
     fs.readFileSync.mockReturnValue('<<binary>>\n<<garbage>>')
 
     expect(getAllSessions()).toEqual([])
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Claude’s session JSONL format may have changed'.replace('’', "'")),
+    expect(emit).toHaveBeenCalledTimes(1)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'sessions' }),
     )
-    warnSpy.mockRestore()
+  })
+
+  it('does not emit parser_degraded for an empty (zero-line) .jsonl — that is normal', () => {
+    fs.existsSync.mockReturnValue(true)
+    fs.readdirSync
+      .mockReturnValueOnce([makeProjectDirEntry('C--project')])
+      .mockReturnValueOnce(['session-abc.jsonl'])
+    fs.statSync.mockReturnValue(makeStat())
+    fs.readFileSync.mockReturnValue('')
+
+    expect(getAllSessions()).toEqual([])
+    expect(emit).not.toHaveBeenCalled()
   })
 
   it('ignores metadata-only jsonl files that have no conversation records', () => {

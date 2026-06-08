@@ -49,6 +49,16 @@ export function _resetClaudeBinCache() {
   cachedBin = null
 }
 
+// Test-only: pin getClaudeBin to a specific absolute path WITHOUT touching PATH.
+// The gated e2e lane (RUN_E2E=1) uses this to point the real spawn pipeline at a
+// deterministic stub `claude` bin so a Fleet can be driven through a full
+// verify→reject→retry→synthesis cycle without a network/API key. Passing null
+// clears the override and re-enables normal PATH resolution. This is the
+// `getClaudeBin` override the e2e durability/reject specs depend on.
+export function _setClaudeBin(absPath) {
+  cachedBin = absPath || null
+}
+
 export function isShellScript(binPath) {
   const p = binPath.toLowerCase()
   return p.endsWith('.cmd') || p.endsWith('.bat') || p.endsWith('.ps1')

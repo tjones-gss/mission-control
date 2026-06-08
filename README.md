@@ -144,6 +144,18 @@ sandboxing.
 - **`packages/contracts`** — shared JSON schemas defining the data the harness
   emits and the cockpit consumes.
 - **`installers`** — one-command setup.
+- **`docs/adr`** — accepted program ADRs that fix the direction:
+  [0004 deployment topology](docs/adr/0004-deployment-topology.md)
+  (localhost-first, architect-for-team), [0005 moat & surface
+  strategy](docs/adr/0005-moat-and-surface-strategy.md),
+  [0006 canonical orchestration model](docs/adr/0006-canonical-orchestration-model.md)
+  (the harness pipeline is the spine; Fleet is a phase *strategy*; a Workflow is
+  a degenerate single-phase pipeline), and [0007 core vs experimental
+  scope](docs/adr/0007-core-vs-experimental-scope.md).
+- **[`SCOPE.md`](SCOPE.md)** — the CORE vs EXPERIMENTAL surface split and the
+  "no new tab without retiring an overlap" freeze rule.
+- **[`DOD-LADDER.md`](DOD-LADDER.md)** — the definition-of-done ladder (L0 honest →
+  L1 trustworthy → L2 adoptable → L3 standard) with testable exit criteria.
 - **`docs/governance`** — whole-tool reviews: an [engineering council
   review](docs/governance/council-review.md) and a [feature-by-feature UI/UX
   sweep](docs/governance/feature-sweep.md) with keep/fold/cut verdicts.

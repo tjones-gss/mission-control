@@ -1,6 +1,21 @@
 import { http, HttpResponse } from 'msw'
 
 export const handlers = [
+  http.get('/api/harness', () => HttpResponse.json({ projects: [] })),
+  http.get('/api/harness/scaffold-candidates', () => HttpResponse.json({ candidates: [] })),
+  http.post('/api/harness/create', () =>
+    HttpResponse.json(
+      {
+        ok: true,
+        root: 'C:/work/fresh-app',
+        mode: 'idea-to-mvp',
+        stage: 'intake',
+        phase: 'intake',
+        created: ['.harness/project-state.yml'],
+      },
+      { status: 201 },
+    ),
+  ),
   http.get('/api/workflows', () => HttpResponse.json([])),
   http.post('/api/workflows', () =>
     HttpResponse.json(

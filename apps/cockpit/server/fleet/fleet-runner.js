@@ -21,10 +21,10 @@ import fs from 'fs'
 import { promises as fsp } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'node:url'
-import { runClaude, runClaudeCancellable } from '../claude-cli.js'
+import { runClaudeCancellable } from '../claude-cli.js'
 import { atomicWriteJson } from '../lib/atomic-write.js'
 import { awaitNewSession } from '../lib/pending-session.js'
-import { getKnownHarnessRoots } from '../parsers/harness.js'
+import { getKnownHarnessRoots, runHarnessApprove } from '../parsers/harness.js'
 import { getQueryStatus, resolveApproval } from '../pty-session.js'
 import { getSessionById } from '../parsers/sessions.js'
 import { emit } from '../sse.js'
@@ -49,7 +49,15 @@ export const HARD_REFUSE_CHILDREN = 8
 const CHILD_TIMEOUT_MS = 30 * 60 * 1000 // 30 min per child — long autonomous run.
 const SYNTH_TIMEOUT_MS = 10 * 60 * 1000
 const VERIFIER_TIMEOUT_MS = 10 * 60 * 1000
-const ACK_TIMEOUT_MS = 15_000
+// The session-ack wait. A child settles on CLI exit independently of this ack
+// (the ack only captures sessionId/cost), so a missed ack never wedges a run.
+// The gated e2e lane drives a stub bin with no watcher running, so the ack would
+// always burn the full timeout as a dangling timer; OVERSIGHT_FLEET_ACK_TIMEOUT_MS
+// lets that lane collapse it to a few ms. Unset in production = 15s, unchanged.
+const ACK_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.OVERSIGHT_FLEET_ACK_TIMEOUT_MS)
+  return Number.isFinite(raw) && raw > 0 ? raw : 15_000
+})()
 
 // Conservative pre-spawn cost estimate (USD) used when policy.perChildUsd is not
 // set but a budget IS. child.cost lags (Claude writes usage after the fact), so
@@ -67,14 +75,38 @@ const DEFAULT_CHILD_ESTIMATE_USD = 0.5
 const inFlight = new Set()
 // fleetId -> [cancel, ...] so cancelFleet can kill in-flight children.
 const cancels = new Map()
-// fleetId -> count of children not yet settled, so we release the key + run
-// synthesis exactly once when the last child settles.
-const pendingCounts = new Map()
+// fleetId set: a run whose synthesis (the once-only post-settle step) has already
+// been kicked off. The settle decision is DERIVED as a pure predicate over the
+// persisted child statuses (allChildrenSettled), so EVERY child-settle callback
+// re-evaluates "are we done?" instead of decrementing a hand-counted counter
+// (the old pendingCounts double-settle/stuck-settle hazard). This set makes the
+// transition into synthesis idempotent: the first settle that observes all
+// children terminal wins; every later one is a no-op. Cleared with the run.
+const finalized = new Set()
 // Child objects whose CLI spawn has actually been committed (passed the budget
 // gate and called runClaudeCancellable). Used by projectionWouldExceed to
 // RESERVE an estimate for in-flight-but-not-yet-costed children. A WeakSet so it
 // never leaks into the persisted state and is GC'd with the run. NOT persisted.
 const spawnedChildren = new WeakSet()
+
+// GLOBAL HARD KILL-SWITCH. A single module-level boolean, deliberately NOT keyed
+// off any run id or the in-memory registries, so it remains reachable and
+// authoritative even if those registries are empty (e.g. right after a restart,
+// before/while the reconciler runs). When engaged, NO new fleet run may start and
+// NO new child/verifier/synthesis may be spawned — the line is dead until it is
+// explicitly disengaged. This is the operator's last-resort stop that does not
+// depend on knowing any run id or on the lifecycle bookkeeping being intact.
+let killSwitch = false
+export function engageKillSwitch() {
+  killSwitch = true
+}
+export function isKillSwitchEngaged() {
+  return killSwitch
+}
+// Test-only / operator reset — disengage the kill-switch.
+export function resetKillSwitch() {
+  killSwitch = false
+}
 
 function acquire(key) {
   if (inFlight.has(key)) return false
@@ -91,7 +123,7 @@ function release(key) {
 export function __resetFleet() {
   inFlight.clear()
   cancels.clear()
-  pendingCounts.clear()
+  finalized.clear()
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -377,11 +409,21 @@ function projectionWouldExceed(state) {
 
 // Terminal-for-derivation worker statuses. 'rejected' (verifier rejected and
 // re-dispatch exhausted) and 'budget_skipped' (never spawned for budget) count
-// as settled like 'failed'. A 'verifying' worker (a verifier is still checking
-// it) is NOT settled — see risks #6c.
-const SETTLED_WORKER_STATUSES = ['succeeded', 'failed', 'cancelled', 'rejected', 'budget_skipped']
+// as settled like 'failed'. 'orphaned' (reaped by the boot reconciler after a
+// restart killed the live process) is also terminal. A 'verifying' worker (a
+// verifier is still checking it) is NOT settled — see risks #6c.
+const SETTLED_WORKER_STATUSES = [
+  'succeeded',
+  'failed',
+  'cancelled',
+  'rejected',
+  'budget_skipped',
+  'orphaned',
+]
+// Terminal statuses for a VERIFIER child (it never re-dispatches).
+const SETTLED_VERIFIER_STATUSES = ['succeeded', 'failed', 'cancelled', 'orphaned']
 // Statuses that count as a failure for partial/failed derivation.
-const FAILED_LIKE_STATUSES = ['failed', 'rejected', 'budget_skipped']
+const FAILED_LIKE_STATUSES = ['failed', 'rejected', 'budget_skipped', 'orphaned']
 
 // Derive the run-level status from child statuses (pure). Only WORKER children
 // participate — verifier children are tracked for pendingCounts/cost but a run's
@@ -393,7 +435,7 @@ function deriveStatus(state) {
   }
   // A verifier still in flight means the run is not settled.
   const verifierInFlight = state.children.some(
-    (c) => c.childKind === 'verifier' && !['succeeded', 'failed', 'cancelled'].includes(c.status),
+    (c) => c.childKind === 'verifier' && !SETTLED_VERIFIER_STATUSES.includes(c.status),
   )
   const settled = !verifierInFlight && kids.every((c) => SETTLED_WORKER_STATUSES.includes(c.status))
   if (!settled) return 'running'
@@ -402,6 +444,24 @@ function deriveStatus(state) {
   if (anyFailed && anyOk) return 'partial'
   if (anyFailed) return 'failed'
   return 'succeeded'
+}
+
+// PURE settle predicate over the PERSISTED child statuses — the single source of
+// "is this run done?" It replaced the hand-counted pendingCounts model: instead
+// of incrementing/decrementing a counter from ~4 sites (the double-settle /
+// stuck-settle hairball), every child-settle callback simply re-derives this from
+// the current child array. A run is settled exactly when EVERY worker is in a
+// terminal worker status (so no worker is starting/running/escalated/verifying)
+// AND no verifier child is still in flight. A worker flipped to 'verifying' holds
+// the run open precisely because verifying is not in SETTLED_WORKER_STATUSES, so
+// the verifier it spawned (appended to children) is what we then wait on.
+export function allChildrenSettled(state) {
+  if (!state || !Array.isArray(state.children)) return true
+  const workers = state.children.filter((c) => c.childKind !== 'verifier')
+  const verifiers = state.children.filter((c) => c.childKind === 'verifier')
+  const workersSettled = workers.every((c) => SETTLED_WORKER_STATUSES.includes(c.status))
+  const verifiersSettled = verifiers.every((c) => SETTLED_VERIFIER_STATUSES.includes(c.status))
+  return workersSettled && verifiersSettled
 }
 
 // A small summary for the SSE event (the full state lives on disk / behind GET).
@@ -449,6 +509,11 @@ async function persistFleet(state) {
 // per-run key, persists the initial state, then spawns each child and returns
 // immediately (early-ack the whole run as 'running').
 export async function startFleetRun({ goal, children, policy } = {}) {
+  // HARD KILL-SWITCH: refuse to start anything while engaged (fail closed,
+  // checked before validation/spawn and independent of in-memory run state).
+  if (killSwitch) {
+    return { ok: false, status: 503, error: 'fleet kill-switch engaged' }
+  }
   const valid = validateFleetRequest({ goal, children, policy })
   if (!valid.ok) return { ok: false, status: valid.status, error: valid.error }
 
@@ -460,7 +525,6 @@ export async function startFleetRun({ goal, children, policy } = {}) {
 
   const state = buildInitialState({ goal, children, policy }, id, valid.cap)
   cancels.set(id, [])
-  pendingCounts.set(id, state.children.length)
 
   try {
     await persistFleet(state)
@@ -468,7 +532,7 @@ export async function startFleetRun({ goal, children, policy } = {}) {
     // Could not even write the initial state — release the key and fail closed.
     release(lockKey)
     cancels.delete(id)
-    pendingCounts.delete(id)
+    finalized.delete(id)
     logger.warn({ detail: err.message, id }, 'fleet_persist_initial_failed')
     return { ok: false, status: 502, error: err.message }
   }
@@ -483,7 +547,7 @@ export async function startFleetRun({ goal, children, policy } = {}) {
       child.status = 'budget_skipped'
       child.error = 'budget'
       persistFleet(state).catch(() => {})
-      settleChild(state, lockKey)
+      maybeFinalize(state, lockKey)
       continue
     }
     spawnChild(state, child.idx, lockKey)
@@ -539,6 +603,17 @@ function buildWorkerPrompt(child) {
 // synthesis.
 function spawnChild(state, idx, lockKey) {
   const child = state.children[idx]
+  // HARD KILL-SWITCH: never spawn while engaged. Mark the child cancelled and let
+  // the derived settle finalize the run — the line is dead.
+  if (killSwitch) {
+    if (NON_TERMINAL_CHILD_STATUSES.includes(child.status) || child.status === 'starting') {
+      child.status = 'cancelled'
+      child.error = child.error || 'fleet kill-switch engaged'
+    }
+    persistFleet(state).catch(() => {})
+    maybeFinalize(state, lockKey)
+    return
+  }
   const childPrompt = buildWorkerPrompt(child)
   const args = [
     '-p',
@@ -557,6 +632,9 @@ function spawnChild(state, idx, lockKey) {
       args,
       cwd: child.cwd,
       timeoutMs: CHILD_TIMEOUT_MS,
+      // Capture the OS pid into the PERSISTED child registry so the boot
+      // reconciler can cross-check liveness after a restart (process.kill(pid,0)).
+      onSpawn: (proc) => recordChildPid(state, child, proc && proc.pid),
     }))
   } catch (err) {
     // Synchronous spawn failure — record on the child and settle it.
@@ -564,7 +642,7 @@ function spawnChild(state, idx, lockKey) {
     child.error = err.message
     logger.warn({ detail: err.message, id: state.id, idx }, 'fleet_child_spawn_failed')
     persistFleet(state).catch(() => {})
-    settleChild(state, lockKey)
+    maybeFinalize(state, lockKey)
     return
   }
 
@@ -630,7 +708,7 @@ function spawnChild(state, idx, lockKey) {
 
     persistFleet(state)
       .catch(() => {})
-      .finally(() => settleChild(state, lockKey))
+      .finally(() => maybeFinalize(state, lockKey))
   })
 }
 
@@ -641,6 +719,8 @@ function spawnChild(state, idx, lockKey) {
 function maybeStartVerification(state, worker, lockKey) {
   const verify = normalizeVerify(state.policy)
   if (!verify) return false
+  // HARD KILL-SWITCH: do not spawn a verifier; let the worker settle as-is.
+  if (killSwitch) return false
   // BUDGET LATCH: if the running total already crossed budget, stop the line —
   // do NOT spawn a verifier (or anything else). The worker keeps its 'succeeded'
   // status (un-verified) and settles normally; onAllChildrenSettled will set the
@@ -657,12 +737,15 @@ function maybeStartVerification(state, worker, lockKey) {
 // Spawn an adversarial VERIFIER child for a worker. The verifier runs in a fresh
 // session in the SAME cwd as the worker (so it can `git diff` the worker's
 // branch) and is BLIND to authorship — its prompt never says who produced the
-// work. It is tracked in pendingCounts as additional pending work so synthesis
-// still waits for everything. On settle it parses the verdict and routes to
-// approve / reject handling.
+// work. It is appended to state.children with a non-terminal status so the
+// DERIVED settle predicate (allChildrenSettled) keeps the run open until it
+// concludes — no counter to keep in sync. On settle it parses the verdict and
+// routes to approve / reject handling.
 function spawnVerifier(state, worker, lockKey) {
-  // The verifier is a new child appended to state.children, tracked in
-  // pendingCounts so the run is not derived as settled until it concludes.
+  // The verifier is a new child appended to state.children. Because it starts in
+  // a non-terminal status ('starting'), allChildrenSettled is false until it
+  // reaches a terminal status — that IS the "wait for everything" guarantee, with
+  // no separate pending counter to drift.
   const verifierIdx = state.children.length
   const verifier = {
     idx: verifierIdx,
@@ -682,7 +765,6 @@ function spawnVerifier(state, worker, lockKey) {
     error: null,
   }
   state.children.push(verifier)
-  bumpPending(state, 1)
 
   const rubric =
     'Does the work fully satisfy the goal? Is it correct, complete, and free of ' +
@@ -713,6 +795,7 @@ function spawnVerifier(state, worker, lockKey) {
       args,
       cwd: verifier.cwd,
       timeoutMs: VERIFIER_TIMEOUT_MS,
+      onSpawn: (proc) => recordChildPid(state, verifier, proc && proc.pid),
     }))
   } catch (err) {
     // Verifier failed to spawn — fail closed: treat as a reject of this round so
@@ -724,12 +807,13 @@ function spawnVerifier(state, worker, lockKey) {
       'fleet_verifier_spawn_failed',
     )
     persistFleet(state).catch(() => {})
-    settleChild(state, lockKey) // settle the verifier's slot
     recordVerdict(
       worker,
       { verdict: 'reject', reasons: ['verifier failed to spawn'], rubricScores: {} },
       null,
     )
+    // routeVerdict re-derives settle (maybeFinalize) after it decides the worker's
+    // fate; the verifier is already terminal ('failed'), so nothing is lost.
     routeVerdict(state, worker, false, lockKey)
     return
   }
@@ -755,12 +839,12 @@ function spawnVerifier(state, worker, lockKey) {
     let approved = false
     let parsed
     if (verifier.status === 'cancelled') {
-      // Cancelled mid-review — settle the verifier slot and leave the worker as
-      // it stands (cancelFleet will have marked workers too).
+      // Cancelled mid-review — the verifier is terminal; re-derive settle and
+      // leave the worker as it stands (cancelFleet will have marked workers too).
       populateChildCost(verifier)
       persistFleet(state)
         .catch(() => {})
-        .finally(() => settleChild(state, lockKey))
+        .finally(() => maybeFinalize(state, lockKey))
       return
     }
     if (t._tag === 'cli_err') {
@@ -781,15 +865,14 @@ function spawnVerifier(state, worker, lockKey) {
     populateChildCost(verifier)
     recordVerdict(worker, parsed, verifier.sessionId)
 
-    // Settle the VERIFIER's own pending slot first (it is terminal), then route
-    // the verdict for the worker (which may re-dispatch the worker — re-adding a
-    // pending slot — or settle the worker).
+    // The verifier is now terminal. routeVerdict decides the worker's fate (which
+    // may re-dispatch the worker — flipping it back to non-terminal 'running' — or
+    // make it terminal) and re-derives settle via maybeFinalize. We do NOT finalize
+    // here: while the worker is still 'verifying' the run is not settled, and once
+    // routeVerdict runs it owns the terminal/non-terminal transition + finalize.
     persistFleet(state)
       .catch(() => {})
-      .finally(() => {
-        settleChild(state, lockKey)
-        routeVerdict(state, worker, approved, lockKey)
-      })
+      .finally(() => routeVerdict(state, worker, approved, lockKey))
   })
 }
 
@@ -822,7 +905,7 @@ function routeVerdict(state, worker, approved, lockKey) {
       worker.status = 'succeeded'
       persistFleet(state)
         .catch(() => {})
-        .finally(() => settleChild(state, lockKey))
+        .finally(() => maybeFinalize(state, lockKey))
       return
     }
     // Need more independent approvals — spawn another verifier if budget allows.
@@ -836,7 +919,7 @@ function routeVerdict(state, worker, approved, lockKey) {
     worker.status = 'succeeded'
     persistFleet(state)
       .catch(() => {})
-      .finally(() => settleChild(state, lockKey))
+      .finally(() => maybeFinalize(state, lockKey))
     return
   }
 
@@ -852,7 +935,7 @@ function routeVerdict(state, worker, approved, lockKey) {
   worker.status = 'rejected'
   persistFleet(state)
     .catch(() => {})
-    .finally(() => settleChild(state, lockKey))
+    .finally(() => maybeFinalize(state, lockKey))
 }
 
 // The sessionId of the most recent verifier that approved this worker (UI link).
@@ -895,22 +978,29 @@ function tryParseJson(s) {
   }
 }
 
-// Add (or subtract) from the run's pending-children counter — the single-writer
-// serialization point. Verifiers and re-dispatched workers add pending work here
-// so synthesis waits for everything.
-function bumpPending(state, delta) {
-  const cur = pendingCounts.get(state.id) || 0
-  pendingCounts.set(state.id, cur + delta)
+// Record an OS pid onto the PERSISTED child registry (best-effort). The pid lets
+// the boot reconciler cross-check liveness (process.kill(pid, 0)) after a restart.
+// Persist is fire-and-forget — a missed pid only makes the reconciler bias toward
+// the safe 'orphaned' verdict, never toward a false auto-resume.
+function recordChildPid(state, child, pid) {
+  if (!child || typeof pid !== 'number' || !Number.isFinite(pid)) return
+  child.pid = pid
+  persistFleet(state).catch(() => {})
 }
 
-// Called once per child (worker OR verifier) when it reaches a terminal state.
-// When the last pending child settles, release the run key (lifecycle boundary,
-// finally-style so it can't leak) and kick off synthesis.
-function settleChild(state, lockKey) {
-  const remaining = (pendingCounts.get(state.id) || 0) - 1
-  pendingCounts.set(state.id, remaining)
-  if (remaining > 0) return
-  pendingCounts.delete(state.id)
+// Re-derive the settle decision from the PERSISTED child statuses and, if (and
+// ONLY if) every child is terminal, transition into synthesis EXACTLY ONCE. This
+// replaced the hand-counted pendingCounts decrement that ran from ~4 sites (the
+// double-settle / stuck-settle hazard): there is no counter to keep in sync, so a
+// re-dispatched worker that flips back to non-terminal, a verifier appended mid-
+// flight, or two children settling on the same tick can never miscount. The
+// `finalized` set makes the synthesis transition idempotent — the first call that
+// observes allChildrenSettled wins, every later call is a no-op. NOT settled yet
+// (e.g. a worker still 'verifying') → this is a no-op and the run stays open.
+function maybeFinalize(state, lockKey) {
+  if (!allChildrenSettled(state)) return
+  if (finalized.has(state.id)) return
+  finalized.add(state.id)
   release(lockKey)
   onAllChildrenSettled(state).catch((err) =>
     logger.warn({ detail: err.message, id: state.id }, 'fleet_synthesis_failed'),
@@ -944,6 +1034,18 @@ async function onAllChildrenSettled(state) {
   // If the whole run was cancelled, skip synthesis.
   if (state.status === 'cancelled') {
     state.synthesis = { status: 'skipped', sessionId: null, summary: null, completedAt: null }
+    await persistFleet(state)
+    return
+  }
+
+  // HARD KILL-SWITCH: never spawn the synthesis child while engaged.
+  if (killSwitch) {
+    state.synthesis = {
+      status: 'skipped',
+      sessionId: null,
+      summary: 'fleet kill-switch engaged — synthesis skipped',
+      completedAt: new Date().toISOString(),
+    }
     await persistFleet(state)
     return
   }
@@ -1072,6 +1174,103 @@ export function getFleetRun(id) {
   // id is a derived slug; reject anything that could traverse out of DATA_DIR.
   if (id.includes('/') || id.includes('\\') || id.includes('..')) return null
   return readRunFile(path.join(DATA_DIR, `${id}.json`))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Boot reconciler / reaper — durability across a restart (item 1g)
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Run-level statuses that are NOT terminal — a run left in any of these on disk
+// after a restart means the process died mid-flight and the in-memory lifecycle
+// (cancels/finalized maps, the spawn callbacks) is gone with it. There is nothing
+// alive to ever settle it, so it would otherwise be WEDGED forever.
+const NON_TERMINAL_RUN_STATUSES = ['running', 'verifying', 'starting', 'pending', 'escalated']
+// Per-child statuses that are NOT terminal — a child the reaper must resolve.
+const NON_TERMINAL_CHILD_STATUSES = ['starting', 'running', 'escalated', 'verifying']
+
+// Is an OS process with this pid still alive? `process.kill(pid, 0)` sends no
+// signal but throws ESRCH when the pid is gone (and EPERM when it exists but is
+// owned by another user — still "alive"). Best-effort: any uncertainty biases to
+// "not alive" so the reaper prefers the safe, honest 'orphaned' verdict over a
+// false auto-resume. A missing/invalid pid is treated as not alive.
+function isProcessAlive(pid) {
+  if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return err && err.code === 'EPERM'
+  }
+}
+
+// BOOT RECONCILER. On server start, scan DATA_DIR for runs left in a non-terminal
+// status (the in-memory lifecycle that would settle them died with the previous
+// process) and resolve each one so NO run is ever wedged at 'running'.
+//
+// Policy (matches ADR-0004 single-operator-localhost + the plan's explicit bias):
+//   - We do NOT re-adopt the async settle machinery of a dead process — that state
+//     cannot be reconstructed with confidence, and a wrong guess could silently
+//     resume or drop autonomous work. So we BIAS TOWARD the safe, honest terminal
+//     state 'orphaned' rather than auto-resume.
+//   - Each non-terminal CHILD is reaped to 'orphaned' (its live process, if any,
+//     is gone after the restart; we record that honestly). Already-terminal
+//     children are left exactly as they settled (a truthful record of what
+//     completed before the crash).
+//   - The RUN is marked terminal 'orphaned' and an SSE fleet_update is emitted so
+//     the dashboard reflects it immediately. Synthesis is NOT run for an orphaned
+//     run (we never had its full result set).
+//
+// Idempotent: a run already terminal is skipped (no write, no event), so running
+// the reconciler twice is a no-op on settled runs.
+export async function reconcileFleetRuns() {
+  let entries
+  try {
+    entries = fs.readdirSync(DATA_DIR)
+  } catch {
+    return { scanned: 0, orphaned: [] }
+  }
+  const orphanedIds = []
+  let scanned = 0
+  for (const name of entries) {
+    if (!name.endsWith('.json')) continue
+    const state = readRunFile(path.join(DATA_DIR, name))
+    if (!state || typeof state !== 'object' || typeof state.id !== 'string') continue
+    scanned += 1
+    if (!NON_TERMINAL_RUN_STATUSES.includes(state.status)) continue
+
+    // Reap every non-terminal child to 'orphaned'. (We log if a pid still appears
+    // alive — that would be a stray detached process from the dead parent — but we
+    // still mark it orphaned, because nothing in THIS process owns its lifecycle.)
+    if (Array.isArray(state.children)) {
+      for (const child of state.children) {
+        if (NON_TERMINAL_CHILD_STATUSES.includes(child.status)) {
+          if (isProcessAlive(child.pid)) {
+            logger.warn(
+              { id: state.id, idx: child.idx, pid: child.pid },
+              'fleet_reconcile_orphan_pid_alive',
+            )
+          }
+          child.status = 'orphaned'
+          if (!child.error) child.error = 'orphaned by server restart'
+        }
+      }
+    }
+    state.status = 'orphaned'
+    if (state.synthesis && state.synthesis.status === 'pending') {
+      state.synthesis.status = 'skipped'
+      state.synthesis.summary = 'run orphaned by server restart — synthesis skipped'
+      state.synthesis.completedAt = new Date().toISOString()
+    }
+
+    try {
+      await persistFleet(state)
+      orphanedIds.push(state.id)
+      logger.warn({ id: state.id }, 'fleet_reconcile_orphaned')
+    } catch (err) {
+      logger.warn({ detail: err.message, id: state.id }, 'fleet_reconcile_persist_failed')
+    }
+  }
+  return { scanned, orphaned: orphanedIds }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1276,6 +1475,30 @@ export async function cancelFleet(id) {
   return { ok: true, status: 202 }
 }
 
+// GLOBAL HARD KILL-SWITCH action — the operator's last-resort stop. Engages the
+// module-level kill-switch (so NO new run/child/verifier/synthesis can spawn,
+// independent of any in-memory bookkeeping) AND best-effort cancels every cancel
+// fn we currently hold across ALL in-flight runs. Because the switch is a plain
+// module flag, it stays authoritative even when the registries are empty (e.g.
+// right after a restart): a fresh process boots with the switch DISengaged, and
+// the boot reconciler reaps anything the previous process left behind.
+export function killAllFleets() {
+  engageKillSwitch()
+  let cancelled = 0
+  for (const list of cancels.values()) {
+    for (const cancel of list) {
+      try {
+        cancel()
+        cancelled += 1
+      } catch {
+        /* already exited */
+      }
+    }
+  }
+  logger.warn({ cancelled }, 'fleet_kill_switch_engaged')
+  return { ok: true, status: 202, engaged: true, cancelled }
+}
+
 // Persist the 'escalated' child status. A child whose session/cwd currently has
 // a live escalation (tool OR harness) flips running → escalated; when its
 // escalation clears it reverts escalated → running. Terminal children
@@ -1319,9 +1542,10 @@ export async function reconcileEscalationStatus(id) {
 //   source 'tool'    → the in-memory SDK resolver (resolveApproval), the SAME
 //                      function POST /api/sessions/:id/tool-approval uses.
 //   source 'harness' → shell `harness approve <requestId> --allow|--deny` in the
-//                      CHILD's cwd via runClaude (like the mission-ready route).
-//                      The harness CLI is the SINGLE WRITER of the decided file;
-//                      the cockpit NEVER writes it directly.
+//                      CHILD's cwd DIRECTLY (runHarnessApprove — a child_process
+//                      subprocess, NO Claude/LLM session in the trust path). The
+//                      harness CLI is the SINGLE WRITER of the decided file; the
+//                      cockpit NEVER writes it directly.
 //
 // Returns { ok, status, ... } so the route maps it to HTTP. 4xx on bad input /
 // unknown child; the child cwd is whitelisted before any harness shell-out.
@@ -1370,28 +1594,18 @@ export async function decideFleetEscalation(id, body = {}) {
     return { ok: false, status: 404, error: 'child cwd is not a known root' }
   }
 
-  // Ask the agent to run the harness subcommand that OWNS the decided-file write.
-  // The harness CLI errors non-zero if the pending is missing / already decided,
-  // and it copies the pending's commandHash onto the decision (replay-proofing).
-  const flag = decision === 'allow' ? '--allow' : '--deny'
-  const prompt =
-    `Run the harness CLI command \`harness approve ${requestId} ${flag}\` in this ` +
-    `project. Do not write .harness/approvals/decided/ directly — the harness CLI ` +
-    `owns that write. Report exactly what the command printed.`
-
-  let stdout
-  let stderr
-  try {
-    ;({ stdout, stderr } = await runClaude({
-      args: ['-p', prompt, '--output-format', 'stream-json'],
-      cwd: child.cwd,
-      timeoutMs: 120_000,
-    }))
-  } catch (err) {
-    logger.warn({ detail: err.message, id, childIdx, requestId }, 'fleet_decide_harness_failed')
-    return { ok: false, status: 502, error: err.message }
+  // Shell the harness CLI DIRECTLY in child.cwd — NO Claude/LLM session. The
+  // harness CLI is the single writer of the decided file; it copies the pending's
+  // commandHash onto the decision (replay-proofing) and exits non-zero if the
+  // pending is missing / already decided. runHarnessApprove never throws/hangs.
+  const result = await runHarnessApprove(child.cwd, requestId, decision)
+  if (!result.ok) {
+    logger.warn({ detail: result.error, id, childIdx, requestId }, 'fleet_decide_harness_failed')
+    return { ok: false, status: 502, error: result.error }
   }
 
+  const stdout = result.stdout || ''
+  const stderr = result.stderr || ''
   return {
     ok: true,
     status: 200,
@@ -1399,6 +1613,6 @@ export async function decideFleetEscalation(id, body = {}) {
     decision,
     childIdx,
     requestId,
-    raw: stderr ? `${stdout || ''}\n${stderr}` : stdout || undefined,
+    raw: stderr ? `${stdout}\n${stderr}` : stdout || undefined,
   }
 }

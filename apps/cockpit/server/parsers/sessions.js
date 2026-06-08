@@ -2,16 +2,10 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { calculateCost } from '../utils/cost.js'
+import { signalDegraded } from '../lib/claude-format.js'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude', 'projects')
 const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
-
-// One-time signal that Claude's on-disk session format may have changed: a
-// non-empty .jsonl whose lines no longer parse as JSON. Every session surface
-// in the cockpit is built from this format, so a silent zero-parse would just
-// render an empty session list with no clue why. Warn loudly once per process
-// instead of failing quietly.
-let formatChangeWarned = false
 
 export function getAllSessions() {
   const sessions = []
@@ -83,12 +77,14 @@ function parseSessionFile(filePath, projectDirName, filename) {
     if (records.length === 0) {
       // Lines present but none parsed → the JSONL shape likely changed under us
       // (an empty file, by contrast, yields zero lines and is unremarkable).
-      if (lines.length > 0 && !formatChangeWarned) {
-        formatChangeWarned = true
-        console.warn(
-          `[sessions] ${filePath} has ${lines.length} line(s) but none parsed as JSON — ` +
-            `Claude's session JSONL format may have changed (check your Claude Code version).`,
-        )
+      // Surface this as a PERSISTENT degraded signal (deduped per process) so
+      // the dashboard can show a banner instead of silently rendering an empty
+      // session list with no clue why.
+      if (lines.length > 0) {
+        signalDegraded('sessions', 'format-change', {
+          filePath,
+          lineCount: lines.length,
+        })
       }
       return null
     }

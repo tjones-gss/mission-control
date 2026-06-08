@@ -15,11 +15,18 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getAllSkills } from '../../parsers/skills.js'
+import { emit } from '../../sse.js'
+import { isDegraded, _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 // Helper: make existsSync return false for everything by default
@@ -178,6 +185,64 @@ describe('getAllSkills()', () => {
     expect(result.plugins[0].skills).toHaveLength(1)
     expect(result.plugins[0].skills[0].source).toBe('plugin')
     expect(result.totalSkillCount).toBe(1)
+  })
+
+  it('flags the response degraded when installed_plugins.json is present but unparseable', () => {
+    // settings.json + installed_plugins.json both exist, but installed is
+    // garbage. Swallowing this silently reports plugins:[] — "no plugins" — when
+    // plugins are in fact installed. Surface a distinguishable degraded flag on
+    // the response AND emit a persistent parser_degraded SSE event.
+    const settings = JSON.stringify({ enabledPlugins: { 'myplugin@1.0.0': true } })
+
+    fs.existsSync.mockImplementation((p) => {
+      if (p.endsWith('skills')) return false // user skills dir absent
+      if (p.includes('settings.json')) return true
+      if (p.includes('installed_plugins.json')) return true
+      return false
+    })
+    fs.readdirSync.mockReturnValue([])
+    fs.readFileSync.mockImplementation((p) => {
+      if (p.includes('settings.json')) return settings
+      if (p.includes('installed_plugins.json')) return '{not valid json!!!'
+      return ''
+    })
+
+    const result = getAllSkills()
+    expect(result.plugins).toEqual([])
+    expect(isDegraded(result.pluginsDegraded)).toBe(true)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'skills' }),
+    )
+  })
+
+  it('flags the response degraded when settings.json is present but unparseable', () => {
+    fs.existsSync.mockImplementation((p) => {
+      if (p.endsWith('skills')) return false
+      if (p.includes('settings.json')) return true
+      if (p.includes('installed_plugins.json')) return true
+      return false
+    })
+    fs.readdirSync.mockReturnValue([])
+    fs.readFileSync.mockImplementation((p) => {
+      if (p.includes('settings.json')) return '{broken'
+      if (p.includes('installed_plugins.json')) return '{"plugins":{}}'
+      return ''
+    })
+
+    const result = getAllSkills()
+    expect(isDegraded(result.pluginsDegraded)).toBe(true)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'skills' }),
+    )
+  })
+
+  it('does NOT set pluginsDegraded when plugin config is simply absent', () => {
+    noFiles()
+    const result = getAllSkills()
+    expect(result.pluginsDegraded).toBeUndefined()
+    expect(emit).not.toHaveBeenCalled()
   })
 
   it('skips disabled plugins', () => {

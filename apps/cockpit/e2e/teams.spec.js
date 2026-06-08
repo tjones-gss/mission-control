@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
+import { revealAdvanced } from './helpers.js'
 
 async function goToTeams(page) {
   await page.goto('/')
+  await revealAdvanced(page)
   await page.getByRole('button', { name: 'Teams' }).click()
 }
 

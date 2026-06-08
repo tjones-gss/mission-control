@@ -4,5 +4,5 @@
   "private": true,
   "type": "module",
   "main": "index.js",
-  "schemaVersion": 1
+  "schemaVersion": 5
 }

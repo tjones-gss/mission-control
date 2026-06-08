@@ -4,6 +4,19 @@ vi.mock('../../parsers/harness.js', () => ({
   getHarnessProjects: vi.fn().mockReturnValue([]),
   getHarnessProjectByPath: vi.fn().mockReturnValue(null),
   getKnownHarnessRoots: vi.fn().mockReturnValue([]),
+  getScaffoldCandidates: vi.fn().mockReturnValue([]),
+  runHarnessScaffold: vi.fn().mockResolvedValue({ ok: true }),
+  // The route imports this as a real array (used in an .includes() check), so
+  // the mock must provide the literal, not a vi.fn().
+  VALID_HARNESS_MODES: [
+    'idea-to-mvp',
+    'mvp-sketch',
+    'existing-repo-retrofit',
+    'feature-development',
+    'bugfix',
+    'refactor',
+    'release-readiness',
+  ],
 }))
 vi.mock('../../claude-cli.js', () => ({
   runClaude: vi.fn().mockResolvedValue({
@@ -33,7 +46,7 @@ vi.mock('../../lib/logger.js', () => ({
 vi.mock('fs', () => {
   const mkdir = vi.fn().mockResolvedValue(undefined)
   const writeFile = vi.fn().mockResolvedValue(undefined)
-  const promises = { mkdir, writeFile, rename: vi.fn(), unlink: vi.fn() }
+  const promises = { mkdir, writeFile, rename: vi.fn(), unlink: vi.fn(), access: vi.fn() }
   // sessions.js (imported transitively for parseStreamJsonStdout) runs sync fs
   // side effects at module load (mkdirSync/readdirSync for its upload dir), so
   // the mock must provide those too or the import throws.
@@ -67,11 +80,18 @@ vi.mock('../../pty-session.js', () => ({
 
 import express from 'express'
 import request from 'supertest'
+import { readFileSync } from 'node:fs'
+import nodePath from 'node:path'
+import { fileURLToPath } from 'node:url'
+import Ajv2020 from 'ajv/dist/2020.js'
+import addFormats from 'ajv-formats'
 import { promises as fsp } from 'fs'
 import {
   getHarnessProjects,
   getHarnessProjectByPath,
   getKnownHarnessRoots,
+  getScaffoldCandidates,
+  runHarnessScaffold,
 } from '../../parsers/harness.js'
 import { runClaude, runClaudeCancellable } from '../../claude-cli.js'
 import { atomicWrite } from '../../lib/atomic-write.js'
@@ -87,6 +107,9 @@ const KEY = encodeURIComponent(PROJECT)
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // Default: the spec file does NOT pre-exist (fresh compile). Tests that need a
+  // pre-existing spec override fsp.access to resolve.
+  fsp.access.mockRejectedValue(new Error('ENOENT'))
   // Clear the module-level concurrency registry so a test that intentionally
   // leaves a run in flight (pending CLI promise) doesn't leak a held lock key
   // into the next test.
@@ -107,6 +130,24 @@ describe('GET /', () => {
     const res = await request(app).get('/')
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ projects })
+  })
+})
+
+describe('GET /scaffold-candidates', () => {
+  it('returns the candidate directories under { candidates }', async () => {
+    getScaffoldCandidates.mockReturnValue(['C:/work/a', 'C:/work/b'])
+    const res = await request(app).get('/scaffold-candidates')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ candidates: ['C:/work/a', 'C:/work/b'] })
+  })
+
+  it('is NOT captured by the /:projectKey param route', async () => {
+    // If '/:projectKey' shadowed this, getHarnessProjectByPath would run instead.
+    getScaffoldCandidates.mockReturnValue([])
+    const res = await request(app).get('/scaffold-candidates')
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveProperty('candidates')
+    expect(getHarnessProjectByPath).not.toHaveBeenCalled()
   })
 })
 
@@ -168,15 +209,23 @@ describe('POST /:projectKey/roadmap/compile', () => {
     expect(writtenBody).toContain('Build auth, then billing')
     expect(fsp.mkdir).toHaveBeenCalled()
 
-    // The prompt invokes the mission-writer skill and pins draft status.
+    // The prompt is SELF-CONTAINED: it must NOT rely on the /mission-writer
+    // slash command (unrecognized in projects without the Claude adapter →
+    // silent no-op), but must still inline the mission-writing directives.
     const argv = runClaude.mock.calls.at(-1)[0]
     expect(argv.cwd).toBe(PROJECT)
     const prompt = argv.args[argv.args.indexOf('-p') + 1]
-    expect(prompt).toContain('/mission-writer')
+    expect(prompt).not.toContain('/mission-writer')
+    expect(prompt.toLowerCase()).toContain('mission-writer') // acts AS one, inline
     expect(prompt).toContain('status: draft')
+    expect(prompt).toContain('agents/templates/mission-template.md')
     expect(prompt).toMatch(/do not implement/i)
     expect(argv.args).toContain('--output-format')
     expect(argv.args[argv.args.indexOf('--output-format') + 1]).toBe('stream-json')
+    // A headless claude -p denies file edits by default — without a permission
+    // mode the mission-writer cannot write any missions. Must request acceptEdits.
+    expect(argv.args).toContain('--permission-mode')
+    expect(argv.args[argv.args.indexOf('--permission-mode') + 1]).toBe('acceptEdits')
   })
 
   it('uses a timestamp slug when no title is given', async () => {
@@ -220,17 +269,76 @@ describe('POST /:projectKey/roadmap/compile', () => {
     expect(runClaude).not.toHaveBeenCalled()
   })
 
-  it('502 when the claude run fails', async () => {
+  it('502 when the claude run fails — and surfaces the real stderr to the client', async () => {
     getKnownHarnessRoots.mockReturnValue([PROJECT])
     runClaude.mockRejectedValue(
       Object.assign(new Error('claude CLI exited with code=1 signal=null'), {
-        stderrOutput: 'boom',
+        stderrOutput: 'Error: When using --print, --output-format=stream-json requires --verbose\n',
       }),
     )
     const res = await request(app).post(`/${KEY}/roadmap/compile`).send({ roadmap: 'Build it.' })
     expect(res.status).toBe(502)
     expect(res.body.ok).toBe(false)
     expect(res.body.error).toMatch(/code=1/)
+    // The actionable cause must reach the client, not just the server log.
+    expect(res.body.stderr).toMatch(/requires --verbose/)
+  })
+
+  it('504 (not 502) when the claude run times out', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    runClaude.mockRejectedValue(
+      Object.assign(new Error('claude CLI timed out after 300s'), { stderrOutput: '' }),
+    )
+    const res = await request(app).post(`/${KEY}/roadmap/compile`).send({ roadmap: 'Build it.' })
+    expect(res.status).toBe(504)
+    expect(res.body.ok).toBe(false)
+  })
+
+  it('502 when the run completes but produced NO result event (silent no-op guard)', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    // stream-json with only an assistant event, no type:"result" — e.g. an
+    // unrecognized slash command or an interrupted run. Must NOT be reported as
+    // a fake ok:true success.
+    runClaude.mockResolvedValue({
+      stdout: '{"type":"assistant","message":{}}\n',
+      stderr: '',
+      exitCode: 0,
+    })
+    const res = await request(app).post(`/${KEY}/roadmap/compile`).send({ roadmap: 'Build it.' })
+    expect(res.status).toBe(502)
+    expect(res.body.ok).toBe(false)
+    expect(res.body.error).toMatch(/did not complete/i)
+    // A freshly-created spec with no missions is orphaned → cleaned up.
+    expect(fsp.unlink).toHaveBeenCalled()
+  })
+
+  it('does NOT delete a PRE-EXISTING spec when a re-compile fails', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    fsp.access.mockResolvedValue(undefined) // the spec already exists on disk
+    runClaude.mockRejectedValue(
+      Object.assign(new Error('claude CLI exited with code=1 signal=null'), {
+        stderrOutput: 'boom',
+      }),
+    )
+    const res = await request(app)
+      .post(`/${KEY}/roadmap/compile`)
+      .send({ roadmap: 'Build it.', title: 'Existing Plan' })
+    expect(res.status).toBe(502)
+    // A prior successful compile's missions reference this spec — it must survive.
+    expect(fsp.unlink).not.toHaveBeenCalled()
+  })
+
+  it('502 when the result event is itself an error (is_error:true)', async () => {
+    getKnownHarnessRoots.mockReturnValue([PROJECT])
+    runClaude.mockResolvedValue({
+      stdout: '{"type":"result","is_error":true,"result":"Unknown command: /mission-writer"}\n',
+      stderr: '',
+      exitCode: 0,
+    })
+    const res = await request(app).post(`/${KEY}/roadmap/compile`).send({ roadmap: 'Build it.' })
+    expect(res.status).toBe(502)
+    expect(res.body.ok).toBe(false)
+    expect(res.body.detail).toMatch(/Unknown command/)
   })
 
   it('409 in_progress for a concurrent compile of the same spec — does NOT spawn twice', async () => {
@@ -440,6 +548,160 @@ describe('POST /:projectKey/missions/:missionId/execute', () => {
     expect(res.status).toBe(502)
     expect(res.body.ok).toBe(false)
     expect(res.body.error).toMatch(/code=1/)
+  })
+})
+
+// ─── POST /create ────────────────────────────────────────────────────────────
+
+describe('POST /create', () => {
+  const NEW_DIR = 'C:/work/fresh-app'
+
+  // Compile the shared scaffold contract once so we can bind the route's success
+  // response to it (drift between the route and the schema fails loudly).
+  const __dirname = nodePath.dirname(fileURLToPath(import.meta.url))
+  const scaffoldSchema = JSON.parse(
+    readFileSync(
+      nodePath.resolve(
+        __dirname,
+        '../../../../../packages/contracts/schemas/harness-scaffold.schema.json',
+      ),
+      'utf-8',
+    ),
+  )
+  const ajv = new Ajv2020({ allErrors: true, strict: false })
+  addFormats(ajv)
+  const validateScaffold = ajv.compile(scaffoldSchema)
+
+  it('201 happy path: scaffolds and returns a contract-valid result', async () => {
+    getScaffoldCandidates.mockReturnValue([NEW_DIR])
+    const result = {
+      ok: true,
+      root: NEW_DIR,
+      mode: 'idea-to-mvp',
+      stage: 'intake',
+      phase: 'intake',
+      created: ['.harness/project-state.yml', 'pipelines/idea-to-mvp.yml', 'AGENTS.md'],
+    }
+    runHarnessScaffold.mockResolvedValue(result)
+
+    const res = await request(app)
+      .post('/create')
+      .send({ projectPath: NEW_DIR, mode: 'idea-to-mvp' })
+
+    expect(res.status).toBe(201)
+    expect(res.body).toEqual(result)
+    // The route's response conforms to the shared contract.
+    if (!validateScaffold(res.body)) {
+      throw new Error(`response failed schema: ${JSON.stringify(validateScaffold.errors)}`)
+    }
+    // Shelled out with the validated path + mode.
+    expect(runHarnessScaffold).toHaveBeenCalledWith(NEW_DIR, 'idea-to-mvp')
+  })
+
+  it('400 invalid_mode for an unknown mode — never shells out', async () => {
+    getScaffoldCandidates.mockReturnValue([NEW_DIR])
+    const res = await request(app).post('/create').send({ projectPath: NEW_DIR, mode: 'wonky' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('invalid_mode')
+    expect(runHarnessScaffold).not.toHaveBeenCalled()
+  })
+
+  it('400 invalid_target when projectPath is missing', async () => {
+    getScaffoldCandidates.mockReturnValue([NEW_DIR])
+    const res = await request(app).post('/create').send({ mode: 'bugfix' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('invalid_target')
+    expect(runHarnessScaffold).not.toHaveBeenCalled()
+  })
+
+  it('403 path_not_allowed when the target is not a scaffold candidate — never shells out', async () => {
+    getScaffoldCandidates.mockReturnValue([]) // whitelist miss
+    const res = await request(app).post('/create').send({ projectPath: 'C:/evil', mode: 'bugfix' })
+    expect(res.status).toBe(403)
+    expect(res.body.error).toBe('path_not_allowed')
+    expect(runHarnessScaffold).not.toHaveBeenCalled()
+  })
+
+  it('409 already_initialized when the CLI refuses an existing project', async () => {
+    getScaffoldCandidates.mockReturnValue([NEW_DIR])
+    runHarnessScaffold.mockResolvedValue({
+      ok: false,
+      error: 'already_initialized',
+      root: NEW_DIR,
+    })
+    const res = await request(app).post('/create').send({ projectPath: NEW_DIR, mode: 'bugfix' })
+    expect(res.status).toBe(409)
+    expect(res.body.error).toBe('already_initialized')
+  })
+
+  it('502 when the CLI scaffold fails', async () => {
+    getScaffoldCandidates.mockReturnValue([NEW_DIR])
+    runHarnessScaffold.mockResolvedValue({
+      ok: false,
+      error: 'scaffold_failed',
+      message: 'python/python3 not found',
+    })
+    const res = await request(app).post('/create').send({ projectPath: NEW_DIR, mode: 'bugfix' })
+    expect(res.status).toBe(502)
+    expect(res.body.ok).toBe(false)
+    expect(res.body.error).toBe('scaffold_failed')
+  })
+
+  it('409 in_progress for a concurrent create of the same path — does NOT scaffold twice', async () => {
+    getScaffoldCandidates.mockReturnValue([NEW_DIR])
+    let releaseRun
+    let runEntered
+    const entered = new Promise((r) => {
+      runEntered = r
+    })
+    runHarnessScaffold.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRun = () =>
+            resolve({
+              ok: true,
+              root: NEW_DIR,
+              mode: 'bugfix',
+              stage: 'reproduce',
+              phase: 'reproduce',
+              created: ['.harness/project-state.yml'],
+            })
+          runEntered()
+        }),
+    )
+
+    const body = { projectPath: NEW_DIR, mode: 'bugfix' }
+    const first = request(app)
+      .post('/create')
+      .send(body)
+      .then((r) => r)
+    await entered // first request now holds the lock
+    const second = await request(app).post('/create').send(body)
+
+    expect(second.status).toBe(409)
+    expect(second.body.error).toBe('in_progress')
+
+    releaseRun()
+    const firstRes = await first
+    expect(firstRes.status).toBe(201)
+    expect(runHarnessScaffold).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases the lock after settle — a later create of the same path succeeds', async () => {
+    getScaffoldCandidates.mockReturnValue([NEW_DIR])
+    runHarnessScaffold.mockResolvedValue({
+      ok: true,
+      root: NEW_DIR,
+      mode: 'bugfix',
+      stage: 'reproduce',
+      phase: 'reproduce',
+      created: ['.harness/project-state.yml'],
+    })
+    const first = await request(app).post('/create').send({ projectPath: NEW_DIR, mode: 'bugfix' })
+    expect(first.status).toBe(201)
+    const second = await request(app).post('/create').send({ projectPath: NEW_DIR, mode: 'bugfix' })
+    expect(second.status).toBe(201)
+    expect(runHarnessScaffold).toHaveBeenCalledTimes(2)
   })
 })
 

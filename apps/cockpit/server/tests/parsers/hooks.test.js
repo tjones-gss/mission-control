@@ -13,11 +13,18 @@ vi.mock('fs', () => {
   }
 })
 
+vi.mock('../../sse.js', () => ({
+  emit: vi.fn(),
+}))
+
 import fs from 'fs'
 import { getHooksConfig } from '../../parsers/hooks.js'
+import { emit } from '../../sse.js'
+import { _resetDegradedDedupe } from '../../lib/claude-format.js'
 
 beforeEach(() => {
   vi.resetAllMocks()
+  _resetDegradedDedupe()
 })
 
 describe('getHooksConfig()', () => {
@@ -27,6 +34,26 @@ describe('getHooksConfig()', () => {
     expect(result.config).toEqual({})
     expect(result.scripts).toEqual([])
     expect(result.matrix).toEqual([])
+    expect(result.degraded).toBeFalsy()
+    expect(emit).not.toHaveBeenCalled()
+  })
+
+  it('flags degraded (NOT "no hooks") when settings.json is present but unparseable', () => {
+    // A broken settings.json must never render as "no guardrails active" when
+    // the hooks may in fact be enforced. Surface a degraded flag + persistent
+    // parser_degraded SSE event, distinct from the legitimately-empty case.
+    fs.existsSync.mockReturnValue(true)
+    fs.readFileSync.mockImplementation((p) => {
+      if (typeof p === 'string' && p.endsWith('settings.json')) return '{not valid json!!'
+      return ''
+    })
+    fs.readdirSync.mockReturnValue([])
+    const result = getHooksConfig()
+    expect(result.degraded).toBe(true)
+    expect(emit).toHaveBeenCalledWith(
+      'parser_degraded',
+      expect.objectContaining({ parser: 'hooks' }),
+    )
   })
 
   it('reads hooks config from settings.json', () => {

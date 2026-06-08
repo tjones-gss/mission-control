@@ -20,6 +20,9 @@ import {
   reconcileEscalationStatus,
   decideFleetEscalation,
   cancelFleet,
+  killAllFleets,
+  isKillSwitchEngaged,
+  resetKillSwitch,
   saveFleetTemplate,
   listFleetTemplates,
   getFleetTemplate,
@@ -69,6 +72,40 @@ router.post('/', async (req, res) => {
 // GET /api/fleet — list run summaries.
 router.get('/', (_req, res) => {
   res.json({ runs: listFleetRuns() })
+})
+
+// ── Global hard kill-switch ──────────────────────────────────────────────────
+// IMPORTANT: registered BEFORE the '/:id' param routes below so 'kill' is not
+// matched as an :id. POST engages the global stop (no new run/child can spawn,
+// in-flight cancels invoked); GET reports its state; DELETE disengages it. The
+// switch is a module flag independent of in-memory run state, so it stays
+// reachable even when the registries are empty (e.g. right after a restart).
+
+// GET /api/fleet/kill — report whether the global kill-switch is engaged.
+router.get('/kill', (_req, res) => {
+  res.json({ engaged: isKillSwitchEngaged() })
+})
+
+// POST /api/fleet/kill — engage the global hard kill-switch (last-resort stop).
+router.post('/kill', (_req, res) => {
+  let result
+  try {
+    result = killAllFleets()
+  } catch (err) {
+    logger.warn({ detail: err.message }, 'fleet_kill_failed')
+    return res.status(502).json({ ok: false, error: err.message })
+  }
+  res.status(result.status || 202).json({
+    ok: true,
+    engaged: result.engaged,
+    cancelled: result.cancelled,
+  })
+})
+
+// DELETE /api/fleet/kill — disengage the kill-switch (re-arm the line).
+router.delete('/kill', (_req, res) => {
+  resetKillSwitch()
+  res.json({ ok: true, engaged: isKillSwitchEngaged() })
 })
 
 // ── Templates ──────────────────────────────────────────────────────────────

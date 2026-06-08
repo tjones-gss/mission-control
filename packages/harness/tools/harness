@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import uuid
@@ -750,24 +751,40 @@ def cmd_next(args, root: Path) -> int:
     return 0
 
 
-def cmd_init(args, root: Path) -> int:
-    """Bootstrap project-state.yml and pipeline-state.yml for a mode."""
-    valid_modes = {"idea-to-mvp", "mvp-sketch", "existing-repo-retrofit", "feature-development",
-                   "bugfix", "refactor", "release-readiness"}
-    if args.mode not in valid_modes:
-        print(f"error: mode must be one of: {', '.join(sorted(valid_modes))}", file=sys.stderr)
-        return 2
+# Modes the harness understands, and the intake stage each one starts in.
+VALID_MODES = {"idea-to-mvp", "mvp-sketch", "existing-repo-retrofit", "feature-development",
+               "bugfix", "refactor", "release-readiness"}
+STAGE_MAP = {
+    "idea-to-mvp": "intake",
+    "mvp-sketch": "sketch-intake",
+    "existing-repo-retrofit": "repo-discovery",
+    "feature-development": "classify-feature",
+    "bugfix": "reproduce",
+    "refactor": "scope",
+    "release-readiness": "mvp-checklist",
+}
 
-    project_path = root / ".harness/project-state.yml"
-    pipeline_path = root / ".harness/pipeline-state.yml"
+# Where this CLI's bundled templates live (the harness package root). `scaffold`
+# copies the reusable config + pipelines from here into a fresh project.
+TEMPLATE_ROOT = _REPO_ROOT
 
-    project = load_yaml(project_path)
-    pipeline_state = load_yaml(pipeline_path)
-    pipeline_file = root / "pipelines" / f"{args.mode}.yml"
+# State files that carry per-project runtime data — they must NEVER be copied
+# from the harness package's own live state into a new project. `scaffold`
+# writes clean baselines for these instead.
+_STATEFUL_FILES = {"project-state.yml", "pipeline-state.yml", "mission-index.yml"}
 
+
+def _compute_init_state(root: Path, mode: str):
+    """Compute (project, pipeline_state, summary) for a mode.
+
+    Reads the existing state files under ``root`` and binds the mode's first
+    pipeline phase. Raises FileNotFoundError if the pipeline file is missing.
+    """
+    project = load_yaml(root / ".harness/project-state.yml")
+    pipeline_state = load_yaml(root / ".harness/pipeline-state.yml")
+    pipeline_file = root / "pipelines" / f"{mode}.yml"
     if not pipeline_file.exists():
-        print(f"error: pipeline file missing: {pipeline_file}", file=sys.stderr)
-        return 2
+        raise FileNotFoundError(pipeline_file)
 
     pipeline_def = load_yaml(pipeline_file)
     first_phase = (pipeline_def.get("phases") or [{}])[0]
@@ -775,21 +792,9 @@ def cmd_init(args, root: Path) -> int:
     first_phase_agent = first_phase.get("agent", "unset")
     first_phase_gate = first_phase.get("gate", {}).get("required", ["unset"])[0]
 
-    # Decide stage based on mode
-    stage_map = {
-        "idea-to-mvp": "intake",
-        "mvp-sketch": "sketch-intake",
-        "existing-repo-retrofit": "repo-discovery",
-        "feature-development": "classify-feature",
-        "bugfix": "reproduce",
-        "refactor": "scope",
-        "release-readiness": "mvp-checklist",
-    }
-
-    # Update project-state
     project.setdefault("project", {})
-    project["project"]["mode"] = args.mode
-    project["project"]["stage"] = stage_map[args.mode]
+    project["project"]["mode"] = mode
+    project["project"]["stage"] = STAGE_MAP[mode]
     if project["project"].get("created_at", "unset") == "unset":
         project["project"]["created_at"] = dt.date.today().isoformat()
     if project["project"].get("name", "unset") == "unset":
@@ -800,11 +805,32 @@ def cmd_init(args, root: Path) -> int:
     project["next"]["recommended_action"] = f"begin {first_phase_id} phase"
     project["next"]["blocked"] = False
 
-    # Update pipeline-state
     pipeline_state.setdefault("pipeline", {})
-    pipeline_state["pipeline"]["active"] = args.mode
+    pipeline_state["pipeline"]["active"] = mode
     pipeline_state["pipeline"]["phase"] = first_phase_id
     pipeline_state["pipeline"]["gate"] = first_phase_gate
+
+    summary = {"mode": mode, "stage": STAGE_MAP[mode], "phase": first_phase_id,
+               "gate": first_phase_gate, "agent": first_phase_agent}
+    return project, pipeline_state, summary
+
+
+def _write_init_state(root: Path, project: dict, pipeline_state: dict) -> None:
+    (root / ".harness/project-state.yml").write_text(yaml.safe_dump(project, sort_keys=False))
+    (root / ".harness/pipeline-state.yml").write_text(yaml.safe_dump(pipeline_state, sort_keys=False))
+
+
+def cmd_init(args, root: Path) -> int:
+    """Bootstrap project-state.yml and pipeline-state.yml for a mode."""
+    if args.mode not in VALID_MODES:
+        print(f"error: mode must be one of: {', '.join(sorted(VALID_MODES))}", file=sys.stderr)
+        return 2
+
+    try:
+        project, pipeline_state, summary = _compute_init_state(root, args.mode)
+    except FileNotFoundError as e:
+        print(f"error: pipeline file missing: {e}", file=sys.stderr)
+        return 2
 
     if args.dry_run:
         print("--- project-state.yml (preview) ---")
@@ -814,13 +840,12 @@ def cmd_init(args, root: Path) -> int:
         print("(dry-run — nothing written)")
         return 0
 
-    project_path.write_text(yaml.safe_dump(project, sort_keys=False))
-    pipeline_path.write_text(yaml.safe_dump(pipeline_state, sort_keys=False))
+    _write_init_state(root, project, pipeline_state)
 
     print(colorize(f"{emoji_or_ascii('✓', '[ok]')} initialized harness for mode: {args.mode}", "green"))
     print(f"  active pipeline: {args.mode}")
-    print(f"  phase:           {first_phase_id}")
-    print(f"  next agent:      {first_phase_agent}")
+    print(f"  phase:           {summary['phase']}")
+    print(f"  next agent:      {summary['agent']}")
     print()
     print("run `harness status` to see the full state, or `harness next` to pick a mission.")
 
@@ -834,6 +859,148 @@ def cmd_init(args, root: Path) -> int:
                 ),
                 file=sys.stderr,
             )
+    return 0
+
+
+def _clean_project_state(name: str) -> dict:
+    """A pristine project-state.yml for a brand-new project (no inherited state)."""
+    return {
+        "project": {
+            "name": name,
+            "mode": "unset",
+            "stage": "intake",
+            "owner": "unset",
+            "created_at": dt.date.today().isoformat(),
+        },
+        "stack": {k: "unknown" for k in (
+            "frontend", "backend", "database", "auth", "hosting",
+            "package_manager", "test_runner", "e2e_runner", "ci")},
+        "repo": {"exists": "unknown", "commands_verified": False, "tests_verified": False,
+                 "architecture_documented": False, "risks_documented": False},
+        "status": {k: False for k in (
+            "intake_complete", "research_complete", "product_scope_complete",
+            "architecture_complete", "adr_baseline_complete", "specs_ready",
+            "missions_ready", "implementation_started", "mvp_ready")},
+        "current": {"pipeline": None, "gate": None, "adr": None, "spec": None,
+                    "mission": None, "branch": None, "agent_id": None,
+                    "last_run_id": None, "runtime": "local"},
+        "next": {"recommended_agent": "unset", "recommended_action": "run harness init",
+                 "blocked": False, "blocker": None},
+    }
+
+
+def _write_clean_baselines(target: Path, *, force: bool) -> list:
+    """Write clean stateful files for a new project. Returns created relative paths."""
+    created = []
+    harness_dir = target / ".harness"
+    harness_dir.mkdir(parents=True, exist_ok=True)
+    baselines = {
+        "project-state.yml": _clean_project_state(target.name),
+        "pipeline-state.yml": {"pipeline": {"active": "unset", "phase": "unset", "gate": "unset"}},
+        "mission-index.yml": {"missions": {}},
+    }
+    for name, data in baselines.items():
+        dst = harness_dir / name
+        if dst.exists() and not force:
+            continue
+        dst.write_text(yaml.safe_dump(data, sort_keys=False))
+        created.append(f".harness/{name}")
+    return created
+
+
+def _copy_templates(target: Path, *, force: bool) -> list:
+    """Copy reusable config (.harness/*.yml minus stateful), pipelines/, and AGENTS.md
+    from the harness package into ``target``. Returns created relative (posix) paths."""
+    created = []
+
+    def _rel(p: Path) -> str:
+        return str(p.relative_to(target)).replace("\\", "/")
+
+    def _copy_glob(src_dir: Path, dst_dir: Path, *, pattern: str = "*.yml", skip: set = frozenset()):
+        if not src_dir.is_dir():
+            return
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        for f in sorted(src_dir.glob(pattern)):
+            if f.name in skip:
+                continue
+            dst = dst_dir / f.name
+            if dst.exists() and not force:
+                continue
+            shutil.copyfile(f, dst)
+            created.append(_rel(dst))
+
+    _copy_glob(TEMPLATE_ROOT / ".harness", target / ".harness", skip=_STATEFUL_FILES)
+    _copy_glob(TEMPLATE_ROOT / "pipelines", target / "pipelines")
+    # Agent role + mission templates the pipelines reference — without these a
+    # fresh project reports every pipeline agent as "unresolved" and is DEGRADED.
+    _copy_glob(TEMPLATE_ROOT / "agents/roles", target / "agents/roles", pattern="*.md")
+    _copy_glob(TEMPLATE_ROOT / "agents/templates", target / "agents/templates", pattern="*.md")
+
+    src_agents = TEMPLATE_ROOT / "AGENTS.md"
+    if src_agents.is_file():
+        dst = target / "AGENTS.md"
+        if not dst.exists() or force:
+            shutil.copyfile(src_agents, dst)
+            created.append("AGENTS.md")
+    return created
+
+
+def cmd_scaffold(args, target: Path) -> int:
+    """Create a brand-new harness project in an (un)initialized directory.
+
+    Unlike ``init`` (which mutates an already-bootstrapped tree), scaffold lays
+    down the full template set first, then binds the chosen mode. It writes
+    clean baselines for stateful files so a new project never inherits the
+    harness package's own live state.
+    """
+    use_json = getattr(args, "json", False)
+
+    def _emit_err(error: str, message: str, code: int = 2) -> int:
+        if use_json:
+            print(json.dumps({"ok": False, "error": error, "message": message,
+                              "root": str(target)}))
+        else:
+            print(f"error: {message}", file=sys.stderr)
+        return code
+
+    if args.mode not in VALID_MODES:
+        return _emit_err("invalid_mode",
+                         f"mode must be one of: {', '.join(sorted(VALID_MODES))}")
+
+    target = target.resolve()
+    if not target.is_dir():
+        return _emit_err("no_target", f"target directory does not exist: {target}")
+
+    force = getattr(args, "force", False)
+    if (target / ".harness/project-state.yml").exists() and not force:
+        return _emit_err(
+            "already_initialized",
+            f"already a harness project: {target / '.harness/project-state.yml'} "
+            f"exists (use --force to re-scaffold)")
+
+    created = _write_clean_baselines(target, force=force)
+    created += _copy_templates(target, force=force)
+
+    try:
+        project, pipeline_state, summary = _compute_init_state(target, args.mode)
+    except FileNotFoundError as e:
+        return _emit_err("pipeline_missing", f"pipeline file missing after scaffold: {e}")
+    _write_init_state(target, project, pipeline_state)
+
+    created = sorted(set(created))
+    if use_json:
+        print(json.dumps({"ok": True, "root": str(target), "mode": summary["mode"],
+                          "stage": summary["stage"], "phase": summary["phase"],
+                          "created": created}))
+    else:
+        print(colorize(
+            f"{emoji_or_ascii('✓', '[ok]')} scaffolded harness project ({args.mode}) at {target}",
+            "green"))
+        print(f"  files created: {len(created)}")
+        print(f"  phase:         {summary['phase']}")
+        print(f"  next agent:    {summary['agent']}")
+        print()
+        print("run `harness status` to see the full state, or `harness next` to pick a mission.")
     return 0
 
 
@@ -1065,8 +1232,56 @@ Assumptions:
 # approval contract (.harness/approvals/) by `harness plan sync`, so an approved
 # plan always has a matching approval-decision behind it.
 
-# Mirror of packages/contracts SCHEMA_VERSION (approval-request/decision).
-APPROVAL_SCHEMA_VERSION = 2
+# Schema versions are DERIVED from the single canonical source —
+# packages/contracts/schema-version.json — rather than hand-copied here. The
+# contracts package and this CLI both read that sidecar, so the two languages
+# cannot silently drift; a cross-language parity test
+# (packages/harness/tests/test_contract.py) fails CI on a one-sided change.
+#
+# Two independent concepts live in the sidecar:
+#   - schemaVersion          : the contracts package version as a whole
+#   - approvalSchemaVersion  : the per-document version stamped into the
+#                              approval-request / approval-decision files this
+#                              CLI writes under .harness/approvals/**
+#
+# Fallback defaults are only used if the sidecar is absent (e.g. a standalone
+# harness install detached from the monorepo); they match the committed sidecar
+# at the time of writing.
+_SCHEMA_VERSION_FALLBACK = 6
+_APPROVAL_SCHEMA_VERSION_FALLBACK = 2
+
+
+def _schema_version_sidecar_path() -> Path:
+    # tools/harness -> parents[1] == packages/harness; sibling contracts pkg.
+    return _REPO_ROOT.parent / "contracts" / "schema-version.json"
+
+
+def _resolve_schema_versions() -> dict:
+    """Resolve {schemaVersion, approvalSchemaVersion} from the canonical sidecar.
+
+    Reads packages/contracts/schema-version.json (the single source of truth).
+    Falls back to the documented defaults only when the sidecar is unreadable,
+    so a standalone harness install still works while the monorepo stays
+    parity-checked in CI.
+    """
+    path = _schema_version_sidecar_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    schema_version = data.get("schemaVersion", _SCHEMA_VERSION_FALLBACK)
+    approval_version = data.get(
+        "approvalSchemaVersion", _APPROVAL_SCHEMA_VERSION_FALLBACK
+    )
+    return {
+        "schemaVersion": schema_version,
+        "approvalSchemaVersion": approval_version,
+    }
+
+
+_SCHEMA_VERSIONS = _resolve_schema_versions()
+SCHEMA_VERSION = _SCHEMA_VERSIONS["schemaVersion"]
+APPROVAL_SCHEMA_VERSION = _SCHEMA_VERSIONS["approvalSchemaVersion"]
 
 
 def _plan_index_path(root: Path) -> Path:
@@ -2213,6 +2428,15 @@ def main():
         help="Do not install Cursor adapter hooks after writing state",
     )
 
+    p_scaffold = sub.add_parser(
+        "scaffold",
+        help="Create a NEW harness project in an uninitialized directory",
+    )
+    p_scaffold.add_argument("mode", help="One of: " + ", ".join(sorted(VALID_MODES)))
+    p_scaffold.add_argument("--json", action="store_true", help="Machine-readable JSON output")
+    p_scaffold.add_argument("--force", action="store_true",
+                            help="Overwrite existing harness files if present")
+
     p_install = sub.add_parser("install", help="Install harness adapters or extras")
     p_install_sub = p_install.add_subparsers(dest="install_target", required=True)
     p_install_sub.add_parser("cursor", help="Install Cursor hooks + SDK pip packages")
@@ -2285,6 +2509,12 @@ def main():
     args = parser.parse_args()
 
     start = Path(args.cwd) if args.cwd else Path.cwd()
+
+    # scaffold runs against an uninitialized directory, so it must NOT require an
+    # existing harness root — handle it before the find_harness_root gate.
+    if args.cmd == "scaffold":
+        return cmd_scaffold(args, start)
+
     root = find_harness_root(start)
     if not root:
         print(f"error: not in a harness project (no .harness/ directory found from {start})",

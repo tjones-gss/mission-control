@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { signalDegraded } from '../lib/claude-format.js'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude')
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects')
@@ -57,23 +58,46 @@ function findProjectDirForSession(sessionId) {
 }
 
 // Read the session's cwd from its JSONL file (first record with a cwd field).
+//
+// Returns { cwd, degraded }:
+//   - cwd: the resolved working directory, or null.
+//   - degraded: true when the file was PRESENT with non-empty lines but NONE
+//     parsed — the JSONL shape likely changed under us. A valid JSONL that
+//     simply lacks a cwd record is NOT degraded (cwd:null, degraded:false).
 function getSessionCwd(projectDirName, sessionId) {
   const filePath = path.join(PROJECTS_DIR, projectDirName, `${sessionId}.jsonl`)
+  let content
   try {
-    const content = fs.readFileSync(filePath, 'utf-8')
-    const lines = content.trim().split('\n').filter(Boolean)
-    for (const line of lines) {
-      try {
-        const record = JSON.parse(line)
-        if (record.cwd) return record.cwd
-      } catch {
-        /* skip unparseable lines */
-      }
-    }
+    content = fs.readFileSync(filePath, 'utf-8')
   } catch {
-    /* file unreadable */
+    // File unreadable/absent — normal; nothing to surface.
+    return { cwd: null, degraded: false }
   }
-  return null
+  const lines = content.trim().split('\n').filter(Boolean)
+  if (lines.length === 0) {
+    // Present-but-empty session file — normal.
+    return { cwd: null, degraded: false }
+  }
+  let parsedAny = false
+  for (const line of lines) {
+    try {
+      const record = JSON.parse(line)
+      parsedAny = true
+      if (record.cwd) return { cwd: record.cwd, degraded: false }
+    } catch {
+      /* skip unparseable lines; a later line may still parse */
+    }
+  }
+  if (!parsedAny) {
+    // Lines present but none parsed → format drift. Surface it (deduped) so the
+    // project's CLAUDE.md/memory doesn't silently vanish with no explanation.
+    signalDegraded('memory', 'session-jsonl-unparseable', {
+      filePath,
+      lineCount: lines.length,
+    })
+    return { cwd: null, degraded: true }
+  }
+  return { cwd: null, degraded: false }
 }
 
 // Safely read a file and return { content, path, lastModified } or null.
@@ -96,7 +120,7 @@ export function getMemoryForSession(sessionId) {
   if (!projectDirName) return null
 
   // 2. Read the session's cwd from the JSONL
-  const cwd = getSessionCwd(projectDirName, sessionId)
+  const { cwd, degraded } = getSessionCwd(projectDirName, sessionId)
 
   // 3. Read global CLAUDE.md
   const globalClaudeMd = readFileInfo(path.join(CLAUDE_DIR, 'CLAUDE.md'))
@@ -145,5 +169,9 @@ export function getMemoryForSession(sessionId) {
     project,
     memories,
     memoryIndex,
+    // True when the session JSONL was present but unparseable, so the resolved
+    // cwd (and therefore project-level CLAUDE.md/memory) may be missing. The UI
+    // can distinguish this from "this session genuinely has no project memory."
+    degraded,
   }
 }
