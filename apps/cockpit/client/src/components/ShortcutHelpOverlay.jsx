@@ -6,7 +6,7 @@ export function ShortcutHelpOverlay({ shortcuts, open, onToggle }) {
     return (
       <button
         onClick={onToggle}
-        className="fixed bottom-4 right-4 z-40 w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shadow-lg"
+        className="fixed bottom-4 right-4 z-dropdown w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shadow-lg"
         title="Keyboard shortcuts (?)"
       >
         <Keyboard size={14} />
@@ -15,7 +15,7 @@ export function ShortcutHelpOverlay({ shortcuts, open, onToggle }) {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
+    <div className="fixed bottom-4 right-4 z-dropdown w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
         <span className="text-xs font-semibold text-gray-300">Keyboard Shortcuts</span>
         <button onClick={onToggle} className="text-gray-500 hover:text-gray-300 transition-colors">

@@ -48,6 +48,11 @@ export function startWatcher() {
       path.join(CLAUDE_DIR, 'cache'),
       path.join(CLAUDE_DIR, 'paste-cache'),
       path.join(CLAUDE_DIR, 'downloads'),
+      // The plugin system git-clones into transient plugins/cache/temp_git_*
+      // dirs and deletes them mid-flight. On Windows, stat-ing a file that
+      // vanishes throws EPERM, which chokidar surfaces as an 'error' event.
+      // The cockpit consumes nothing from here, so don't watch it at all.
+      path.join(CLAUDE_DIR, 'plugins'),
     ],
     persistent: true,
     ignoreInitial: true,
@@ -102,6 +107,15 @@ export function startWatcher() {
     }
   }
   addHarnessWatchers()
+
+  // chokidar emits 'error' for transient filesystem failures (a watched file
+  // deleted mid-scan, EPERM/ENOENT on Windows, etc.). Without a listener, an
+  // EventEmitter 'error' is re-thrown as an uncaught exception and kills the
+  // whole server. These are recoverable watch hiccups, not fatal — log and
+  // carry on so one vanishing file can't take the cockpit offline.
+  watcher.on('error', (err) => {
+    console.error(`[watcher] ignoring filesystem watch error: ${err?.message || err}`)
+  })
 
   function emitConductor(filePath) {
     const parsed = parseConductorPath(filePath)

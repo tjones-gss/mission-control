@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Gauge, Workflow } from 'lucide-react'
 import { ErrorBoundary } from '../ErrorBoundary.jsx'
+import { FeatureBrief } from '../FeatureBrief/FeatureBrief.jsx'
 import { MissionControlTab } from '../MissionControlTab/MissionControlTab.jsx'
 import { ConductorTab } from '../ConductorTab/ConductorTab.jsx'
 
@@ -41,6 +42,7 @@ export function RunsTab({ harnessVersion, conductorVersion, sessions }) {
           )
         })}
       </div>
+      <FeatureBrief surfaceId={mode === 'conductor' ? 'runs.conductor' : 'runs.missions'} />
       <div className="flex-1 overflow-hidden flex flex-col">
         {mode === 'missions' && (
           <ErrorBoundary>
