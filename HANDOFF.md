@@ -1,9 +1,32 @@
 # Handoff — `feature/harness-scaffold`
 
-The centerpiece for the next session. Phase 0 (decisions/docs) and Phase 1
-(hardening) are **complete on this branch**; Phases 2–4 are **parked at a
-reassessment gate** with three open decisions that must be resolved before any
-Phase-2 code is written. Read this first.
+The centerpiece for the next session. Phase 0 (decisions/docs), Phase 1
+(hardening), and now **Phase 2 (trustworthy loops + unified spine, L1)** are
+complete. The three reassessment-gate decisions were resolved (see §4) and Phase 2
+shipped against them. **Phases 3 (adoptable, L2) and 4 (standard, L3) remain** —
+re-plan those next. Read this first.
+
+> **Phase 2 done + council-hardened (this session).** The `pipeline-phase` contract
+> is now the *consumed* spine (schema v7): the harness loader validates every
+> authored phase and materializes canonical defaults; gates HALT on unmet evidence
+> (incl. the new `scope_adherence` gate and verdict-parsing validation/review
+> gates); a per-run cost ledger hard-aborts (exit 4); a `strategy: fleet` phase
+> dispatches to the cockpit Fleet and writes outcomes back via `harness mission
+> status`; phase transitions surface goal/strategy live through `harness status
+> --json`. Suites: **991 server / 529 client / 143 python (1 skip) / 2 gated e2e**,
+> all green.
+>
+> A five-lens **council** (engineering / contracts / security / product / red-team)
+> reviewed it and caught a real gap: CI hard-listed its Python tests and did **not**
+> run the new spine tests, and there was no end-to-end loop test (every loop test
+> mocked the thing under test). Both are now fixed — CI runs all new modules, a
+> real-gates+real-cost `test_loop_e2e.py` was added, `scope_adherence` fail-open is
+> tested, and bad cost-policy values WARN instead of silently going unbounded. The
+> council report is at `council-phase2-l1-*.html` (gitignored). See the CHANGELOG
+> `[Unreleased] → Phase 2` section for the full list.
+>
+> **Known-staged:** `strategy: fleet` is wired + tested but **no shipped pipeline
+> uses it yet** — treat it as experimental until a real pipeline adopts it.
 
 ## 1. Current state
 
@@ -11,7 +34,7 @@ Phase-2 code is written. Read this first.
 - **What's committed:** Phase 0 (ADRs 0004–0007, `SCOPE.md`, `DOD-LADDER.md`,
   `.prettierrc` `endOfLine:"auto"`) and Phase 1 items 1a–1g, all TDD-first, every
   commit through the pre-commit gate (lint + tests + secret scan).
-- **Suites — all green:** **981 server** / **504 client** (Vitest) · **77 python**
+- **Suites — all green:** **991 server** / **529 client** (Vitest) · **143 python**
   (1 skip, pytest) · **2 gated e2e** (real-subprocess, `RUN_E2E=1`).
 - **Contract boundary intact:** the cockpit still shells out to `harness status
   --json` and renders the structured output — it never reparses harness YAML.
@@ -63,16 +86,16 @@ npm --prefix apps/cockpit/client install       # client deps
 Tests, per subproject:
 
 ```
-# Server (Vitest) — 981
+# Server (Vitest) — 991
 cd apps/cockpit/server && npx vitest run
 
-# Client (Vitest) — 504
+# Client (Vitest) — 529
 cd apps/cockpit/client && npx vitest run
 
 # Both at once (from apps/cockpit)
 npm --prefix apps/cockpit test
 
-# Python harness (pytest) — 77 (1 skip)
+# Python harness (pytest) — 143 (1 skip)
 cd packages/harness && pytest
 
 # Gated e2e — 2 real-subprocess tests, opt-in
@@ -83,30 +106,40 @@ Without `RUN_E2E=1` the e2e include set is empty and the lane exits 0 (clean
 no-op). The gated lane drives a real verify→reject→retry→synthesis cycle plus the
 kill-and-restart durability test.
 
-## 4. What's next — PARKED at the reassessment gate
+## 4. What's next — Phases 3 & 4 (re-plan)
 
-Phases 2–4 are intentionally not started. Three **open decisions** must be resolved
-before Phase-2 code:
+The three reassessment-gate decisions are **resolved** (locked at the start of the
+Phase 2 session):
 
-1. **Verification cost ceiling** — stronger verify defaults multiply tokens; pick a
-   defensible ceiling.
-2. **Cross-vendor scope** — either build a real Cursor/Codex oversight reader or
-   honestly drop the cross-vendor label (ADR-0005 / DOD L3).
-3. **Trust-grant UX** — un-defaulting `--dangerously-skip-permissions` (item 1b)
-   changed the zero-setup front-door experience; decide how the operator grants
-   per-cwd trust.
+1. **Verification cost ceiling → opt-in, 1 verifier / 1 round.** Verify is off by
+   default; when on, defaults to a single authorship-blind verifier and one round.
+   Applied in the Fleet-dispatch policy default (`fleet_dispatch.build_request`).
+2. **Cross-vendor scope → drop the label.** *Recorded, executes in Phase 4:* amend
+   ADR-0005 / DoD L3 to scope oversight to Claude Code only; Phase 4 becomes
+   contract-publishing + OpenAPI + OTel/audit-log + release-eng (no Cursor/Codex
+   reader).
+3. **Trust-grant UX → in-cockpit per-folder button.** *Recorded, executes in
+   Phase 3 (possible fast-follow):* wire `GET/POST/DELETE /api/trust` to
+   `lib/trust-store.js::trustCwd()` and add a "Trust this folder" control. Store is
+   already write-capable; only route + UI remain.
+
+**Phase 3 (adoptable, L2):** empty-front-door welcome + one-click first agent;
+one-click in-cockpit rails adoption with a pure-Node hook fallback; collapse to one
+hero job; CI coverage gate + e2e blocking; audit/SBOM + opt-in telemetry. Plus the
+trust-grant button above.
+
+**Phase 4 (standard, L3):** drop the cross-vendor label (decision 2); publish the
+versioned vendor-neutral `harness status` contract; serve OpenAPI at `/api/docs`;
+OTel tracing + append-only audit log; release engineering (semver, CHANGELOG,
+runbook, SBOM).
 
 **Deferred features (conscious, not forgotten):**
 
-- Trust-grant UI/route. `lib/trust-store.js` has `trustCwd()`, but **no route wires
-  it yet** — the store is write-capable, the UI is not built.
-- `/api/fleet/kill` already exists server-side; the `orphaned` UI badge is not built.
+- Trust-grant UI/route — decision locked (in-cockpit button); store ready, route+UI
+  pending (Phase 3 / fast-follow).
+- `/api/fleet/kill` exists server-side; the `orphaned` UI badge is not built.
 - `parser_recovered` self-clear SSE event (banner currently does not auto-clear).
 - Real-key nightly e2e (the gated lane uses stubbed subprocesses by default).
-
-**Phase 2 starting point:** `pipeline-phase.schema.json` is built, exported, and
-schema-versioned (`SCHEMA_VERSION` 5 added it) but **not yet consumed** — it is the
-spine contract waiting to be wired.
 
 ## 5. Pointers
 

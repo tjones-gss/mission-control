@@ -404,6 +404,45 @@ class TestMissionReady(unittest.TestCase):
         self.assertEqual(self._index()["MISSION-001-auth"]["status"], "ready")
 
 
+class TestMissionStatus(unittest.TestCase):
+    """`harness mission status <id> <state>` — the single-writer outcome path
+    Fleet/loop write back through (instead of editing mission-index.yml)."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="harness-test-"))
+        make_minimal_project(self.tmpdir)
+        (self.tmpdir / ".harness/mission-index.yml").write_text(
+            "missions:\n"
+            "  MISSION-001-auth:\n"
+            "    status: in-progress\n"
+            "    file: runs/missions/MISSION-001-auth.md\n"
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _index(self) -> dict:
+        r = run_cli("-C", str(self.tmpdir), "status", "--json")
+        return json.loads(r.stdout)["missions"]
+
+    def test_sets_canonical_state(self):
+        r = run_cli("-C", str(self.tmpdir), "mission", "status", "MISSION-001-auth", "review")
+        self.assertEqual(r.returncode, 0, msg=r.stderr)
+        self.assertEqual(self._index()["MISSION-001-auth"]["status"], "review")
+
+    def test_rejects_non_canonical_state(self):
+        r = run_cli("-C", str(self.tmpdir), "mission", "status", "MISSION-001-auth", "bogus")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("canonical", r.stderr.lower())
+        # Unchanged on rejection.
+        self.assertEqual(self._index()["MISSION-001-auth"]["status"], "in-progress")
+
+    def test_errors_when_mission_unknown(self):
+        r = run_cli("-C", str(self.tmpdir), "mission", "status", "MISSION-ghost", "complete")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no mission", r.stderr.lower())
+
+
 class TestApprove(unittest.TestCase):
     """`harness approve <id> --allow|--deny` is the SINGLE writer of decided
     files. It copies the pending request's commandHash (replay-proofing) and

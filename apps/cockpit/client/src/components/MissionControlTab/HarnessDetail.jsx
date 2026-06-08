@@ -456,6 +456,14 @@ export function HarnessDetail({ project, harnessVersion }) {
   const phase = status?.pipeline?.phase ?? project.pipeline?.phase
   const gate = status?.pipeline?.gate ?? project.pipeline?.gate
   const active = status?.pipeline?.active ?? project.pipeline?.active
+  // Phase 2: the live phase also carries the goal it serves and its fan-out
+  // strategy (single|fleet). The raw detail emits snake_case under pipeline.*;
+  // the parser-shaped summary uses pipeline.goal/strategy.
+  const phaseGoal = status?.pipeline?.goal ?? project.pipeline?.goal
+  const phaseStrategy = status?.pipeline?.strategy ?? project.pipeline?.strategy
+  const phaseHint = [gate ? `gate: ${gate}` : null, phaseStrategy ? `via ${phaseStrategy}` : null]
+    .filter(Boolean)
+    .join(' · ')
   // The /api/harness/:projectKey detail is the raw `harness status --json` object,
   // which emits the readiness block under `readiness_overall`. The summary
   // (project.readiness) is the parser-shaped ProjectSummary, so keep that key.
@@ -523,7 +531,7 @@ export function HarnessDetail({ project, harnessVersion }) {
           {/* Cards */}
           <div className="shrink-0 grid grid-cols-2 md:grid-cols-4 gap-2 px-4 py-3">
             <Card label="Pipeline" value={active || '—'} />
-            <Card label="Phase" value={phase || '—'} hint={gate ? `gate: ${gate}` : undefined} />
+            <Card label="Phase" value={phase || '—'} hint={phaseHint || undefined} />
             <Card
               label="Readiness"
               value={score != null ? score : '—'}
@@ -531,6 +539,15 @@ export function HarnessDetail({ project, harnessVersion }) {
             />
             <Card label="Missions" value={missions.length} />
           </div>
+
+          {/* The goal the current phase is working toward (Phase 2 spine). */}
+          {phaseGoal && (
+            <div className="shrink-0 px-4 -mt-1 pb-2">
+              <p className="text-[11px] text-gray-500 truncate" title={phaseGoal}>
+                <span className="text-gray-600">goal:</span> {phaseGoal}
+              </p>
+            </div>
+          )}
 
           {/* Plans / PRDs — only shown when the project has registered any. A
               PRD is a reviewed, phased plan that gates mission-planning. */}

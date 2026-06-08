@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 import subprocess
 import sys
@@ -55,14 +56,35 @@ def update_sdk_state(
     save_yaml(path, project)
 
 
-def set_pipeline_phase(root: Path, phase_id: str, gate: str | None = None) -> None:
+def set_pipeline_phase(
+    root: Path,
+    phase_id: str,
+    gate: str | None = None,
+    *,
+    goal: str | None = None,
+    strategy: str | None = None,
+) -> None:
+    """Record the current pipeline phase transition.
+
+    Writes the phase (and optionally the gate, the phase's goal, and its fan-out
+    strategy) plus a transitioned_at timestamp into pipeline-state.yml. These
+    flow through `harness status --json` unchanged, and the cockpit's chokidar
+    watcher emits a `harness_update` on the file change — so a phase transition
+    pushes to the dashboard live (no polling) with the goal/strategy surfaced.
+    """
     path = root / ".harness/pipeline-state.yml"
     state = load_yaml(path)
     state.setdefault("pipeline", {})
-    state["pipeline"]["active"] = "next-mission-loop"
-    state["pipeline"]["phase"] = phase_id
+    pipeline = state["pipeline"]
+    pipeline["active"] = "next-mission-loop"
+    pipeline["phase"] = phase_id
     if gate is not None:
-        state["pipeline"]["gate"] = gate
+        pipeline["gate"] = gate
+    if goal is not None:
+        pipeline["goal"] = goal
+    if strategy is not None:
+        pipeline["strategy"] = strategy
+    pipeline["transitioned_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     save_yaml(path, state)
 
 

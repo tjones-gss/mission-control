@@ -144,4 +144,29 @@ describe('HarnessDetail — mission lifecycle', () => {
     expect(within(stepper).getByText('in-progress')).toBeInTheDocument()
     expect(within(stepper).getByText('complete')).toBeInTheDocument()
   })
+
+  it('surfaces the live phase goal and strategy (Phase 2 spine)', async () => {
+    server.use(
+      http.get(`/api/harness/${PROJECT_KEY}`, () =>
+        HttpResponse.json({
+          project: { name: 'demo' },
+          pipeline: {
+            active: 'next-mission-loop',
+            phase: 'execute',
+            gate: 'scope_adherence',
+            goal: 'Ship the auth slice',
+            strategy: 'fleet',
+            transitioned_at: '2026-06-07T12:00:00+00:00',
+          },
+          missions: {},
+        }),
+      ),
+    )
+    renderDetail()
+
+    // The goal line and the strategy hint both render.
+    await waitFor(() => expect(screen.getByText(/Ship the auth slice/)).toBeInTheDocument())
+    expect(screen.getByText(/via fleet/)).toBeInTheDocument()
+    expect(screen.getByText(/gate: scope_adherence/)).toBeInTheDocument()
+  })
 })

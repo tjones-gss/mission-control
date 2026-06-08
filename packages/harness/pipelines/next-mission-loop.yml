@@ -48,6 +48,7 @@ phases:
     gate:
       required:
         - work_completed_within_scope_or_stop_reason_documented
+        - scope_adherence
 
   - id: validate
     agent: tester

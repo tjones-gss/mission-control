@@ -377,5 +377,83 @@ class TestSchemaVersionParity(unittest.TestCase):
         )
 
 
+PIPELINE_PHASE_SCHEMA_PATH = (
+    HARNESS_ROOT.parent
+    / "contracts"
+    / "schemas"
+    / "pipeline-phase.schema.json"
+)
+PIPELINES_DIR = HARNESS_ROOT / "pipelines"
+
+
+class TestPipelinePhaseSchemaConsumed(unittest.TestCase):
+    """Phase 2: pipeline-phase schema is the CONSUMED spine contract.
+
+    The schema was relaxed (v7) so it validates the real authored pipeline YAML:
+    id/agent/gate required; tier/strategy/goal optional; the authored fields
+    (description/inputs/outputs/rules/loop/...) accepted; additionalProperties
+    stays false so a typo in a known field still fails. This test guards that
+    relaxation directly at the schema layer — every phase of every shipped
+    pipeline must validate, and an unknown field must still be rejected.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not _HAVE_JSONSCHEMA:
+            raise AssertionError(_JSONSCHEMA_ERROR)
+        cls.schema = json.loads(
+            PIPELINE_PHASE_SCHEMA_PATH.read_text(encoding="utf-8")
+        )
+        cls.validator = Draft202012Validator(cls.schema)
+        try:
+            import yaml  # type: ignore
+        except ImportError as exc:  # pragma: no cover - pyyaml is a runtime dep
+            raise AssertionError("pyyaml required for pipeline schema test") from exc
+        cls.yaml = yaml
+
+    def test_schema_file_exists(self):
+        self.assertTrue(
+            PIPELINE_PHASE_SCHEMA_PATH.exists(),
+            f"pipeline-phase schema not found at {PIPELINE_PHASE_SCHEMA_PATH}",
+        )
+
+    def test_every_shipped_pipeline_phase_validates(self):
+        pipelines = sorted(PIPELINES_DIR.glob("*.yml"))
+        self.assertTrue(pipelines, f"no pipelines found in {PIPELINES_DIR}")
+        for path in pipelines:
+            data = self.yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            phases = data.get("phases") or []
+            self.assertTrue(
+                phases, f"{path.name} has no phases to validate"
+            )
+            for phase in phases:
+                errors = sorted(
+                    self.validator.iter_errors(phase), key=lambda e: e.path
+                )
+                if errors:
+                    detail = "\n".join(
+                        f"    - at {list(e.path) or '<root>'}: {e.message}"
+                        for e in errors
+                    )
+                    self.fail(
+                        f"phase '{phase.get('id', '?')}' in {path.name} does NOT "
+                        f"validate against the relaxed pipeline-phase schema:\n"
+                        f"{detail}"
+                    )
+
+    def test_unknown_field_still_rejected(self):
+        bad = {
+            "id": "x",
+            "agent": "y",
+            "gate": {"required": []},
+            "inputz": ["typo"],  # not a known field
+        }
+        self.assertTrue(
+            list(self.validator.iter_errors(bad)),
+            "relaxed schema must still reject a typo in an unknown field "
+            "(additionalProperties:false)",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

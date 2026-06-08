@@ -74,17 +74,26 @@ The shapes the cockpit and the Python harness exchange live in the workspace's
 their version numbers from one committed sidecar, `schema-version.json`
 (`{ schemaVersion, approvalSchemaVersion }`) — neither hand-copies the other, and a
 cross-language parity test reds CI on drift. `index.js` exports `SCHEMA_VERSION`
-(currently **6** — versions the contracts package as a whole; bumped by Durable
-Fleet, which added the `orphaned` run/child status and the child `pid` field) and
+(currently **7** — versions the contracts package as a whole; bumped by Phase 2,
+which relaxed `pipeline-phase` for consumption and added the optional
+`pipeline.goal/strategy/transitioned_at` status fields) and
 `APPROVAL_SCHEMA_VERSION` (currently **2**) — these are **DISTINCT concepts** (the
 package version vs the per-approval-document version stamped into
 `.harness/approvals/**`), deliberately allowed to differ. Schemas exported include
 `harnessStatus`, `harnessScaffold`, `approvalRequest`, `approvalDecision`,
-`fleetRun`, `fleetTemplate`, and `pipelinePhase`. The new
-`pipeline-phase.schema.json` (`{ id, agent, tier, optional model, gate.required[],
-strategy: single\|fleet, goal }`) is the canonical phase-contract object (ADR-0006):
-it is **defined and exported but NOT YET consumed** — it is the Phase-2 spine
-contract.
+`fleetRun`, `fleetTemplate`, and `pipelinePhase`. The
+`pipeline-phase.schema.json` (`{ id, agent, optional tier/model/strategy/goal,
+gate.required[] }` plus the authored fields description/inputs/outputs/rules/
+checks/loop) is the canonical phase-contract object (ADR-0006). As of Phase 2
+(schema v7) it is the **CONSUMED spine**: the harness loader
+(`harness_core/pipelines.py`) validates every authored phase against it at load
+time (and `harness check` runs the same `validate_phase`); only `id`/`agent` are
+hard-required, and the loader materializes the canonical defaults (strategy
+`single`, goal carried from the pipeline, empty gate). On the spine, gates HALT on
+unmet evidence, a `strategy: fleet` phase dispatches to the cockpit Fleet, and a
+per-run cost ledger can hard-abort. (`strategy: fleet` is wired and tested but
+**staged** — no shipped pipeline invokes it yet; treat it as experimental until one
+adopts it.)
 
 ---
 

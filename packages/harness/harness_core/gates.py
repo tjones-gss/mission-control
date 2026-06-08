@@ -1,11 +1,102 @@
 from __future__ import annotations
 
+import re
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from harness_core.missions import get_current_mission
+from harness_core.missions import (
+    allowed_patterns,
+    forbidden_patterns,
+    get_current_mission,
+    get_mission_path,
+    path_matches_any,
+)
 from harness_core.yaml_utils import get, load_yaml
+
+# The validate report (tools/harness::cmd_validate) writes one
+# `**Status:** ✓ pass (exit 0)` / `✗ fail (exit 1)` line per command and a
+# `**TIMEOUT after 600s**` marker on timeout. The verdict gates parse those.
+_EXIT_LINE = re.compile(r"\*\*Status:\*\*.*?\(exit\s+(\d+)\)")
+_TIMEOUT_MARKER = "**TIMEOUT"
+
+
+def _report_passed(path: Path) -> bool:
+    """True iff a validate report shows a real PASS verdict.
+
+    Requires at least one parsed `(exit N)` line, every exit code 0, and no
+    TIMEOUT marker. An unparseable report (present but no recognizable verdict)
+    fails CLOSED — a report that exists but cannot be shown to pass is not
+    evidence of passing validation (mirrors Fleet's parseVerdict fail-closed).
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    if _TIMEOUT_MARKER in text:
+        return False
+    codes = _EXIT_LINE.findall(text)
+    if not codes:
+        return False
+    return all(code == "0" for code in codes)
+
+
+def _review_mergeable(path: Path) -> bool:
+    """True iff a review report's `## Mergeable?` section answers Yes.
+
+    Convention from runs/templates/review-report-template.md: the first
+    non-empty line under `## Mergeable?` is Yes or No. Unparseable / No / missing
+    section fails CLOSED.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    in_sec = False
+    for line in lines:
+        if line.startswith("##"):
+            in_sec = line.strip().lower().startswith("## mergeable")
+            continue
+        if in_sec and line.strip():
+            return line.strip().lower().startswith("yes")
+    return False
+
+
+def _git_touched_files(root: Path) -> list[str]:
+    """Repo-relative paths touched in the working tree (staged, unstaged, new).
+
+    Uses `git status --porcelain` so untracked NEW files count too. Returns []
+    when git is unavailable or the dir isn't a repo — scope policing then
+    degrades to a no-op (best-effort, consistent with the rails framing) rather
+    than producing false HALTs.
+    """
+    try:
+        proc = subprocess.run(
+            # --untracked-files=all lists each new file individually; without it
+            # git collapses an untracked directory to just "dir/", which would
+            # hide the real per-file paths scope_adherence must check.
+            ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if proc.returncode != 0:
+        return []
+    touched: list[str] = []
+    for line in proc.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        entry = line[3:]
+        # Renames/copies are reported as "ORIG -> NEW": take the destination.
+        if " -> " in entry:
+            entry = entry.split(" -> ", 1)[1]
+        entry = entry.strip().strip('"')
+        if entry:
+            touched.append(entry)
+    return touched
 
 
 @dataclass
@@ -103,6 +194,7 @@ def _work_completed(ctx: GateContext) -> bool:
 
 @register_gate("validation_recorded_or_skip_documented")
 def _validation_recorded(ctx: GateContext) -> bool:
+    # Vacuously true when nothing was implemented (legitimate skip).
     if not ctx.implementation_occurred:
         return True
     mid = ctx.mission_id
@@ -111,11 +203,17 @@ def _validation_recorded(ctx: GateContext) -> bool:
     reports = ctx.root / "runs/test-reports"
     if not reports.is_dir():
         return False
-    return any(mid in p.name for p in reports.glob("*.md"))
+    # Verification is not theater: the report must not merely EXIST, it must
+    # show a real pass verdict. A failing or unparseable report fails the gate.
+    matching = [p for p in reports.glob("*.md") if mid in p.name]
+    if not matching:
+        return False
+    return any(_report_passed(p) for p in matching)
 
 
 @register_gate("review_recorded_or_skip_documented")
 def _review_recorded(ctx: GateContext) -> bool:
+    # Vacuously true when nothing was implemented (legitimate skip).
     if not ctx.implementation_occurred:
         return True
     mid = ctx.mission_id
@@ -124,7 +222,38 @@ def _review_recorded(ctx: GateContext) -> bool:
     reviews = ctx.root / "runs/reviews"
     if not reviews.is_dir():
         return False
-    return any(mid in p.name for p in reviews.glob("*.md"))
+    # The review must record a Mergeable? Yes verdict — a recorded "No" (or an
+    # unparseable review) fails the gate rather than passing on file presence.
+    matching = [p for p in reviews.glob("*.md") if mid in p.name]
+    if not matching:
+        return False
+    return any(_review_mergeable(p) for p in matching)
+
+
+@register_gate("scope_adherence")
+def _scope_adherence(ctx: GateContext) -> bool:
+    """Touched files must stay inside the mission's Allowed/Forbidden globs.
+
+    What this verifies: every file changed in the working tree matches the
+    mission's `## Allowed Files` globs and none matches `## Forbidden Files`.
+    Passes vacuously when no implementation occurred. Fails CLOSED when work
+    happened but no mission scope can be located. Degrades to pass when git
+    can't enumerate changes (best-effort, not a sandbox).
+    """
+    if not ctx.implementation_occurred:
+        return True
+    path = get_mission_path(ctx.root, ctx.mission_id)
+    if path is None:
+        # Code changed but we cannot attribute it to a scoped mission.
+        return False
+    allowed = allowed_patterns(path)
+    forbidden = forbidden_patterns(path)
+    for touched in _git_touched_files(ctx.root):
+        if forbidden and path_matches_any(touched, forbidden):
+            return False
+        if allowed and not path_matches_any(touched, allowed):
+            return False
+    return True
 
 
 @register_gate("human_approval_for_plan")

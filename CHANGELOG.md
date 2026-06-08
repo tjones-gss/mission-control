@@ -6,7 +6,69 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
-Phase 0 (decisions/docs) and Phase 1 (hardening) on `feature/harness-scaffold`
+### Phase 2 — Trustworthy loops + unified spine (L1)
+
+The canonical phase contract becomes the **consumed** spine. All TDD-first; suites
+green at 991 server / 529 client / 143 python (1 skip) / 2 gated e2e.
+
+**Council follow-ups (hardening before Phase 3):**
+
+- **CI now runs the new spine tests.** `.github/workflows/ci.yml` previously
+  hard-listed only the pre-existing Python modules; it now also runs
+  `test_pipelines`, `test_loop_halt`, `test_loop_e2e`, `test_cost_ledger`,
+  `test_fleet_dispatch` — so the green signal actually covers Phase 2.
+- **End-to-end loop test** (`tests/test_loop_e2e.py`): drives the real
+  `run_next_mission_loop` with **real** gates + cost ledger (only the LLM edges
+  mocked), proving a real unmet gate HALTs (exit 3) and a real cost ceiling aborts
+  (exit 4) — not just stubbed wiring.
+- **`scope_adherence` fail-open is now tested**: explicit regression tests assert
+  the gate passes when git can't enumerate touched files (best-effort, documented).
+- **No silent cost mis-config**: a present-but-invalid `run_ceiling_usd` /
+  `per_phase_usd` (or env `HARNESS_RUN_CEILING_USD`) now **WARNs** and degrades
+  instead of silently reading as unbounded.
+- **`strategy: fleet` is staged/experimental**: the dispatch path is wired and
+  tested, but no shipped pipeline invokes it yet — it is exercised by tests only
+  until a real pipeline adopts it.
+
+**Added**
+
+- `SCHEMA_VERSION` → **7**. Relaxed `pipeline-phase.schema.json` so it validates
+  real authored pipeline YAML (only `id`/`agent` hard-required; `gate`/`tier`/
+  `strategy`/`goal` optional; authored `description`/`inputs`/`outputs`/`rules`/
+  `checks`/`loop`/`no_*_reason` accepted; `additionalProperties:false` keeps typo
+  guarding). Extended `harness-status.pipeline` with optional `goal`/`strategy`/
+  `transitioned_at`.
+- `harness_core/pipelines.py` now **consumes** the contract: `validate_phase`
+  (lazy `jsonschema`, fail-open on tooling absence, fail-closed on real violation),
+  `load_pipeline` validates phases, and `pipeline_phases` materializes the
+  canonical object (default `strategy=single`, carry the pipeline goal, empty
+  gate). `harness check` runs the same `validate_phase` (one definition).
+- Gates **HALT** the loop on an unmet gate under strict mode (no advancing to
+  dependent phases). Evidence gates check the report **verdict**, not mere file
+  presence: `validation_recorded` parses the `(exit N)`/TIMEOUT lines,
+  `review_recorded` parses the `## Mergeable?` answer (both fail closed). New
+  `scope_adherence` gate diffs git-touched files vs the mission's Allowed/Forbidden
+  globs (shared parser in `harness_core/missions.py`); wired into the `execute`
+  phase of `next-mission-loop.yml`.
+- Per-run **cost ledger** (`harness_core/cost.py`, `.harness/run-ledger.yml`) with a
+  hard abort ceiling (`.harness/cost-policy.yml` `run_ceiling_usd` or
+  `HARNESS_RUN_CEILING_USD`); distinct **exit 4** vs the gate-HALT exit 3. Absent
+  ceiling = unbounded (unchanged behavior).
+- **Fleet as a phase strategy**: a `strategy: fleet` phase dispatches OUT to the
+  cockpit `/api/fleet` (`harness_orchestrator/fleet_dispatch.py`, stdlib urllib;
+  verify defaults to the locked opt-in 1 verifier / 1 round), polls to terminal,
+  accrues the real `spentUsd`, and writes the outcome back via the new
+  `harness mission status <id> <state>` single-writer. Fails **closed** if the
+  cockpit is unreachable (never silently runs single).
+- Phase-transition surfacing: `set_pipeline_phase` writes `goal`/`strategy`/
+  `transitioned_at`, flowing through `harness status --json` → the cockpit watcher's
+  `harness_update` SSE → `HarnessDetail` (live phase goal + strategy hint). No
+  polling added — the transport already existed.
+- `apps/cockpit/server/lib/workflow-compile.js` — `compileWorkflowToPhase` compiles
+  a cockpit workflow to a schema-valid single canonical phase (ADR-0006: a Workflow
+  is a degenerate single-phase pipeline).
+
+### Phase 0 (decisions/docs) and Phase 1 (hardening) on `feature/harness-scaffold`
 (PR #5). All changes TDD-first; suites green at 981 server / 504 client / 77 python
 (1 skip) / 2 gated e2e.
 

@@ -7,7 +7,11 @@ name = "harness-core"
 version = "0.1.0"
 description = "Shared control-plane utilities for the Adaptive Agentic Engineering Harness"
 requires-python = ">=3.10"
-dependencies = ["pyyaml>=6.0"]
+# jsonschema validates authored pipeline phases against the shared contract
+# (packages/contracts/schemas/pipeline-phase.schema.json). Imported lazily and
+# degraded to a no-op when absent, so a standalone install without it still runs
+# (see harness_core.pipelines.validate_phase) — but it is a declared dependency.
+dependencies = ["pyyaml>=6.0", "jsonschema>=4.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
