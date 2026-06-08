@@ -1,10 +1,27 @@
 # Handoff — `feature/harness-scaffold`
 
 The centerpiece for the next session. Phase 0 (decisions/docs), Phase 1
-(hardening), and now **Phase 2 (trustworthy loops + unified spine, L1)** are
-complete. The three reassessment-gate decisions were resolved (see §4) and Phase 2
-shipped against them. **Phases 3 (adoptable, L2) and 4 (standard, L3) remain** —
-re-plan those next. Read this first.
+(hardening), Phase 2 (trustworthy loops + unified spine, L1), and now **Phase 3
+(adoptable, L2)** are complete. The three reassessment-gate decisions were resolved
+(see §4) and Phases 2–3 shipped against them. **Phase 4 (standard, L3) remains** —
+re-plan it next. Read this first.
+
+> **Phase 3 done (this session).** All four L2 release-gate criteria
+> (`DOD-LADDER.md` L2) plus the locked trust-grant fast-follow landed, TDD-first:
+> (1) **empty front-door welcome** + one-click first agent (`WelcomeHero`, reusing
+> the existing spawn path); (2) **one-click in-cockpit rails adoption** via a
+> **pure-Node** installer + `POST /api/rails/adopt` — needs neither python, bash,
+> nor jq — backed by a **full-parity pure-Node port of all four hooks** (`.mjs`,
+> proven identical to the shell hooks by `test_hook_parity.py` + a 24-case
+> `node:test` suite); (3) **CI coverage gate** (measure-then-floor v8 thresholds run
+> with `--coverage`) + the blocking-e2e doc; (4) **in-cockpit per-folder trust
+> button** (`/api/trust` + a Settings "Trusted folders" tab). Suites: **1008 server
+> / 545 client / 129 python (6 parity skips w/o jq) / 24 Node hook tests**, both
+> coverage gates green. Branch: `feature/phase-3-l2-adoptable`.
+>
+> **One out-of-repo step remains** (cannot be a file): a repo admin must mark
+> `cockpit (Node)` + `cockpit e2e (Fleet + Playwright)` as **required status checks**
+> on `main` so the coverage gate and e2e actually block merge — see `docs/ci.md`.
 
 > **Phase 2 done + council-hardened (this session).** The `pipeline-phase` contract
 > is now the *consumed* spine (schema v7): the harness loader validates every
@@ -123,10 +140,14 @@ Phase 2 session):
    `lib/trust-store.js::trustCwd()` and add a "Trust this folder" control. Store is
    already write-capable; only route + UI remain.
 
-**Phase 3 (adoptable, L2):** empty-front-door welcome + one-click first agent;
-one-click in-cockpit rails adoption with a pure-Node hook fallback; collapse to one
-hero job; CI coverage gate + e2e blocking; audit/SBOM + opt-in telemetry. Plus the
-trust-grant button above.
+**Phase 3 (adoptable, L2): DONE** (branch `feature/phase-3-l2-adoptable`). Delivered
+the four L2 gate criteria + the trust-grant button: empty-front-door welcome +
+one-click first agent; one-click in-cockpit rails adoption with a full-parity
+pure-Node hook fallback; CI coverage gate (measure-then-floor) + the blocking-e2e
+doc. **Consciously deferred** (per the scope decision — not L2 gate criteria, now
+fast-follow): the SCOPE.md UI *collapses* (Conductor/MissionControl/Runs → one hero
+job; Kanban/AgentTree merge) and the *audit-log / SBOM / opt-in-telemetry* seed
+(mostly L3). The trust-grant button shipped (see above).
 
 **Phase 4 (standard, L3):** drop the cross-vendor label (decision 2); publish the
 versioned vendor-neutral `harness status` contract; serve OpenAPI at `/api/docs`;
