@@ -87,7 +87,10 @@ test.describe('workflows', () => {
     await groupRow.getByTitle('Delete workflow').click({ force: true })
 
     // Wait for the confirmation modal to appear before clicking Delete.
-    const modal = page.locator('.fixed.inset-0').filter({ hasText: 'This cannot be undone.' })
+    // The delete-confirm modal renders through the portal Dialog primitive: the
+    // panel carries role="dialog" (the .fixed.inset-0 element is now just the
+    // separate, empty backdrop sibling), so target the dialog by role.
+    const modal = page.getByRole('dialog').filter({ hasText: 'This cannot be undone.' })
     await expect(modal).toBeVisible()
 
     // Synchronize on the DELETE response so the list update has landed
@@ -176,7 +179,10 @@ test.describe('workflows', () => {
     await groupRow.hover()
     await groupRow.getByTitle('Delete workflow').click({ force: true })
 
-    const modal = page.locator('.fixed.inset-0').filter({ hasText: 'This cannot be undone.' })
+    // The delete-confirm modal renders through the portal Dialog primitive: the
+    // panel carries role="dialog" (the .fixed.inset-0 element is now just the
+    // separate, empty backdrop sibling), so target the dialog by role.
+    const modal = page.getByRole('dialog').filter({ hasText: 'This cannot be undone.' })
     await expect(modal).toBeVisible()
 
     const deletePromise = page.waitForResponse(
