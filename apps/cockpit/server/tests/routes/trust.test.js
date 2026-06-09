@@ -18,6 +18,7 @@ vi.mock('../../lib/logger.js', () => ({
 
 import express from 'express'
 import request from 'supertest'
+import path from 'node:path'
 import { trustCwd, untrustCwd } from '../../lib/trust-store.js'
 import { logger } from '../../lib/logger.js'
 import { router } from '../../routes/trust.js'
@@ -26,7 +27,9 @@ const app = express()
 app.use(express.json())
 app.use('/', router)
 
-const CWD = 'C:/work/trusted-proj'
+// Absolute on BOTH platforms (validateCwd uses path.isAbsolute, which is
+// platform-dependent): path.resolve yields C:\... on Windows and /... on Linux CI.
+const CWD = path.resolve('/work/trusted-proj')
 
 beforeEach(() => {
   vi.clearAllMocks()

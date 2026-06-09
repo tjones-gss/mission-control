@@ -131,7 +131,9 @@ export const FALLBACK_PATTERNS = [
 // unanchored, matching bash [[ =~ ]] semantics. Best-effort only.
 export const DANGER_REGEXES = [
   {
-    label: 'rm: recursive+force',
+    // Label must match the shell DANGER_REGEXES entry EXACTLY (it is emitted in
+    // the deny reason and asserted by test_hook_parity.py): "rm: recursive+force rm".
+    label: 'rm: recursive+force rm',
     re: /(^|[^a-z])rm(\s+-[a-z]*r[a-z]*\s+-[a-z]*f|\s+-[a-z]*f[a-z]*\s+-[a-z]*r|\s+-[a-z]*(rf|fr)[a-z]*|\s.*(--recursive|--force).*(--force|--recursive))/,
   },
   { label: 'find -delete', re: /(^|[^a-z])find(\s+.*)?\s-delete(\s|$)/ },

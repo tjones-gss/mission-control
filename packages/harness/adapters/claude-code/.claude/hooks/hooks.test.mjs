@@ -94,8 +94,8 @@ test('matchDanger: substring (fallback) + case-insensitive', () => {
 
 test('matchDanger: regex variants', () => {
   const cases = [
-    ['rm --recursive --force build', 'rm: recursive+force'],
-    ['rm -fr node_modules', 'rm: recursive+force'],
+    ['rm --recursive --force build', 'rm: recursive+force rm'],
+    ['rm -fr node_modules', 'rm: recursive+force rm'],
     ['find . -name x -delete', 'find -delete'],
     ['git clean -fdx', 'git clean -f+dirs'],
     ['dd if=/dev/zero of=/dev/sda', 'dd to device'],
