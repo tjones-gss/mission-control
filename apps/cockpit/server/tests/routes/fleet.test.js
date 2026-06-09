@@ -31,6 +31,12 @@ vi.mock('../../pty-session.js', () => ({
   resolveApproval: vi.fn(() => true),
 }))
 vi.mock('../../sse.js', () => ({ emit: vi.fn() }))
+// audit-log pulls in @mission-control/contracts (which reads schema files via fs at
+// module init); mock it so this fs-mocked lane never loads the contracts chain.
+vi.mock('../../lib/audit-log.js', () => ({
+  recordAuditEvent: vi.fn().mockResolvedValue(null),
+  recordAuditEventSafe: vi.fn().mockResolvedValue(null),
+}))
 vi.mock('../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "harness-core"
-version = "0.1.0"
+version = "0.4.0"
 description = "Shared control-plane utilities for the Adaptive Agentic Engineering Harness"
 requires-python = ">=3.10"
 # jsonschema validates authored pipeline phases against the shared contract

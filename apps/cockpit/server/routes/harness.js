@@ -96,6 +96,16 @@ function slugify(title) {
 // Read endpoints
 // ──────────────────────────────────────────────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/harness:
+ *   get:
+ *     summary: List harness projects (via the harness CLI status contract).
+ *     tags: [Harness]
+ *     responses:
+ *       200:
+ *         description: Harness projects.
+ */
 router.get('/', async (_req, res) => {
   res.json({ projects: await getHarnessProjects() })
 })
@@ -114,6 +124,25 @@ router.get('/scaffold-candidates', (_req, res) => {
   res.json({ candidates: Array.isArray(candidates) ? candidates : [] })
 })
 
+/**
+ * @openapi
+ * /api/harness/{projectKey}:
+ *   get:
+ *     summary: Status for a single harness project (URL-encoded project path key).
+ *     tags: [Harness]
+ *     parameters:
+ *       - in: path
+ *         name: projectKey
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The harness project status.
+ *       400:
+ *         description: Invalid project key.
+ *       404:
+ *         description: Project not found or not whitelisted.
+ */
 router.get('/:projectKey', async (req, res) => {
   const { projectKey } = req.params
   const projectPath = decodeProjectKey(projectKey)

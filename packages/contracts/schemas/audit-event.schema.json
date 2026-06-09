@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.dev/schemas/audit-event.schema.json",
+  "title": "AuditEvent",
+  "description": "One record in the append-only audit log: a durable, after-the-fact account of a consequential action the oversight dashboard orchestrated — an agent spawn, a human approval decision, or a branch merge. The cockpit is the SOLE writer (one append-only JSONL log via the existing atomic-write helper, ADR-0004 local-JSON, no DB); it records both the events it performs directly and the rails-mediated ones it drives via the control-plane CLI shell-out. KNOWN LIMITATION: actions taken against the rails CLI directly (outside the dashboard) are not captured by this log yet — there is no second writer this phase. Permissive (additionalProperties:true) so emitters can attach event-specific detail under `payload` without a schema bump.",
+  "type": "object",
+  "required": ["schemaVersion", "ts", "eventType", "source"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "description": "The contracts surface version this record was written under (derived from the single-source schema-version.json sidecar), so a reader can interpret older records as the surface evolves."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of when the event occurred (UTC, e.g. 2026-06-08T14:03:11.000Z)."
+    },
+    "eventType": {
+      "type": "string",
+      "enum": ["spawn", "approval", "merge"],
+      "description": "The kind of consequential action recorded: 'spawn' (an agent session was started), 'approval' (a human decided on a gated/danger-zone request), or 'merge' (a branch was merged)."
+    },
+    "actor": {
+      "type": ["string", "null"],
+      "description": "Who or what initiated the action — a human operator identity for approvals, or an orchestrator/system identifier for automated steps. Null when not attributable."
+    },
+    "subjectId": {
+      "type": ["string", "null"],
+      "description": "Identifier of the thing the event acted ON (e.g. the approval-request id for an approval, the branch ref for a merge). Null when not applicable."
+    },
+    "sessionId": {
+      "type": ["string", "null"],
+      "description": "The agent session this event relates to, when one exists (e.g. the spawned session for a 'spawn' event). Null when no session is involved."
+    },
+    "projectKey": {
+      "type": ["string", "null"],
+      "description": "The project this event belongs to, scoping the record to one workspace in a multi-project view. Null when not project-scoped."
+    },
+    "decision": {
+      "type": ["string", "null"],
+      "description": "For an 'approval' event: the human decision recorded (e.g. approved / denied). Null for non-approval events."
+    },
+    "outcome": {
+      "type": ["string", "null"],
+      "description": "The result of the action once known (e.g. succeeded / failed / skipped). Null while pending or not applicable."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["cockpit", "harness"],
+      "description": "Which control surface the event flowed through: 'cockpit' for an action the dashboard performed directly, 'harness' for a rails-mediated action the dashboard drove via the control-plane CLI shell-out."
+    },
+    "correlationId": {
+      "type": ["string", "null"],
+      "description": "An id that ties related events together across surfaces (e.g. a request that triggers a spawn then an approval then a merge), so a multi-step flow can be reconstructed. Null when standalone."
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Event-specific detail. Permissive on purpose: emitters attach the extra fields a given eventType needs (e.g. cost, branch name, gate id) without requiring a schema-surface bump for each."
+    }
+  }
+}

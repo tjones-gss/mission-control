@@ -28,6 +28,7 @@ import { onEvent, emit } from '../sse.js'
 import { validateSessionId } from '../utils/validate.js'
 import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
 import { atomicWriteJson } from '../lib/atomic-write.js'
+import { recordAuditEventSafe } from '../lib/audit-log.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
@@ -280,6 +281,16 @@ export function _resetSessionsCache() {
   sessionsCache = { data: null, expiresAt: 0 }
 }
 
+/**
+ * @openapi
+ * /api/sessions:
+ *   get:
+ *     summary: List discovered agent sessions (enriched with display names).
+ *     tags: [Sessions]
+ *     responses:
+ *       200:
+ *         description: Array of sessions.
+ */
 router.get('/', async (req, res, next) => {
   try {
     const sessions = getCachedSessions()
@@ -294,6 +305,23 @@ router.get('/', async (req, res, next) => {
   }
 })
 
+/**
+ * @openapi
+ * /api/sessions/{sessionId}:
+ *   get:
+ *     summary: Fetch a single session by id.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The session.
+ *       404:
+ *         description: Session not found.
+ */
 router.get('/:sessionId', async (req, res) => {
   const session = getSessionById(req.params.sessionId)
   if (!session) return res.status(404).json({ error: 'Session not found' })
@@ -495,6 +523,31 @@ router.post('/:sessionId/skill', async (req, res) => {
   }
 })
 
+/**
+ * @openapi
+ * /api/sessions/new:
+ *   post:
+ *     summary: Spawn a new agent session (the front-door spawn path).
+ *     tags: [Sessions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [cwd, prompt]
+ *             properties:
+ *               cwd: { type: string }
+ *               prompt: { type: string }
+ *               name: { type: string }
+ *               worktree: { type: boolean }
+ *               options: { type: object }
+ *     responses:
+ *       200:
+ *         description: Session spawned.
+ *       400:
+ *         description: Missing or invalid prompt/cwd.
+ */
 router.post('/new', async (req, res) => {
   const { cwd, prompt, options, name, worktree } = req.body
 
@@ -526,6 +579,23 @@ router.post('/new', async (req, res) => {
     args,
     cwd,
     timeoutMs: 300_000,
+  })
+
+  // AUDIT (cockpit sole writer): the front-door "spawn a new agent" path. Recorded
+  // once the CLI subprocess is committed (the agent is launched) — the sessionId is
+  // not known yet (the watcher acks it later), so it is null here. Fire-and-forget
+  // so the audit append never affects the spawn race below. This is the front-door
+  // counterpart to the Fleet child-spawn audit in fleet/fleet-runner.js.
+  recordAuditEventSafe({
+    eventType: 'spawn',
+    source: 'cockpit',
+    sessionId: null,
+    payload: {
+      kind: 'session_new',
+      cwd,
+      worktree: worktree === true,
+      named: !!(name && name.trim()),
+    },
   })
 
   // Race: file-watcher ack vs CLI completion vs 15s deadline.
@@ -715,6 +785,36 @@ router.delete('/:sessionId/name', async (req, res) => {
 // SDK query control endpoints
 // ──────────────────────────────────────────────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/sessions/{sessionId}/tool-approval:
+ *   post:
+ *     summary: Resolve a paused tool approval (allow or deny) for a session.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [approvalId, decision]
+ *             properties:
+ *               approvalId: { type: string }
+ *               decision: { type: string, enum: [allow, deny] }
+ *               message: { type: string }
+ *     responses:
+ *       200:
+ *         description: Approval resolved.
+ *       400:
+ *         description: Missing approvalId or invalid decision.
+ *       404:
+ *         description: Approval not found or already resolved.
+ */
 router.post('/:sessionId/tool-approval', (req, res) => {
   const { sessionId } = req.params
   const { approvalId, decision, message } = req.body
@@ -731,9 +831,40 @@ router.post('/:sessionId/tool-approval', (req, res) => {
     return res.status(404).json({ error: 'Approval not found or already resolved' })
   }
 
+  // AUDIT (cockpit sole writer): a human tool-approval decision is the canonical
+  // 'approval' event. Recorded only AFTER it was actually resolved (so a 404 writes
+  // nothing). source 'cockpit' — the dashboard resolved it via the in-memory SDK
+  // resolver. Fire-and-forget so the audit append never fails the decision.
+  recordAuditEventSafe({
+    eventType: 'approval',
+    source: 'cockpit',
+    sessionId,
+    subjectId: approvalId,
+    decision: decision === 'allow' ? 'approved' : 'denied',
+    outcome: 'succeeded',
+    payload: { kind: 'tool_approval' },
+  })
+
   res.json({ ok: true })
 })
 
+/**
+ * @openapi
+ * /api/sessions/{sessionId}/cancel:
+ *   post:
+ *     summary: Cancel the active query for a session.
+ *     tags: [Sessions]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Query cancelled.
+ *       404:
+ *         description: No active query for this session.
+ */
 router.post('/:sessionId/cancel', (req, res) => {
   const { sessionId } = req.params
 

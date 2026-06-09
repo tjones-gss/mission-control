@@ -2,9 +2,90 @@
 
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); the project is pre-1.0
-(`0.1.0`) and not yet semantically versioned.
+and versioned on three independent axes (package semver, contracts
+`SCHEMA_VERSION`, `APPROVAL_SCHEMA_VERSION`) — see `RELEASING.md`. This file is
+the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
 
 ## [Unreleased]
+
+<!-- New entries land here. ONLY S7 (E-release-eng) flips the heading below. -->
+
+## [0.4.0] - 2026-06-08
+
+> The `0.4.0 - 2026-06-08` date is a placeholder until a human cuts the tag.
+> The release is cut by tagging `v0.4.0` (see `RELEASING.md`); update this date
+> to the actual cut date at that time.
+
+### Phase 4 — Standard (L3)
+
+Phase 4 (Standard, L3) closes the L3 release gate: the cross-vendor VIEWING label
+is dropped, the versioned vendor-neutral `harness status` contract is published
+(`packages/contracts/SPEC.md`, sidecar schema **8**), the cockpit serves its own
+OpenAPI surface, an append-only audit log (cockpit sole writer) + env-gated OTel
+land, and release engineering (lockstep semver **0.4.0**, this CHANGELOG flip,
+`RELEASING.md`, `RUNBOOK.md`, a CycloneDX SBOM, and a tag-triggered
+`release.yml`) is in place. The literal proof artifact — a real `v0.4.0` tag →
+GitHub release with `bom.json` + `openapi.json` attached — is the human-cut final
+step documented in `RELEASING.md`.
+
+**Added**
+
+- **Append-only audit log (cockpit sole writer) + env-gated OTel + app factory.**
+  One append-only JSONL log (`apps/cockpit/server/data/audit/audit.jsonl` via the
+  existing atomic-rename helper, ADR-0004 local-JSON) records every **spawn**
+  (front-door `POST /api/sessions/new` + Fleet child spawn), **approval** (session
+  tool-approval, trust grant, Fleet escalation decide — tool and harness-mediated),
+  and **merge** (Fleet synthesis) event the dashboard orchestrates. Each record
+  validates against the versioned `packages/contracts` `audit-event` schema (sidecar
+  v8) before it is written; a monotonic `seq` (resumed from the on-disk tail) makes
+  the never-mutate/never-truncate invariant observable and tested. KNOWN LIMITATION:
+  harness-CLI-**direct** actions (outside the dashboard) are not captured — no
+  second Python-side writer this phase (documented in `lib/audit-log.js` + ADR-0004).
+  OpenTelemetry tracing is **env-gated (`OTEL_ENABLED`), OFF by default** — the
+  localhost path pays nothing; provability is an in-process `InMemorySpanExporter`
+  span-export test with **no external collector** (green on Win11 + CI). `index.js`
+  gains an exported `buildApp()`/`createApp` factory so OTel (now) and the served
+  OpenAPI doc (next) share one app builder; `start()` keeps `listen()` and is guarded
+  so importing the factory never binds a socket.
+- **OpenAPI for the cockpit's own HTTP surface, served + exported.** The cockpit
+  serves interactive docs at `GET /api/docs` (swagger-ui) and the machine-readable
+  spec at `GET /api/docs.json`, mounted via the `buildApp()` factory AFTER the
+  routers but BEFORE the `/api` 404 catch-all. `info.version` reads the server
+  package version (0.4.0); only the **CORE** routers carry `@openapi` annotations
+  this phase (health, sessions incl. tool-approval/cancel, fleet, harness,
+  conductor, rails) — the experimental routers stay unannotated by design, and SSE
+  `/api/stream` is excluded. A `npm run openapi:export` script writes the spec
+  without booting the server (FAIL-CLOSED on an empty `paths`), and CI publishes it
+  as the `cockpit-openapi` artifact. This is a SEPARATE artifact from the
+  `packages/contracts` schema — it versions the cockpit REST surface, not
+  `harness status --json`.
+- **Release engineering: lockstep semver, SBOM, runbooks, tag-triggered release.**
+  All 5 `package.json` + 2 `pyproject.toml` versions move LOCKSTEP to **0.4.0**
+  (the first tagged version off `0.1.0`) — a distinct axis from the contracts
+  `SCHEMA_VERSION` (sidecar **8**) and `APPROVAL_SCHEMA_VERSION` (**2**),
+  documented in `RELEASING.md`. A zero-dependency CycloneDX 1.5 SBOM generator
+  (`scripts/release/generate-sbom.mjs`) spans BOTH ecosystems — npm components
+  resolved from the committed lockfiles (full transitive graph) plus the DIRECT
+  python deps hand-built from each `pyproject.toml` `[project]` (transitive python
+  deps are honestly NOT resolved — no committed python lockfile). `RUNBOOK.md`
+  documents operate / deploy / rollback on the ADR-0004 localhost-first topology
+  (honest non-prod note; git-checkout rollback). A tag-triggered
+  (`v*`) `.github/workflows/release.yml` runs the already-tested node scripts and
+  publishes a GitHub release attaching `bom.json` + the cockpit `openapi.json`.
+  A `changelog-lint` contract test guards this flip (exactly one `[Unreleased]`;
+  top released heading == package version 0.4.0; valid Keep-a-Changelog).
+
+**Changed**
+
+- **Docs: cross-vendor VIEWING label dropped.** Oversight is scoped to Claude Code
+  only (the cockpit reads only `~/.claude`). ADR-0005 gains an "Amendment 2026-06-08
+  (Phase 4)" resolving its open deferral (Status stays Accepted — a scoping
+  refinement); DoD L3 row #1 commits to the dropped-label branch; the README and
+  project `CLAUDE.md` viewing pitch drop the "(and Cursor/Codex)" parenthetical.
+  Cross-vendor reach now lives explicitly in the opt-in **rails** adapters + the
+  versioned vendor-neutral `harness status` **contract**, not the viewer. A repo-grep
+  guard test (`apps/cockpit/server/tests/docs/cross-vendor-label.test.js`) fails if
+  either front-door doc regresses to the unqualified cross-vendor viewing promise.
 
 ### Phase 3 — Adoptable (L2)
 

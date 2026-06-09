@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 8,
+  "ts": "2026-06-08T14:01:02.000Z",
+  "eventType": "spawn",
+  "actor": "orchestrator",
+  "subjectId": "fleet/implement-oauth/c0",
+  "sessionId": "sess-def456",
+  "projectKey": "mission-control",
+  "decision": null,
+  "outcome": "succeeded",
+  "source": "cockpit",
+  "correlationId": "corr-7f3a9c",
+  "payload": {
+    "worktree": true,
+    "branch": "fleet/implement-oauth/c0"
+  }
+}

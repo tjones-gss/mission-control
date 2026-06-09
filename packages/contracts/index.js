@@ -36,30 +36,14 @@ export const approvalDecisionSchema = loadSchema(
 export const fleetRunSchema = loadSchema("fleet-run.schema.json");
 export const fleetTemplateSchema = loadSchema("fleet-template.schema.json");
 export const pipelinePhaseSchema = loadSchema("pipeline-phase.schema.json");
+export const auditEventSchema = loadSchema("audit-event.schema.json");
 
-// SCHEMA_VERSION versions the contracts package as a whole. History:
-//   4: additive — Fleet Phase 4. Extended `fleet-run` with budget fields
-//      (policy.budgetUsd / perChildUsd, run.spentUsd / budgetRemaining, the
-//      `budget_exceeded` run status), adversarial verification (policy.verify,
-//      the `verifying`/`rejected` child statuses, child.childKind / verdicts /
-//      rounds / verifiedBy), and quarantine (child.quarantine). Added the
-//      standalone `fleet-template` schema (saved repeatable fleet configs).
-//   5: additive — added the `pipeline-phase` schema (ADR-0006 canonical
-//      phase-contract object). Non-breaking: a new optional schema, no change to
-//      existing shapes.
-//   6: additive — Durable Fleet (item 1g). Extended `fleet-run` with the TERMINAL
-//      `orphaned` run + child status (boot reconciler reaps non-terminal runs left
-//      by a restart) and the durable child `pid` registry field. Non-breaking: new
-//      optional values/field on the permissive (additionalProperties:true) schema.
-//   7: Phase 2 (the spine becomes CONSUMED). Relaxed `pipeline-phase` so it
-//      validates real authored pipeline YAML: only id/agent stay required;
-//      gate/tier/strategy/goal become optional (the harness loader materializes
-//      their canonical defaults; a gateless phase documents no_gate_reason); the
-//      authored fields description/inputs/outputs/rules/checks/loop/
-//      no_outputs_reason/no_gate_reason are accepted (additionalProperties stays
-//      false so typos still fail). Extended `harness-status.pipeline` with
-//      optional goal/strategy/transitioned_at for live phase-transition surfacing.
-// Sourced from schema-version.json so the Python side derives the same number.
+// SCHEMA_VERSION versions the contracts package as a whole. The per-version
+// timeline (what changed at each surface bump, incl. the v8 audit-event addition)
+// now lives in the dedicated packages/contracts/CHANGELOG.md, and the
+// human-readable spec is generated from the schemas into packages/contracts/SPEC.md
+// (node packages/contracts/tools/generate-spec.mjs --write). The number itself is
+// sourced from schema-version.json so the Python side derives the same value.
 export const SCHEMA_VERSION = versionSidecar.schemaVersion;
 
 // APPROVAL_SCHEMA_VERSION is a SEPARATE concept: the per-document `schemaVersion`
@@ -78,6 +62,7 @@ export const schemas = {
   fleetRun: fleetRunSchema,
   fleetTemplate: fleetTemplateSchema,
   pipelinePhase: pipelinePhaseSchema,
+  auditEvent: auditEventSchema,
 };
 
 export default {
@@ -90,5 +75,6 @@ export default {
   fleetRunSchema,
   fleetTemplateSchema,
   pipelinePhaseSchema,
+  auditEventSchema,
   schemas,
 };

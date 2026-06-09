@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 8,
+  "ts": "2026-06-08T14:03:11.000Z",
+  "eventType": "approval",
+  "actor": "operator",
+  "subjectId": "approval-deploy-2026-06-08t14-02-50-000z",
+  "sessionId": "sess-abc123",
+  "projectKey": "mission-control",
+  "decision": "approved",
+  "outcome": "succeeded",
+  "source": "harness",
+  "correlationId": "corr-7f3a9c",
+  "payload": {
+    "gate": "danger_zone_prod_deploy",
+    "reason": "operator confirmed staged rollout window"
+  }
+}

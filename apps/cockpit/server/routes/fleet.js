@@ -38,6 +38,37 @@ export const router = Router()
 // defaults; explicit inline fields override (so you can launch a template with a
 // tweaked goal). startFleetRun is otherwise unchanged — templates are a
 // request-construction convenience, not a new lifecycle.
+/**
+ * @openapi
+ * /api/fleet:
+ *   post:
+ *     summary: Start a Fleet run (early-ack 202; children spawn in the background).
+ *     tags: [Fleet]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               goal: { type: string }
+ *               children: { type: integer }
+ *               policy: { type: object }
+ *               template: { type: string }
+ *     responses:
+ *       202:
+ *         description: Run accepted; children spawning.
+ *       404:
+ *         description: Unknown template.
+ *       502:
+ *         description: Failed to start the run.
+ *   get:
+ *     summary: List Fleet runs.
+ *     tags: [Fleet]
+ *     responses:
+ *       200:
+ *         description: Array of Fleet runs.
+ */
 router.post('/', async (req, res) => {
   const body = req.body || {}
   let { goal, children, policy } = body
@@ -136,6 +167,23 @@ router.get('/templates', (_req, res) => {
   res.json({ templates: listFleetTemplates() })
 })
 
+/**
+ * @openapi
+ * /api/fleet/{id}:
+ *   get:
+ *     summary: Full persisted Fleet run state.
+ *     tags: [Fleet]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The run state.
+ *       404:
+ *         description: Unknown run id.
+ */
 // GET /api/fleet/:id — full persisted run state.
 router.get('/:id', (req, res) => {
   const state = getFleetRun(req.params.id)

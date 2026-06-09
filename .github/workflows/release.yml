@@ -1,0 +1,77 @@
+name: Release
+
+# Tag-triggered release. THIN by design: every piece of logic lives in the
+# already-tested node scripts under scripts/release/ and the cockpit's
+# scripts/export-openapi.mjs — this workflow only orchestrates them and attaches
+# their outputs to a GitHub release. Cutting the tag is the human-cut act
+# (see RELEASING.md); this automates the artifact build + publish off that tag.
+#
+# REQUIRED CHECKS (out-of-repo, cannot be a file): a repo admin marks the CI
+# status checks required on main — see docs/ci.md. This workflow does not gate
+# merges; ci.yml does.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Least-privilege: only what creating a release needs.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build artifacts + publish release
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Verify the semver single-sourcing invariants before publishing anything
+      # (fail-closed: a mismatched version field reds the release, not ships it).
+      - name: Version consistency check
+        run: node scripts/release/check-versions.mjs
+
+      # Generate the CycloneDX SBOM (zero external deps, stdlib only). Spans the
+      # committed npm lockfiles (full transitive graph) + the DIRECT python deps
+      # from each pyproject [project]; transitive python deps are not resolved
+      # (no committed python lockfile) and the BOM says so honestly.
+      - name: Generate SBOM (CycloneDX)
+        run: node scripts/release/generate-sbom.mjs bom.json
+
+      # SBOM smoke test: CycloneDX shape + components from BOTH ecosystems.
+      - name: SBOM smoke test
+        run: node --test scripts/release/sbom.smoke.test.mjs
+
+      # The OpenAPI export needs the cockpit server deps and the linked
+      # @mission-control/contracts workspace. Mirror ci.yml's install order:
+      # apps/cockpit + server, then the root workspace install LAST (a member
+      # `npm ci` prunes the contracts symlink, so the root install must run after
+      # it to re-link for the import the export pulls in transitively).
+      - name: Install cockpit
+        working-directory: apps/cockpit
+        run: npm ci
+      - name: Install server deps
+        working-directory: apps/cockpit/server
+        run: npm ci
+      - name: Install root workspaces (links @mission-control/contracts)
+        run: npm ci
+
+      # Export the cockpit's OWN OpenAPI spec (path coordinated with C-openapi /
+      # ci.yml: apps/cockpit/server/openapi.json). FAIL-CLOSED on empty paths.
+      - name: Export OpenAPI spec
+        working-directory: apps/cockpit/server
+        run: npm run openapi:export -- openapi.json
+
+      # Publish a GitHub release for the tag with both artifacts attached.
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            bom.json
+            apps/cockpit/server/openapi.json

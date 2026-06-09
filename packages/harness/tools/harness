@@ -1242,7 +1242,7 @@ Assumptions:
 # Fallback defaults are only used if the sidecar is absent (e.g. a standalone
 # harness install detached from the monorepo); they match the committed sidecar
 # at the time of writing.
-_SCHEMA_VERSION_FALLBACK = 7
+_SCHEMA_VERSION_FALLBACK = 8
 _APPROVAL_SCHEMA_VERSION_FALLBACK = 2
 
 

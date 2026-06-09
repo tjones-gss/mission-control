@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { listTrustedCwds, trustCwd, untrustCwd } from '../lib/trust-store.js'
 import { validateCwd } from '../utils/validate.js'
+import { recordAuditEventSafe } from '../lib/audit-log.js'
 import { logger } from '../lib/logger.js'
 
 // Per-folder trust store HTTP surface (the locked Phase 3 decision: an in-cockpit
@@ -27,6 +28,18 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'invalid cwd' })
   }
   logger.warn({ detail: cwd }, 'trust_granted')
+  // AUDIT (cockpit sole writer): a trust grant is a human approval of a privileged,
+  // default-DENY setting (future spawns in this cwd may skip permission prompts), so
+  // it is recorded as an 'approval' event. Fire-and-forget — audit is observability,
+  // not the system of record, and must not fail the grant.
+  recordAuditEventSafe({
+    eventType: 'approval',
+    source: 'cockpit',
+    decision: 'approved',
+    subjectId: cwd,
+    outcome: 'succeeded',
+    payload: { kind: 'trust_grant', cwd },
+  })
   res.json({ ok: true, trusted: listTrustedCwds() })
 })
 
