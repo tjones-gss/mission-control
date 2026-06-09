@@ -1,10 +1,33 @@
 # Handoff — `feature/harness-scaffold`
 
 The centerpiece for the next session. Phase 0 (decisions/docs), Phase 1
-(hardening), Phase 2 (trustworthy loops + unified spine, L1), and now **Phase 3
-(adoptable, L2)** are complete. The three reassessment-gate decisions were resolved
-(see §4) and Phases 2–3 shipped against them. **Phase 4 (standard, L3) remains** —
-re-plan it next. Read this first.
+(hardening), Phase 2 (trustworthy loops + unified spine, L1), Phase 3
+(adoptable, L2), and now **Phase 4 (standard, L3)** are complete. The three
+reassessment-gate decisions were resolved (see §4) and Phases 2–4 shipped against
+them. Read this first.
+
+> **Phase 4 done (this session) — L3 standard, branch `feature/phase-4-l3-standard`.**
+> Closed the L3 release gate across five workstreams: (A) dropped the cross-vendor
+> VIEWING label (docs + grep-guard); (B) published the versioned vendor-neutral
+> `harness status` contract (`packages/contracts/SPEC.md` + dedicated contracts
+> CHANGELOG, sidecar schema **8**); (C) served the cockpit's OWN OpenAPI surface at
+> `GET /api/docs` (+ `npm run openapi:export`, CI artifact); (D) append-only audit
+> log (**cockpit sole writer**, JSONL via atomic-rename, validated against the new
+> `audit-event` schema) + env-gated (`OTEL_ENABLED`, OFF by default) OTel + the
+> exported `buildApp()` app factory; (E) release engineering — all 5 `package.json`
+> + 2 `pyproject.toml` to **lockstep 0.4.0**, the CHANGELOG `[Unreleased] → [0.4.0]`
+> flip, `RELEASING.md` (the THREE axes: package semver vs contracts `SCHEMA_VERSION`
+> vs `APPROVAL_SCHEMA_VERSION`), `RUNBOOK.md` (operate/deploy/rollback on the
+> ADR-0004 localhost-first topology), a zero-dep CycloneDX SBOM generator spanning
+> npm lockfiles + direct python deps, and a tag-triggered (`v*`) `release.yml`.
+> All TDD-first; new gates: `changelog-lint`, `sbom.smoke`, `version-consistency`,
+> `spec-generator`, audit/otel/openapi suites.
+>
+> **THE one human-cut step that remains** (cannot be a file): tag `v0.4.0` and push
+> it to trigger `release.yml`, producing the real GitHub release with `bom.json` +
+> `openapi.json` attached — the literal L3 proof artifact. See `RELEASING.md`. (The
+> separate out-of-repo branch-protection step from Phase 3 — marking the CI checks
+> *required* on `main` — also still stands; see `docs/ci.md`.)
 
 > **Phase 3 done (this session).** All four L2 release-gate criteria
 > (`DOD-LADDER.md` L2) plus the locked trust-grant fast-follow landed, TDD-first:
