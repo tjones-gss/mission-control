@@ -36,6 +36,7 @@ export const approvalDecisionSchema = loadSchema(
 export const fleetRunSchema = loadSchema("fleet-run.schema.json");
 export const fleetTemplateSchema = loadSchema("fleet-template.schema.json");
 export const pipelinePhaseSchema = loadSchema("pipeline-phase.schema.json");
+export const auditEventSchema = loadSchema("audit-event.schema.json");
 
 // SCHEMA_VERSION versions the contracts package as a whole. History:
 //   4: additive — Fleet Phase 4. Extended `fleet-run` with budget fields
@@ -59,6 +60,11 @@ export const pipelinePhaseSchema = loadSchema("pipeline-phase.schema.json");
 //      no_outputs_reason/no_gate_reason are accepted (additionalProperties stays
 //      false so typos still fail). Extended `harness-status.pipeline` with
 //      optional goal/strategy/transitioned_at for live phase-transition surfacing.
+//   8: additive — Phase 4 (D-audit-otel). Added the standalone `audit-event`
+//      schema: one record in the cockpit's append-only audit log (spawn/approval/
+//      merge events, vendor-neutral source enum cockpit|harness). Schema-only
+//      landing — no emitter writes records yet. Adding a consumable record type
+//      is a surface change, hence the sidecar bump.
 // Sourced from schema-version.json so the Python side derives the same number.
 export const SCHEMA_VERSION = versionSidecar.schemaVersion;
 
@@ -78,6 +84,7 @@ export const schemas = {
   fleetRun: fleetRunSchema,
   fleetTemplate: fleetTemplateSchema,
   pipelinePhase: pipelinePhaseSchema,
+  auditEvent: auditEventSchema,
 };
 
 export default {
@@ -90,5 +97,6 @@ export default {
   fleetRunSchema,
   fleetTemplateSchema,
   pipelinePhaseSchema,
+  auditEventSchema,
   schemas,
 };

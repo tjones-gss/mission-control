@@ -455,5 +455,127 @@ class TestPipelinePhaseSchemaConsumed(unittest.TestCase):
         )
 
 
+AUDIT_EVENT_SCHEMA_PATH = (
+    HARNESS_ROOT.parent
+    / "contracts"
+    / "schemas"
+    / "audit-event.schema.json"
+)
+AUDIT_EVENT_SAMPLE_PATH = (
+    HARNESS_ROOT
+    / "tests"
+    / "fixtures"
+    / "audit-event.sample.json"
+)
+
+
+class TestAuditEventSchemaContract(unittest.TestCase):
+    """Phase 4 (D-audit-otel): the audit-event schema is the contracts-first
+    foundation for the append-only audit log.
+
+    SCHEMA ONLY this landing — no emitter writes audit records yet. Adding this
+    consumable record type bumps the contracts sidecar surface 7 -> 8. This test
+    asserts the schema exists, the committed golden sample validates against it,
+    the canonical eventType/source enums are present, and unknown enum values are
+    rejected — guarding the contract on the Python side too.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not _HAVE_JSONSCHEMA:
+            raise AssertionError(_JSONSCHEMA_ERROR)
+        cls.schema = json.loads(
+            AUDIT_EVENT_SCHEMA_PATH.read_text(encoding="utf-8")
+        )
+        cls.validator = Draft202012Validator(cls.schema)
+        cls.sample = json.loads(
+            AUDIT_EVENT_SAMPLE_PATH.read_text(encoding="utf-8")
+        )
+
+    def test_schema_file_exists(self):
+        self.assertTrue(
+            AUDIT_EVENT_SCHEMA_PATH.exists(),
+            f"audit-event schema not found at {AUDIT_EVENT_SCHEMA_PATH}",
+        )
+
+    def test_golden_sample_validates(self):
+        errors = sorted(
+            self.validator.iter_errors(self.sample), key=lambda e: e.path
+        )
+        if errors:
+            detail = "\n".join(
+                f"  - at {list(e.path) or '<root>'}: {e.message}" for e in errors
+            )
+            self.fail(
+                "the committed golden audit-event sample does NOT validate "
+                f"against {AUDIT_EVENT_SCHEMA_PATH.name}:\n{detail}"
+            )
+
+    def test_canonical_enums_present(self):
+        self.assertEqual(
+            sorted(self.schema["properties"]["eventType"]["enum"]),
+            ["approval", "merge", "spawn"],
+        )
+        self.assertEqual(
+            sorted(self.schema["properties"]["source"]["enum"]),
+            ["cockpit", "harness"],
+        )
+
+    def test_required_fields(self):
+        for field in ("schemaVersion", "ts", "eventType", "source"):
+            self.assertIn(
+                field,
+                self.schema["required"],
+                f"audit-event schema must require '{field}'",
+            )
+
+    def test_unknown_event_type_rejected(self):
+        bad = dict(self.sample)
+        bad["eventType"] = "launch-missiles"
+        self.assertTrue(
+            list(self.validator.iter_errors(bad)),
+            "schema must reject an unknown eventType (closed enum)",
+        )
+
+    def test_unknown_source_rejected(self):
+        bad = dict(self.sample)
+        bad["source"] = "rogue-vendor"
+        self.assertTrue(
+            list(self.validator.iter_errors(bad)),
+            "schema must reject an unknown source (closed enum: cockpit|harness)",
+        )
+
+    def test_schema_is_vendor_neutral(self):
+        blob = json.dumps(self.schema).lower()
+        for vendor in ("claude", "anthropic", "cursor", "codex"):
+            self.assertNotIn(
+                vendor,
+                blob,
+                f"audit-event schema must use vendor-neutral language; found "
+                f"'{vendor}'",
+            )
+
+    def test_audit_event_surface_landed_at_v8(self):
+        """The audit-event record type lands at sidecar surface version 8.
+
+        Adding a consumable record type is a schema-surface change, so the
+        single-source sidecar must read 8 and the golden sample must stamp 8.
+        """
+        sidecar = json.loads(
+            VERSION_SIDECAR_PATH.read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            sidecar["schemaVersion"],
+            8,
+            "audit-event surface lands at schemaVersion 8 (sidecar is single "
+            "source) — bump packages/contracts/schema-version.json 7 -> 8",
+        )
+        self.assertEqual(
+            self.sample["schemaVersion"],
+            8,
+            "the golden audit-event sample must stamp the v8 surface",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
