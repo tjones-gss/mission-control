@@ -41,6 +41,20 @@ the **versioned vendor-neutral `harness status` contract** (a) and (b) above —
 *rails + the contract*, not in the *viewer*. The honest framing is now: the window views Claude Code;
 other vendors integrate through the rails and the contract, not by being mirrored in the dashboard.
 
+### Moat artifact 2026-06-08 (Phase 4)
+
+The versioned vendor-neutral `harness status` contract (asset (b) above) is now a
+**published artifact**, not just a thesis: `packages/contracts/SPEC.md` is the
+versioned, vendor-neutral specification of every shared schema, **generated from
+the schemas** (the single source of truth) by a zero-dependency in-repo generator
+(`packages/contracts/tools/generate-spec.mjs`) so it can never silently drift, and
+gated for freshness + vendor-neutrality in CI. The schema-version timeline lives in
+the dedicated `packages/contracts/CHANGELOG.md` (latest surface = the sidecar
+`schemaVersion`). This is the concrete form of the surviving moat: with the window
+scoped to Claude Code only (Amendment above), the **versioned vendor-neutral
+contract is the integration surface other tools build to**. Status stays
+**Accepted** — this records the realized artifact, it is not a decision change.
+
 ## Options Considered
 
 ### A. Write & enforce the moat thesis (chosen)

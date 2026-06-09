@@ -29,6 +29,7 @@ Run:
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -574,6 +575,174 @@ class TestAuditEventSchemaContract(unittest.TestCase):
             self.sample["schemaVersion"],
             8,
             "the golden audit-event sample must stamp the v8 surface",
+        )
+
+
+CONTRACTS_DIR = HARNESS_ROOT.parent / "contracts"
+SCHEMAS_DIR = CONTRACTS_DIR / "schemas"
+SPEC_PATH = CONTRACTS_DIR / "SPEC.md"
+CONTRACTS_CHANGELOG_PATH = CONTRACTS_DIR / "CHANGELOG.md"
+GENERATE_SPEC_PATH = CONTRACTS_DIR / "tools" / "generate-spec.mjs"
+
+# The vendor names a vendor-neutral integration surface must never leak into the
+# published contract. The cockpit's audit-event test already guards the audit
+# schema for a subset; this class guards EVERY schema for the full set so the
+# spec stays a generic integration surface (the surviving moat artifact).
+_FORBIDDEN_VENDORS = (
+    "claude",
+    "anthropic",
+    "cursor",
+    "codex",
+    "openai",
+    "gpt",
+    "gemini",
+)
+
+
+class TestSchemaVendorNeutrality(unittest.TestCase):
+    """Every shared schema must be vendor-neutral.
+
+    B-contract-spec publishes the contract as a versioned, vendor-neutral spec.
+    The neutrality is a contract property, not a wording preference: it is what
+    makes the surface an integration target any tool can build to. This test
+    scans the title + description of every schema (and every nested property
+    description) for a named agent vendor and fails if one appears — including
+    the new audit-event schema.
+    """
+
+    def _collect_text(self, node):
+        """Yield every `title`/`description` string anywhere in the schema."""
+        texts = []
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ("title", "description") and isinstance(value, str):
+                    texts.append(value)
+                else:
+                    texts.extend(self._collect_text(value))
+        elif isinstance(node, list):
+            for item in node:
+                texts.extend(self._collect_text(item))
+        return texts
+
+    def test_every_schema_is_vendor_neutral(self):
+        schema_files = sorted(SCHEMAS_DIR.glob("*.schema.json"))
+        self.assertTrue(schema_files, f"no schemas found in {SCHEMAS_DIR}")
+        # Guard the guard: audit-event must be among the scanned files.
+        names = {p.name for p in schema_files}
+        self.assertIn(
+            "audit-event.schema.json",
+            names,
+            "audit-event schema must be present and scanned for neutrality",
+        )
+        for path in schema_files:
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            blob = " ".join(self._collect_text(schema)).lower()
+            for vendor in _FORBIDDEN_VENDORS:
+                self.assertNotIn(
+                    vendor,
+                    blob,
+                    f"{path.name} must use vendor-neutral title/description "
+                    f"language; found '{vendor}'",
+                )
+
+
+class TestSpecDocFreshness(unittest.TestCase):
+    """The committed SPEC.md must equal the generator's output.
+
+    The spec is GENERATED from the schemas (the single source of truth) so it can
+    never silently drift. This test regenerates the spec via the zero-dep Node
+    generator and asserts the committed SPEC.md matches byte-for-byte.
+
+    The generator is a Node (.mjs) tool, so this Python-lane test SKIPS when Node
+    is not on PATH (the Python-only CI lane); the cockpit lane and the
+    server-side vitest generator test always have Node and enforce freshness
+    there too. Skipping (rather than failing) here is correct: the gate is fully
+    enforced on a lane that has the tool, and the Python lane should not require a
+    Node toolchain just to run.
+    """
+
+    def test_committed_spec_matches_generator(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not on PATH (Python-only lane); freshness enforced "
+                          "on the cockpit lane + server vitest")
+        self.assertTrue(
+            GENERATE_SPEC_PATH.exists(),
+            f"spec generator not found at {GENERATE_SPEC_PATH}",
+        )
+        self.assertTrue(
+            SPEC_PATH.exists(),
+            f"committed SPEC.md not found at {SPEC_PATH} — run the generator "
+            "with --write",
+        )
+        proc = subprocess.run(
+            [node, str(GENERATE_SPEC_PATH), "--check"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            "SPEC.md is STALE — it does not match the schemas. Regenerate with "
+            "`node packages/contracts/tools/generate-spec.mjs --write`.\n"
+            f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+
+
+class TestContractChangelogVersion(unittest.TestCase):
+    """The contracts CHANGELOG's latest `## [N]` must equal the sidecar surface.
+
+    The dedicated packages/contracts/CHANGELOG.md tracks the schema-version
+    timeline. Its newest schemaVersion heading must match the single-source
+    sidecar so the published timeline can never lag the actual surface bump.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sidecar = json.loads(
+            VERSION_SIDECAR_PATH.read_text(encoding="utf-8")
+        )
+        cls.text = CONTRACTS_CHANGELOG_PATH.read_text(encoding="utf-8")
+
+    def test_changelog_exists(self):
+        self.assertTrue(
+            CONTRACTS_CHANGELOG_PATH.exists(),
+            f"contracts changelog not found at {CONTRACTS_CHANGELOG_PATH}",
+        )
+
+    def test_latest_heading_matches_sidecar_schema_version(self):
+        # Headings look like `### [8]`. The first integer-only [N] heading in
+        # document order is the latest schemaVersion entry.
+        headings = re.findall(r"^#{2,3}\s*\[(\d+)\]", self.text, flags=re.MULTILINE)
+        self.assertTrue(
+            headings,
+            "contracts CHANGELOG.md must carry at least one `## [N]` / `### [N]` "
+            "schema-version heading",
+        )
+        latest = int(headings[0])
+        self.assertEqual(
+            latest,
+            self.sidecar["schemaVersion"],
+            f"contracts CHANGELOG latest heading [{latest}] must equal the "
+            f"sidecar schemaVersion {self.sidecar['schemaVersion']} (single "
+            "source) — the published timeline must not lag the surface bump.",
+        )
+
+    def test_audit_event_documented_at_v8(self):
+        """The v8 entry must mention the audit-event addition (the surface bump)."""
+        # Grab the body of the [8] section.
+        match = re.search(
+            r"^#{2,3}\s*\[8\]\s*\n(.*?)(?=^#{2,3}\s*\[|\Z)",
+            self.text,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(match, "contracts CHANGELOG must have a [8] section")
+        self.assertIn(
+            "audit-event",
+            match.group(1).lower(),
+            "the [8] changelog entry must document the audit-event schema "
+            "addition (the surface change that bumped 7 -> 8)",
         )
 
 

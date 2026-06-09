@@ -48,7 +48,25 @@ validate against the same files.
   `strategy` (`single` | `fleet`), and the `goal` it serves. Fleet is a phase
   strategy; a Workflow is a degenerate single-phase pipeline compiled to this
   same shape. **Defined and exported now; consumed by the Phase-2 spine** —
-  added additively (see `SCHEMA_VERSION` history below).
+  added additively (see `CHANGELOG.md` for the per-version timeline).
+- `schemas/audit-event.schema.json` — one record in the cockpit's append-only
+  audit log (spawn / approval / merge events, vendor-neutral `source` enum
+  `cockpit | harness`). Exported as `auditEventSchema`.
+
+## Published spec
+
+`SPEC.md` is the versioned, **vendor-neutral** human-readable specification of
+all the schemas above. It is **generated** from the schemas (the single source
+of truth) by a zero-dependency in-repo generator and committed, so it can never
+silently drift:
+
+```
+node tools/generate-spec.mjs --write   # regenerate SPEC.md
+node tools/generate-spec.mjs --check   # CI freshness gate: non-zero on drift
+```
+
+The schema-version timeline lives in `CHANGELOG.md` (a different axis from the
+repo-root `CHANGELOG.md`, which tracks package semver).
 
 ## Usage
 
@@ -77,7 +95,7 @@ Two independent concepts live in the sidecar:
   (renamed/removed field, tightened required set, changed type or enum), and
   additively when adding a new schema. Both the cockpit and the harness key off
   this number to detect an incompatible peer.
-- **`approvalSchemaVersion`** — a *separate* version: the per-document
+- **`approvalSchemaVersion`** — a _separate_ version: the per-document
   `schemaVersion` integer stamped into the `approval-request` /
   `approval-decision` files the harness writes under `.harness/approvals/**`.
   Exported as `APPROVAL_SCHEMA_VERSION`. It is versioned independently of
