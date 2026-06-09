@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Phase 4 — Standard (L3)
+
+**Changed**
+
+- **Docs: cross-vendor VIEWING label dropped.** Oversight is scoped to Claude Code
+  only (the cockpit reads only `~/.claude`). ADR-0005 gains an "Amendment 2026-06-08
+  (Phase 4)" resolving its open deferral (Status stays Accepted — a scoping
+  refinement); DoD L3 row #1 commits to the dropped-label branch; the README and
+  project `CLAUDE.md` viewing pitch drop the "(and Cursor/Codex)" parenthetical.
+  Cross-vendor reach now lives explicitly in the opt-in **rails** adapters + the
+  versioned vendor-neutral `harness status` **contract**, not the viewer. A repo-grep
+  guard test (`apps/cockpit/server/tests/docs/cross-vendor-label.test.js`) fails if
+  either front-door doc regresses to the unqualified cross-vendor viewing promise.
+
 ### Phase 3 — Adoptable (L2)
 
 The four L2 release-gate criteria (`DOD-LADDER.md` L2) plus the locked trust-grant

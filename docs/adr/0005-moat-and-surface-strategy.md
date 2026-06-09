@@ -30,6 +30,17 @@ Adopt the thesis in writing and **enforce it as a review rule**:
 Wire the rule into the PR template. Roadmap investment (Phases 3–4) prioritizes rails adoption and the
 contract-as-standard over dashboard breadth.
 
+### Amendment 2026-06-08 (Phase 4)
+
+The Consequences "Neutral" deferral below — *the cross-vendor viewing claim must be backed (Phase 4)
+or the label dropped* — is resolved: **the cross-vendor VIEWING label is DROPPED.** Oversight is scoped
+to **Claude Code only** (the cockpit's data hub reads only Claude's own `~/.claude` files). No
+multi-vendor reader ships. This is a scoping refinement, not a reversal: Status stays **Accepted**, and
+the moat thesis is unchanged. Cross-vendor reach is a property of the **opt-in cross-vendor rails** and
+the **versioned vendor-neutral `harness status` contract** (a) and (b) above — i.e. it lives in the
+*rails + the contract*, not in the *viewer*. The honest framing is now: the window views Claude Code;
+other vendors integrate through the rails and the contract, not by being mirrored in the dashboard.
+
 ## Options Considered
 
 ### A. Write & enforce the moat thesis (chosen)
@@ -44,8 +55,9 @@ terminal path.
 
 Positive: effort concentrates on the non-absorbable half; the litmus test (a native cross-session view
 does not make us redundant) becomes achievable. Negative: some desirable window polish is gated.
-Neutral: the cross-vendor *viewing* claim must be backed (Phase 4) or the label dropped — see ADR-0006
-and the plan's open decisions.
+Neutral: the cross-vendor *viewing* claim is resolved by the **Amendment 2026-06-08 (Phase 4)** above —
+the label is **dropped**, oversight is scoped to Claude Code only, and cross-vendor reach lives in the
+rails + the contract, not the viewer (see ADR-0006 and that amendment).
 
 ## Links
 

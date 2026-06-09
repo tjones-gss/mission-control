@@ -1,8 +1,9 @@
 # Mission Control
 
 A live cockpit for the coding agents you're already running. If you have several
-Claude Code (and Cursor/Codex) agents going at once and want to see and steer
-them from one place, this is for you.
+Claude Code agents going at once and want to see and steer them from one place,
+this is for you. (Oversight reads Claude Code's own `~/.claude` — the cross-vendor
+reach lives in the opt-in *rails* adapters, not the viewer.)
 
 Mission Control unifies two pieces: **Oversight** (the window — a live, multi-project
 mission view) and the **adaptive agentic engineering harness** (the rails — opt-in
@@ -55,8 +56,8 @@ philosophy instead of presenting everything at once.
 
 ## Who this is for
 
-People already running multiple Claude Code (and Cursor/Codex) agents who want to
-see and steer them in one place. It assumes you've felt the friction of juggling
+People already running multiple Claude Code agents who want to see and steer them
+in one place. It assumes you've felt the friction of juggling
 several agent sessions and want a single live view — it does not promise to turn a
 first-time user into a power user.
 

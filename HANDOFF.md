@@ -131,10 +131,12 @@ Phase 2 session):
 1. **Verification cost ceiling → opt-in, 1 verifier / 1 round.** Verify is off by
    default; when on, defaults to a single authorship-blind verifier and one round.
    Applied in the Fleet-dispatch policy default (`fleet_dispatch.build_request`).
-2. **Cross-vendor scope → drop the label.** *Recorded, executes in Phase 4:* amend
-   ADR-0005 / DoD L3 to scope oversight to Claude Code only; Phase 4 becomes
-   contract-publishing + OpenAPI + OTel/audit-log + release-eng (no Cursor/Codex
-   reader).
+2. **Cross-vendor scope → drop the label.** *EXECUTED (Phase 4):* ADR-0005 (Amendment
+   2026-06-08) and DoD L3 now scope oversight to Claude Code only — the VIEWING label
+   is dropped, cross-vendor lives in the rails + the contract, not the viewer; no
+   Cursor/Codex reader shipped. README + project CLAUDE.md viewing pitch corrected, a
+   repo-grep guard test prevents regression. Phase 4 is now contract-publishing +
+   OpenAPI + OTel/audit-log + release-eng.
 3. **Trust-grant UX → in-cockpit per-folder button.** *Recorded, executes in
    Phase 3 (possible fast-follow):* wire `GET/POST/DELETE /api/trust` to
    `lib/trust-store.js::trustCwd()` and add a "Trust this folder" control. Store is
@@ -149,10 +151,10 @@ fast-follow): the SCOPE.md UI *collapses* (Conductor/MissionControl/Runs → one
 job; Kanban/AgentTree merge) and the *audit-log / SBOM / opt-in-telemetry* seed
 (mostly L3). The trust-grant button shipped (see above).
 
-**Phase 4 (standard, L3):** drop the cross-vendor label (decision 2); publish the
-versioned vendor-neutral `harness status` contract; serve OpenAPI at `/api/docs`;
-OTel tracing + append-only audit log; release engineering (semver, CHANGELOG,
-runbook, SBOM).
+**Phase 4 (standard, L3):** drop the cross-vendor label (decision 2) — **DONE**;
+publish the versioned vendor-neutral `harness status` contract; serve OpenAPI at
+`/api/docs`; OTel tracing + append-only audit log; release engineering (semver,
+CHANGELOG, runbook, SBOM).
 
 **Deferred features (conscious, not forgotten):**
 

@@ -1,8 +1,10 @@
 # Mission Control — Agent Guide
 
 This monorepo is a live cockpit for people already running multiple Claude Code
-(and Cursor/Codex) agents who want to see and steer them in one place. It unifies
-two halves. Know which one you are touching.
+agents who want to see and steer them in one place. It unifies two halves. Know
+which one you are touching. (Oversight reads only Claude Code's `~/.claude`;
+cross-vendor reach lives in the opt-in rails adapters, not the viewer — see
+ADR-0005.)
 
 The honest framing: the cockpit (the window) is the front door and works with zero
 harness setup. The harness (the rails) is **opt-in** accident-prevention you adopt
