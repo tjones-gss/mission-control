@@ -43,3 +43,9 @@ Object.defineProperty(navigator, 'clipboard', {
   value: { writeText: vi.fn().mockResolvedValue(undefined) },
   writable: true,
 })
+
+// jsdom doesn't implement scrollIntoView; several components call it in effects
+// (e.g. LiveFeed autoscroll). Stub it globally so a full render doesn't throw.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = vi.fn()
+}

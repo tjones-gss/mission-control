@@ -22,6 +22,8 @@ import { router as fsRouter } from './routes/fs.js'
 import { router as healthRouter, setHealthReady } from './routes/health.js'
 import { router as conductorRouter } from './routes/conductor.js'
 import { router as harnessRouter } from './routes/harness.js'
+import { router as railsRouter } from './routes/rails.js'
+import { router as trustRouter } from './routes/trust.js'
 import { router as fleetRouter } from './routes/fleet.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
 import { startWatcher } from './watcher.js'
@@ -62,6 +64,8 @@ app.use('/api/fs', fsRouter)
 app.use('/api/health', healthRouter)
 app.use('/api/conductor', conductorRouter)
 app.use('/api/harness', harnessRouter)
+app.use('/api/rails', railsRouter)
+app.use('/api/trust', trustRouter)
 app.use('/api/fleet', fleetRouter)
 
 // JSON 404 for any unmatched /api/* request — without this, Express

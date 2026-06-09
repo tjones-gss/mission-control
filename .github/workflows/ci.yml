@@ -3,9 +3,14 @@ name: CI
 # First automated gate for the monorepo. Two independent halves of the product,
 # two jobs:
 #   - harness: the Python control plane (stdlib unittest; no network, no API key)
-#   - cockpit: the Node dashboard (prettier + server/client vitest suites)
+#   - cockpit: the Node dashboard (prettier + server/client vitest + coverage gate)
+#   - e2e:     real-subprocess Fleet + Playwright (needs: cockpit)
 # Both run on every push and PR. The commands mirror what the repo's own npm
 # scripts run locally, so a green checkout stays green here.
+#
+# REQUIRED CHECKS (manual GitHub setting — see docs/ci.md): mark "cockpit (Node)"
+# and "cockpit e2e (Fleet + Playwright)" as required status checks on main so the
+# coverage gate and the e2e suite actually BLOCK merge (the L2 criterion).
 
 on:
   push:
@@ -39,6 +44,11 @@ jobs:
           node-version: "22"
       - name: Install runtime deps
         run: python -m pip install --upgrade pip pyyaml jsonschema
+      # jq is needed so the shell hooks run their canonical (jq) path in the hook
+      # parity test below; without it test_hook_parity would skip and CI would not
+      # prove the pure-Node hooks match the shell hooks (Phase 3 / L2).
+      - name: Install jq (for hook parity)
+        run: sudo apt-get update && sudo apt-get install -y jq
       - name: Core + CLI tests
         # The `tests` package and the SDK's `sdk.python.tests` package share the
         # name `tests`, so they must be discovered in two separate invocations.
@@ -46,7 +56,8 @@ jobs:
         # (scope_adherence + evidence verdicts — same module, more cases),
         # test_loop_halt (gates HALT), test_cost_ledger (ledger + ceiling abort),
         # and test_fleet_dispatch (fleet-as-strategy). They MUST be listed here or
-        # CI's green signal would not cover the new spine.
+        # CI's green signal would not cover the new spine. Phase 3 added
+        # test_hook_parity (pure-Node hooks behave identically to the shell hooks).
         run: >-
           python -m unittest
           tests.test_cli
@@ -58,6 +69,12 @@ jobs:
           tests.test_loop_e2e
           tests.test_cost_ledger
           tests.test_fleet_dispatch
+          tests.test_hook_parity
+          tests.test_install_adapter
+      - name: Pure-Node hook unit tests
+        # The authoritative behavioral suite for the .mjs hooks (zero-dep node:test).
+        # Runs everywhere node is present, independent of jq/bash.
+        run: node --test adapters/claude-code/.claude/hooks/hooks.test.mjs
       - name: Schema-version cross-language parity
         # Explicit gate (council MED #7): JS SCHEMA_VERSION / APPROVAL_SCHEMA_VERSION
         # must equal the Python-resolved values, both derived from the single
@@ -105,12 +122,15 @@ jobs:
       - name: Lint (prettier --check)
         working-directory: apps/cockpit
         run: npm run lint
-      - name: Server tests
+      # --coverage runs the v8 coverage gate (Phase 3 / L2): a measure-then-floor
+      # threshold miss fails the job, so coverage can only ratchet up. Floors live
+      # in each suite's vitest config (server vitest.config.js, client vite.config.js).
+      - name: Server tests + coverage gate
         working-directory: apps/cockpit/server
-        run: npx vitest run
-      - name: Client tests
+        run: npx vitest run --coverage
+      - name: Client tests + coverage gate
         working-directory: apps/cockpit/client
-        run: npx vitest run
+        run: npx vitest run --coverage
 
   # GATED end-to-end lane (council HIGH #3). Its own job so the fast unit lane
   # above stays untouched. Two parts:

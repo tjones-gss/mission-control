@@ -6,6 +6,41 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Phase 3 — Adoptable (L2)
+
+The four L2 release-gate criteria (`DOD-LADDER.md` L2) plus the locked trust-grant
+fast-follow. All TDD-first; suites green at **1008 server / 545 client / 129 python
+(6 parity skips without jq) / 24 Node hook tests**, both coverage gates passing.
+
+**Added**
+
+- **Pure-Node full-parity hooks.** All four Claude-adapter hooks ported to
+  dependency-free Node (`.claude/hooks/{block-danger,require-mission,session-start-load-state,stop-session-note-reminder}.mjs`
+  over a shared `_lib.mjs`). `JSON.parse` replaces `jq`, so a machine with neither
+  `jq` NOR `bash` still enforces the rails. Behavior is proven identical to the
+  shell hooks by `tests/test_hook_parity.py` (structural-JSON / trimmed-text +
+  exit-code; skips unless bash+jq+node present) and a 24-case `node:test` suite.
+  New `settings.node.json` wires the Node hooks; shell `settings.json` stays the
+  committed default.
+- **One-click in-cockpit rails adoption** (`POST /api/rails/adopt`,
+  `GET /api/rails/adopt-candidates`). A pure-Node `lib/rails-installer.js`
+  (`adoptRails`) copies the adapter wired to the Node hooks — **no python, bash, or
+  jq, and no Claude session** (deterministic, council MED #6). New
+  `getAdoptCandidates`/`isAdoptableTarget` allowlist helpers; an **Add rails**
+  control (`AddRailsDialog`) in Mission Control. `install-claude-adapter.py` and
+  `add-rails.mjs` gain `--hooks {shell|node|auto}` (auto = node when bash/jq absent).
+- **Empty front-door welcome** (`WelcomeHero`): zero sessions now shows a guided
+  Welcome + one-click "Start your first agent" (reuses the existing `NewSessionForm`
+  spawn path) instead of a blank board, with a second step into the trust control
+  (ADR-0005: advances the rails, not window-only).
+- **In-cockpit per-folder trust grant** (`GET/POST/DELETE /api/trust` over
+  `lib/trust-store.js`; `validateCwd`; a "Trusted folders" Security tab in Settings)
+  — the locked Phase 2 reassessment decision.
+- **CI coverage gate** (measure-then-floor): v8 thresholds in the server/client
+  Vitest configs, run with `--coverage` in the cockpit CI job; `docs/ci.md`
+  documents the ratchet policy and the manual branch-protection step to make
+  `cockpit (Node)` + `cockpit e2e` required checks (blocking-e2e criterion).
+
 ### Phase 2 — Trustworthy loops + unified spine (L1)
 
 The canonical phase contract becomes the **consumed** spine. All TDD-first; suites

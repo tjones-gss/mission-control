@@ -85,7 +85,25 @@ def _chmod_hooks_git_bash(bash_exe: Path, hooks_dir: Path) -> None:
     )
 
 
-def install_claude_adapter(root: Path, *, run_check: bool = True, quiet: bool = False) -> int:
+def _resolve_hooks_mode(hooks: str) -> str:
+    """Resolve the hooks flag to a concrete 'shell' or 'node'.
+
+    auto = node when the shell path's runtime deps (bash AND jq) aren't both
+    present — e.g. a typical Windows box without jq. There the pure-Node hooks
+    enforce with zero bash/jq dependency (Phase 3 / L2 "pure-Node hook fallback").
+    """
+    if hooks == "node":
+        return "node"
+    if hooks == "shell":
+        return "shell"
+    # auto
+    shell_ok = shutil.which("bash") is not None and shutil.which("jq") is not None
+    return "shell" if shell_ok else "node"
+
+
+def install_claude_adapter(
+    root: Path, *, run_check: bool = True, quiet: bool = False, hooks: str = "auto"
+) -> int:
     root = root.resolve()
     adapter_root = root / "adapters" / "claude-code"
     src_claude = adapter_root / ".claude"
@@ -97,16 +115,37 @@ def install_claude_adapter(root: Path, *, run_check: bool = True, quiet: bool = 
         _log(f"error: adapter missing under {adapter_root}", quiet=quiet, file=sys.stderr)
         return 2
 
+    hooks_mode = _resolve_hooks_mode(hooks)
     is_windows = sys.platform == "win32"
     git_bash = find_git_bash_windows() if is_windows else None
 
-    _log("Installing Claude Code adapter...", quiet=quiet)
+    _log(f"Installing Claude Code adapter (hooks: {hooks_mode})...", quiet=quiet)
     if dest_claude.exists():
         shutil.rmtree(dest_claude)
     shutil.copytree(src_claude, dest_claude)
     shutil.copy2(src_claude_md, dest_claude_md)
     _log(f"  -> {dest_claude.relative_to(root)}/", quiet=quiet)
     _log(f"  -> {dest_claude_md.name}", quiet=quiet)
+
+    # Never ship the hooks' own test file into the target project.
+    test_hook = dest_claude / "hooks" / "hooks.test.mjs"
+    if test_hook.exists():
+        test_hook.unlink()
+
+    # Node hooks: wire settings.json to the .mjs hooks and skip the Git-Bash
+    # chmod + Windows settings patch entirely — Node hooks need no bash/jq.
+    if hooks_mode == "node":
+        node_settings = dest_claude / "settings.node.json"
+        dest_settings = dest_claude / "settings.json"
+        if node_settings.is_file():
+            shutil.copy2(node_settings, dest_settings)
+            _log("  -> settings.json wired to pure-Node hooks (no bash/jq needed)", quiet=quiet)
+        if run_check:
+            _log("", quiet=quiet)
+            _log("Restart Claude Code and run /hooks to verify wiring.", quiet=quiet)
+        _log("", quiet=quiet)
+        _log("Done.", quiet=quiet)
+        return 0
 
     hooks_dir = dest_claude / "hooks"
     if is_windows:
@@ -181,9 +220,19 @@ def main() -> int:
         action="store_true",
         help="Skip post-install harness check",
     )
+    parser.add_argument(
+        "--hooks",
+        choices=["shell", "node", "auto"],
+        default="auto",
+        help="Which hook implementation to wire: shell (.sh, needs bash+jq), node "
+        "(.mjs, pure-Node, no bash/jq), or auto (node when bash/jq are absent). "
+        "Default: auto.",
+    )
     args = parser.parse_args()
     root = args.root if args.root is not None else repo_root()
-    return install_claude_adapter(root, run_check=not args.no_check, quiet=False)
+    return install_claude_adapter(
+        root, run_check=not args.no_check, quiet=False, hooks=args.hooks
+    )
 
 
 if __name__ == "__main__":

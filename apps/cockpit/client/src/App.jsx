@@ -43,6 +43,7 @@ import { ShortcutHelpOverlay } from './components/ShortcutHelpOverlay.jsx'
 import { DispatchDrawer, DispatchDrawerHandle } from './components/DispatchDrawer.jsx'
 import { DispatchSignal } from './components/DispatchSignal.jsx'
 import { NewSessionForm } from './components/NewSessionForm.jsx'
+import { WelcomeHero } from './components/WelcomeHero.jsx'
 import { ParserDegradedBanner } from './components/ParserDegradedBanner.jsx'
 import { projectLabel } from './utils/session.js'
 
@@ -595,7 +596,15 @@ export default function App() {
         {/* Center: Main panel */}
         <main className="flex-1 min-w-0 overflow-hidden flex flex-col relative z-0 bg-gray-950">
           {activeTab !== 'runs' && <FeatureBrief surfaceId={activeTab} />}
-          {activeTab === 'agents' && (
+          {activeTab === 'agents' && Array.isArray(sessions) && sessions.length === 0 && (
+            // Empty front door (L2): a guided Welcome + one-click first agent instead
+            // of a blank board. `sessions === null` is still loading → no hero.
+            <WelcomeHero
+              onStartFirstAgent={() => setShowNewSession(true)}
+              onOpenTrust={() => setShowSettings(true)}
+            />
+          )}
+          {activeTab === 'agents' && !(Array.isArray(sessions) && sessions.length === 0) && (
             <>
               {/* Board / Detail toggle bar */}
               <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-gray-800">
