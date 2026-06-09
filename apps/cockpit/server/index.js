@@ -27,6 +27,7 @@ import { router as trustRouter } from './routes/trust.js'
 import { router as fleetRouter } from './routes/fleet.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
 import { initOtel, tracingMiddleware } from './lib/otel.js'
+import { mountOpenApi } from './lib/openapi.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
 import { fileURLToPath } from 'node:url'
@@ -87,6 +88,12 @@ export function buildApp() {
   app.use('/api/rails', railsRouter)
   app.use('/api/trust', trustRouter)
   app.use('/api/fleet', fleetRouter)
+
+  // OpenAPI docs surface (Phase 4 / C-openapi). Mounted AFTER express.json + the
+  // routers but BEFORE the '/api' 404 catch-all, so GET /api/docs(.json) is not
+  // shadowed by the catch-all. index.js does NOT own this wiring's contents — it
+  // only calls into lib/openapi.js (which owns the spec + the scoped CSP relax).
+  mountOpenApi(app)
 
   // JSON 404 for any unmatched /api/* request — without this, Express
   // returns its built-in "Cannot POST X" HTML page, which forces every

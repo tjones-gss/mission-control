@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node --watch-path=./index.js --watch-path=./routes --watch-path=./middleware --watch-path=./lib --watch-path=./parsers --watch-path=./intelligence --watch-path=./watcher.js --watch-path=./sse.js --watch-path=./pty-session.js --watch-path=./claude-cli.js --watch index.js",
     "start": "node index.js",
+    "openapi:export": "node scripts/export-openapi.mjs",
     "test:e2e": "vitest run --config vitest.e2e.config.js"
   },
   "dependencies": {

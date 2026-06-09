@@ -97,15 +97,47 @@ async function detectHarness() {
   return value
 }
 
+/**
+ * @openapi
+ * /api/health:
+ *   get:
+ *     summary: Liveness probe plus harness-CLI reachability.
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is up; includes whether the python harness CLI is reachable.
+ */
 router.get('/', async (req, res) => {
   const harness = await detectHarness()
   res.json({ ok: true, ts: Date.now(), harness })
 })
 
+/**
+ * @openapi
+ * /api/health/live:
+ *   get:
+ *     summary: Bare liveness probe (uptime only).
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server process is alive.
+ */
 router.get('/live', (req, res) => {
   res.json({ ok: true, uptime: Date.now() - startTime })
 })
 
+/**
+ * @openapi
+ * /api/health/ready:
+ *   get:
+ *     summary: Readiness probe (200 when ready, 503 until the watcher is up).
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is ready to serve traffic.
+ *       503:
+ *         description: Server is not yet ready.
+ */
 router.get('/ready', (req, res) => {
   const mem = process.memoryUsage()
   const status = ready ? 200 : 503

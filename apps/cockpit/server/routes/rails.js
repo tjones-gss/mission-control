@@ -32,6 +32,16 @@ export function __resetInFlight() {
 // Session cwds that are real dirs without a Claude adapter yet (the "needs rails"
 // set). Powers the in-cockpit "Add rails" picker.
 // ──────────────────────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/rails/adopt-candidates:
+ *   get:
+ *     summary: Session cwds that are real dirs without a Claude adapter yet (the "needs rails" set).
+ *     tags: [Rails]
+ *     responses:
+ *       200:
+ *         description: Candidate project paths for one-click rails adoption.
+ */
 router.get('/adopt-candidates', (_req, res) => {
   let candidates = []
   try {
@@ -49,6 +59,30 @@ router.get('/adopt-candidates', (_req, res) => {
 // adapter in DIRECTLY (no python, no bash, no Claude session). The watcher then
 // sees the new .claude/ and the client refetches.
 // ──────────────────────────────────────────────────────────────────────────────
+/**
+ * @openapi
+ * /api/rails/adopt:
+ *   post:
+ *     summary: One-click in-cockpit rails adoption (copies the Node Claude adapter into a whitelisted project).
+ *     tags: [Rails]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [projectPath]
+ *             properties:
+ *               projectPath:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Rails adopted.
+ *       400:
+ *         description: Invalid or non-whitelisted target.
+ *       409:
+ *         description: An adoption is already in flight for this project.
+ */
 router.post('/adopt', (req, res) => {
   const { projectPath } = req.body || {}
 

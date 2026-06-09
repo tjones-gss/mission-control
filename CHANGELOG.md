@@ -27,6 +27,18 @@ All notable changes to this project are documented here. Format follows
   gains an exported `buildApp()`/`createApp` factory so OTel (now) and the served
   OpenAPI doc (next) share one app builder; `start()` keeps `listen()` and is guarded
   so importing the factory never binds a socket.
+- **OpenAPI for the cockpit's own HTTP surface, served + exported.** The cockpit
+  serves interactive docs at `GET /api/docs` (swagger-ui) and the machine-readable
+  spec at `GET /api/docs.json`, mounted via the `buildApp()` factory AFTER the
+  routers but BEFORE the `/api` 404 catch-all. `info.version` reads the server
+  package version (0.4.0); only the **CORE** routers carry `@openapi` annotations
+  this phase (health, sessions incl. tool-approval/cancel, fleet, harness,
+  conductor, rails) — the experimental routers stay unannotated by design, and SSE
+  `/api/stream` is excluded. A `npm run openapi:export` script writes the spec
+  without booting the server (FAIL-CLOSED on an empty `paths`), and CI publishes it
+  as the `cockpit-openapi` artifact. This is a SEPARATE artifact from the
+  `packages/contracts` schema — it versions the cockpit REST surface, not
+  `harness status --json`.
 
 **Changed**
 

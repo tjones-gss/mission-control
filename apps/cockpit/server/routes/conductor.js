@@ -5,6 +5,16 @@ export const router = Router()
 
 const ADR_RE = /^\d{4}$/
 
+/**
+ * @openapi
+ * /api/conductor:
+ *   get:
+ *     summary: List Conductor (ADR) runs.
+ *     tags: [Conductor]
+ *     responses:
+ *       200:
+ *         description: Array of Conductor runs.
+ */
 router.get('/', (_req, res) => {
   res.json(getConductorRuns())
 })
