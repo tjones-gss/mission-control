@@ -23,6 +23,7 @@ import path from 'path'
 import { fileURLToPath } from 'node:url'
 import { runClaudeCancellable } from '../claude-cli.js'
 import { atomicWriteJson } from '../lib/atomic-write.js'
+import { recordAuditEventSafe } from '../lib/audit-log.js'
 import { awaitNewSession } from '../lib/pending-session.js'
 import { getKnownHarnessRoots, runHarnessApprove } from '../parsers/harness.js'
 import { getQueryStatus, resolveApproval } from '../pty-session.js'
@@ -650,6 +651,20 @@ function spawnChild(state, idx, lockKey) {
   const list = cancels.get(state.id)
   if (list) list.push(cancel)
 
+  // AUDIT (cockpit sole writer): a child agent spawn is the canonical 'spawn'
+  // event. Recorded only once the CLI spawn is actually committed (past the
+  // synchronous failure / budget gates). sessionId is null here (the watcher acks
+  // it later) — correlationId ties this spawn to the rest of the run. Fire-and-
+  // forget so an audit append never affects the spawn lifecycle.
+  recordAuditEventSafe({
+    eventType: 'spawn',
+    source: 'cockpit',
+    sessionId: child.sessionId || null,
+    subjectId: child.branch,
+    correlationId: state.id,
+    payload: { kind: 'fleet_child', idx: child.idx, cwd: child.cwd, worktree: true },
+  })
+
   // Convert the CLI promise to an always-resolving tagged promise so Node never
   // sees an unhandledRejection if a child fails after the run was early-acked.
   const taggedCli = cliPromise.then(
@@ -1115,6 +1130,24 @@ async function onAllChildrenSettled(state) {
     state.synthesis.summary = `synthesis failed: ${err.message}`
   }
   state.synthesis.completedAt = new Date().toISOString()
+  // AUDIT (cockpit sole writer): synthesis is the run's merge/consolidation step
+  // (each child's branch is reconciled into one report by the acting child), so it
+  // is recorded as a 'merge' event with the run outcome. Read-only (all-quarantined)
+  // synthesis is still recorded — its outcome carries that it produced a report
+  // only. Fire-and-forget. NOTE the run-level outcome here is the synthesis result,
+  // not a literal git merge — the worktrees stay on their branches; see ADR-0004.
+  recordAuditEventSafe({
+    eventType: 'merge',
+    source: 'cockpit',
+    subjectId: state.id,
+    correlationId: state.id,
+    outcome: state.synthesis.status === 'done' ? 'succeeded' : 'failed',
+    payload: {
+      kind: 'fleet_synthesis',
+      runStatus: state.status,
+      readOnly: state.synthesis.readOnly === true,
+    },
+  })
   await persistFleet(state)
 }
 
@@ -1582,6 +1615,18 @@ export async function decideFleetEscalation(id, body = {}) {
     if (!resolved) {
       return { ok: false, status: 404, error: 'approval not found or already resolved' }
     }
+    // AUDIT (cockpit sole writer): a Fleet tool-escalation decision is an 'approval'
+    // event the dashboard performed directly via the in-memory SDK resolver.
+    recordAuditEventSafe({
+      eventType: 'approval',
+      source: 'cockpit',
+      sessionId: child.sessionId,
+      subjectId: approvalId,
+      correlationId: id,
+      decision: decision === 'allow' ? 'approved' : 'denied',
+      outcome: 'succeeded',
+      payload: { kind: 'fleet_escalation_tool', childIdx },
+    })
     return { ok: true, status: 200, source, decision, childIdx }
   }
 
@@ -1606,6 +1651,21 @@ export async function decideFleetEscalation(id, body = {}) {
 
   const stdout = result.stdout || ''
   const stderr = result.stderr || ''
+  // AUDIT (cockpit sole writer): a harness-mediated decision the dashboard DROVE via
+  // the `harness approve` shell-out. source 'harness' — the rails CLI is the single
+  // writer of the decided file; the cockpit records the event it drove. This is the
+  // documented harness-mediated case; decisions made against the rails CLI DIRECTLY
+  // (outside the dashboard) are NOT captured (known limitation — see module header).
+  recordAuditEventSafe({
+    eventType: 'approval',
+    source: 'harness',
+    sessionId: child.sessionId || null,
+    subjectId: requestId,
+    correlationId: id,
+    decision: decision === 'allow' ? 'approved' : 'denied',
+    outcome: 'succeeded',
+    payload: { kind: 'fleet_escalation_harness', childIdx, cwd: child.cwd },
+  })
   return {
     ok: true,
     status: 200,

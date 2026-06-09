@@ -57,3 +57,36 @@ plan `~/.claude/plans/do-what-you-need-ticklish-flamingo.md` (Phase 1g).
 
 **Reversible-by-addition.** Flipping to hosted means superseding this ADR and adding shared state +
 auth; nothing here forecloses that, provided new state stays behind the atomic-persist seam.
+
+## Amendment 2026-06-08 (Phase 4 / D-audit-otel) — audit log + OTel under the localhost seam
+
+Status stays **Accepted** — this is an application of the localhost-first / atomic-persist decision
+above, not a reversal.
+
+The Phase 4 observability work lands two cross-cutting concerns *behind the existing seams* this ADR
+established, so neither blocks a later team/hosted flip:
+
+- **Append-only audit log — the COCKPIT is the SOLE WRITER.** A single append-only JSONL file
+  (`apps/cockpit/server/data/audit/audit.jsonl`) records the consequential actions the dashboard
+  orchestrates: agent **spawns**, human **approval** decisions, and run **merge**/synthesis events.
+  It is written through the same atomic-rename discipline as the one-JSON-per-run Fleet store
+  (`lib/atomic-write.js`) — one local-JSON store, no DB — so a future shared store is a swap behind
+  one seam, exactly as this ADR requires. The cockpit records both the events it performs directly
+  (`source: "cockpit"`) and the rails-mediated ones it **drives** via the `harness approve` shell-out
+  (`source: "harness"`). Records validate against the versioned `packages/contracts`
+  `audit-event` schema (sidecar v8) before they are written, so the on-disk log cannot drift from the
+  published contract.
+  - **KNOWN LIMITATION (honest gap):** actions taken against the harness CLI **directly** — a developer
+    running `harness approve` in a terminal outside the dashboard — are **not** captured. There is no
+    second, Python-side audit writer this phase. The single-writer-cockpit choice keeps the log
+    consistent with the singleton-localhost model; closing the harness-direct gap (a rails-side writer
+    or a reconciling import) is deferred and is the correct shape only once the topology is revisited.
+- **OpenTelemetry tracing is ENV-GATED and OFF by default** (`OTEL_ENABLED`). The localhost-first
+  default path pays nothing: with the flag unset, init is a no-op and the per-request span middleware
+  is a bare pass-through. Provability is **in-process** — a test installs an `InMemorySpanExporter` and
+  asserts spans land in its array; **no external collector** is stood up in CI or on Win11. An OTLP /
+  network exporter is a deliberate later opt-in, not this phase.
+- **`buildApp()` app factory.** `apps/cockpit/server/index.js` now assembles the middleware stack and
+  routers in one exported `buildApp()`/`createApp` builder (listen stays in `start()`, guarded so an
+  import never binds a socket), so cross-cutting concerns (OTel here, the served OpenAPI doc next) share
+  one builder rather than each editing the module top.

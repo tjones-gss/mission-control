@@ -26,77 +26,120 @@ import { router as railsRouter } from './routes/rails.js'
 import { router as trustRouter } from './routes/trust.js'
 import { router as fleetRouter } from './routes/fleet.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
+import { initOtel, tracingMiddleware } from './lib/otel.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
+import { fileURLToPath } from 'node:url'
+import { argv } from 'node:process'
 import './intelligence/triggers.js'
 
-const app = express()
+// ──────────────────────────────────────────────────────────────────────────────
+// App factory (Phase 4 / D-audit-otel). buildApp() is the SINGLE place the
+// middleware stack and routers are assembled, so cross-cutting concerns added
+// this phase (OTel tracing) and later (S6's /api/docs mount) share ONE builder
+// instead of each editing the module-top imperatively. It returns a configured
+// express() app WITHOUT calling listen() — listen lives in start() below so the
+// factory is import-safe for tests. createApp is an alias for symmetry with the
+// pattern S6 rebases onto.
+// ──────────────────────────────────────────────────────────────────────────────
+export function buildApp() {
+  const app = express()
 
-// Middleware stack (order matters)
-// DNS-rebinding guard runs FIRST — before CORS, routes, and everything else —
-// so a request with a foreign Host is rejected before any handler can see it.
-app.use(hostCheck)
-app.use(cors({ origin: getCorsOrigin() }))
-// CSRF / Origin guard for state-changing methods. Runs AFTER hostCheck + CORS
-// (a foreign Host or a blocked CORS origin is already gone) but BEFORE the
-// routers, so a forged cross-origin POST to a safety-critical endpoint such as
-// /api/sessions/:id/tool-approval is rejected before any handler sees it.
-app.use(originGuard)
-app.use(...securityMiddleware)
-app.use(requestLogger)
-app.use(...performanceMiddleware)
-app.use(express.json({ limit: '1mb' }))
+  // OTel tracing is env-gated (OTEL_ENABLED) and OFF by default — initOtel() is a
+  // no-op when disabled, so the localhost-first default path pays nothing. Init it
+  // before the middleware stack so the per-request span middleware (also a bare
+  // pass-through when disabled) wraps every route.
+  initOtel()
+  app.use(tracingMiddleware)
 
-// Routes
-app.use('/api/sessions', sessionsRouter)
-app.use('/api/tasks', tasksRouter)
-app.use('/api/teams', teamsRouter)
-app.use('/api/history', historyRouter)
-app.use('/api/stream', streamRouter)
-app.use('/api/skills', skillsRouter)
-app.use('/api/workflows', workflowsRouter)
-app.use('/api/plans', plansRouter)
-app.use('/api/config', configRouter)
-app.use('/api/hooks', hooksRouter)
-app.use('/api/mcp-servers', mcpRouter)
-app.use('/api/managers', managersRouter)
-app.use('/api/fs', fsRouter)
-app.use('/api/health', healthRouter)
-app.use('/api/conductor', conductorRouter)
-app.use('/api/harness', harnessRouter)
-app.use('/api/rails', railsRouter)
-app.use('/api/trust', trustRouter)
-app.use('/api/fleet', fleetRouter)
+  // Middleware stack (order matters)
+  // DNS-rebinding guard runs FIRST — before CORS, routes, and everything else —
+  // so a request with a foreign Host is rejected before any handler can see it.
+  app.use(hostCheck)
+  app.use(cors({ origin: getCorsOrigin() }))
+  // CSRF / Origin guard for state-changing methods. Runs AFTER hostCheck + CORS
+  // (a foreign Host or a blocked CORS origin is already gone) but BEFORE the
+  // routers, so a forged cross-origin POST to a safety-critical endpoint such as
+  // /api/sessions/:id/tool-approval is rejected before any handler sees it.
+  app.use(originGuard)
+  app.use(...securityMiddleware)
+  app.use(requestLogger)
+  app.use(...performanceMiddleware)
+  app.use(express.json({ limit: '1mb' }))
 
-// JSON 404 for any unmatched /api/* request — without this, Express
-// returns its built-in "Cannot POST X" HTML page, which forces every
-// client to handle two error response formats.
-app.use('/api', (req, res) => {
-  res.status(404).json({
-    error: 'Not found',
-    code: 'NOT_FOUND',
-    method: req.method,
-    path: req.originalUrl,
+  // Routes
+  app.use('/api/sessions', sessionsRouter)
+  app.use('/api/tasks', tasksRouter)
+  app.use('/api/teams', teamsRouter)
+  app.use('/api/history', historyRouter)
+  app.use('/api/stream', streamRouter)
+  app.use('/api/skills', skillsRouter)
+  app.use('/api/workflows', workflowsRouter)
+  app.use('/api/plans', plansRouter)
+  app.use('/api/config', configRouter)
+  app.use('/api/hooks', hooksRouter)
+  app.use('/api/mcp-servers', mcpRouter)
+  app.use('/api/managers', managersRouter)
+  app.use('/api/fs', fsRouter)
+  app.use('/api/health', healthRouter)
+  app.use('/api/conductor', conductorRouter)
+  app.use('/api/harness', harnessRouter)
+  app.use('/api/rails', railsRouter)
+  app.use('/api/trust', trustRouter)
+  app.use('/api/fleet', fleetRouter)
+
+  // JSON 404 for any unmatched /api/* request — without this, Express
+  // returns its built-in "Cannot POST X" HTML page, which forces every
+  // client to handle two error response formats.
+  app.use('/api', (req, res) => {
+    res.status(404).json({
+      error: 'Not found',
+      code: 'NOT_FOUND',
+      method: req.method,
+      path: req.originalUrl,
+    })
   })
-})
 
-// Error handler (must be last)
-app.use(errorHandler)
+  // Error handler (must be last)
+  app.use(errorHandler)
 
-// Prevent unhandled rejections from crashing the server (e.g., PTY spawn failures)
-process.on('unhandledRejection', (err) => {
-  logger.error({ err: err?.message || err }, 'unhandled rejection (server stayed alive)')
-})
+  return app
+}
 
-const server = app.listen(config.port, config.host, () => {
-  logger.info(`Server → http://${config.host}:${config.port}`)
-  const watcher = startWatcher()
-  setHealthReady()
-  registerShutdown({ server, watcher })
-  // BOOT RECONCILER (item 1g) — symmetric to the lifecycle shutdown seam: on
-  // start, reap any Fleet run left non-terminal by a previous crash/restart so no
-  // run is wedged at 'running'. Fire-and-forget; a failure is logged, never fatal.
-  reconcileFleetRuns().catch((err) =>
-    logger.warn({ detail: err?.message || err }, 'fleet_boot_reconcile_failed'),
-  )
-})
+// Alias — same builder under the createApp name S6's /api/docs work rebases onto.
+export const createApp = buildApp
+
+// Start the server: build the app, bind the listener, wire the watcher/lifecycle,
+// and kick the boot reconciler. Kept separate from buildApp so importing the
+// factory (e.g. in a test) never opens a socket.
+export function start() {
+  const app = buildApp()
+
+  // Prevent unhandled rejections from crashing the server (e.g., PTY spawn failures)
+  process.on('unhandledRejection', (err) => {
+    logger.error({ err: err?.message || err }, 'unhandled rejection (server stayed alive)')
+  })
+
+  const server = app.listen(config.port, config.host, () => {
+    logger.info(`Server → http://${config.host}:${config.port}`)
+    const watcher = startWatcher()
+    setHealthReady()
+    registerShutdown({ server, watcher })
+    // BOOT RECONCILER (item 1g) — symmetric to the lifecycle shutdown seam: on
+    // start, reap any Fleet run left non-terminal by a previous crash/restart so no
+    // run is wedged at 'running'. Fire-and-forget; a failure is logged, never fatal.
+    reconcileFleetRuns().catch((err) =>
+      logger.warn({ detail: err?.message || err }, 'fleet_boot_reconcile_failed'),
+    )
+  })
+
+  return server
+}
+
+// Auto-start ONLY when run as the entry module (node index.js). Importing this
+// file for its buildApp/createApp factory (e.g. from a test) must never bind a
+// socket — the factory is import-safe; start() is the imperative entry point.
+const isEntry = argv[1] && fileURLToPath(import.meta.url) === argv[1]
+if (isEntry) {
+  start()
+}

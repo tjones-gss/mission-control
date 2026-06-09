@@ -8,6 +8,26 @@ All notable changes to this project are documented here. Format follows
 
 ### Phase 4 — Standard (L3)
 
+**Added**
+
+- **Append-only audit log (cockpit sole writer) + env-gated OTel + app factory.**
+  One append-only JSONL log (`apps/cockpit/server/data/audit/audit.jsonl` via the
+  existing atomic-rename helper, ADR-0004 local-JSON) records every **spawn**
+  (front-door `POST /api/sessions/new` + Fleet child spawn), **approval** (session
+  tool-approval, trust grant, Fleet escalation decide — tool and harness-mediated),
+  and **merge** (Fleet synthesis) event the dashboard orchestrates. Each record
+  validates against the versioned `packages/contracts` `audit-event` schema (sidecar
+  v8) before it is written; a monotonic `seq` (resumed from the on-disk tail) makes
+  the never-mutate/never-truncate invariant observable and tested. KNOWN LIMITATION:
+  harness-CLI-**direct** actions (outside the dashboard) are not captured — no
+  second Python-side writer this phase (documented in `lib/audit-log.js` + ADR-0004).
+  OpenTelemetry tracing is **env-gated (`OTEL_ENABLED`), OFF by default** — the
+  localhost path pays nothing; provability is an in-process `InMemorySpanExporter`
+  span-export test with **no external collector** (green on Win11 + CI). `index.js`
+  gains an exported `buildApp()`/`createApp` factory so OTel (now) and the served
+  OpenAPI doc (next) share one app builder; `start()` keeps `listen()` and is guarded
+  so importing the factory never binds a socket.
+
 **Changed**
 
 - **Docs: cross-vendor VIEWING label dropped.** Oversight is scoped to Claude Code

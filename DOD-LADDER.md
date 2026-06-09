@@ -38,7 +38,7 @@ the council gap or premortem mode it closes.
 |---|---|---|
 | Cross-vendor oversight label DROPPED — oversight scoped to Claude Code only; cross-vendor lives in the RAILS + the contract, not the viewer | ADR-0005 Amendment label correction; no multi-vendor reader shipped | absorption premortem "cross-vendor never built" |
 | `harness status` published as a versioned vendor-neutral spec | contracts CHANGELOG + CI parity gate | absorption premortem "contract is the moat" |
-| OpenAPI served/exported; OTel traces + append-only audit log of spawn/approval/merge | `/api/docs` live; CI exports OpenAPI; audit-write tests | maturity scorecard (Observability); security premortem |
+| Observability is THREE delivered proofs, not OpenAPI alone: (1) OpenAPI served at `/api/docs`, (2) env-gated OTel traces (`OTEL_ENABLED`, OFF by default), (3) an append-only JSONL audit log of every spawn/approval/merge with the **cockpit as sole writer** | (1) `/api/docs` live + CI exports OpenAPI; (2) in-process `InMemorySpanExporter` span-export test (no collector, green on Win11+CI); (3) audit-write + append-only-invariant tests (`lib/audit-log.test.js`, `lib/audit-wiring.test.js`, `fleet/fleet-audit-wiring.test.js`). KNOWN LIMITATION: decisions made against the harness CLI **directly** (outside the dashboard) are not yet captured — no second Python-side writer this phase (ADR-0004) | maturity scorecard (Observability); security premortem |
 | Release engineering: semver off 0.1.0, CHANGELOG, runbook, release automation + SBOM | release workflow produces a tagged GitHub release + SBOM | maturity scorecard (Versioning 2/10) |
 
 **Litmus (L3 complete):** a Claude Code release shipping native cross-session view does **not** make

@@ -28,6 +28,7 @@ import { onEvent, emit } from '../sse.js'
 import { validateSessionId } from '../utils/validate.js'
 import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
 import { atomicWriteJson } from '../lib/atomic-write.js'
+import { recordAuditEventSafe } from '../lib/audit-log.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
@@ -528,6 +529,23 @@ router.post('/new', async (req, res) => {
     timeoutMs: 300_000,
   })
 
+  // AUDIT (cockpit sole writer): the front-door "spawn a new agent" path. Recorded
+  // once the CLI subprocess is committed (the agent is launched) — the sessionId is
+  // not known yet (the watcher acks it later), so it is null here. Fire-and-forget
+  // so the audit append never affects the spawn race below. This is the front-door
+  // counterpart to the Fleet child-spawn audit in fleet/fleet-runner.js.
+  recordAuditEventSafe({
+    eventType: 'spawn',
+    source: 'cockpit',
+    sessionId: null,
+    payload: {
+      kind: 'session_new',
+      cwd,
+      worktree: worktree === true,
+      named: !!(name && name.trim()),
+    },
+  })
+
   // Race: file-watcher ack vs CLI completion vs 15s deadline.
   //
   // To prevent Node from ever seeing an unhandledRejection on cliPromise,
@@ -730,6 +748,20 @@ router.post('/:sessionId/tool-approval', (req, res) => {
   if (!resolved) {
     return res.status(404).json({ error: 'Approval not found or already resolved' })
   }
+
+  // AUDIT (cockpit sole writer): a human tool-approval decision is the canonical
+  // 'approval' event. Recorded only AFTER it was actually resolved (so a 404 writes
+  // nothing). source 'cockpit' — the dashboard resolved it via the in-memory SDK
+  // resolver. Fire-and-forget so the audit append never fails the decision.
+  recordAuditEventSafe({
+    eventType: 'approval',
+    source: 'cockpit',
+    sessionId,
+    subjectId: approvalId,
+    decision: decision === 'allow' ? 'approved' : 'denied',
+    outcome: 'succeeded',
+    payload: { kind: 'tool_approval' },
+  })
 
   res.json({ ok: true })
 })

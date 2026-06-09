@@ -36,6 +36,7 @@ venv/
 # late async write can't trip prettier --check. (data/session-names.json stays tracked.)
 apps/cockpit/server/data/fleet/
 apps/cockpit/server/data/fleet-templates/
+apps/cockpit/server/data/audit/
 
 # Council / premortem analysis artifacts — local, revisitable reports (not source).
 # The brace form council-*.{md,html,json} does NOT work in .gitignore (no brace
