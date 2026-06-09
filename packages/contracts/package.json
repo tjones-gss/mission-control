@@ -1,8 +1,8 @@
 {
   "name": "@mission-control/contracts",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "main": "index.js",
-  "schemaVersion": 5
+  "schemaVersion": 8
 }
