@@ -38,6 +38,14 @@ router.post('/', (req, res) => {
     decision: 'approved',
     subjectId: cwd,
     outcome: 'succeeded',
+    // v9 controlState: a trust grant is a POLICY decision — it changes the
+    // control configuration itself (future spawns in this cwd may skip
+    // permission prompts) rather than gating one execution.
+    controlState: {
+      gateType: 'policy',
+      decisionMaker: 'human',
+      policiesInForce: ['trust-store:default-deny'],
+    },
     payload: { kind: 'trust_grant', cwd },
   })
   res.json({ ok: true, trusted: listTrustedCwds() })

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 8,
+  "schemaVersion": 9,
   "ts": "2026-06-08T14:03:11.000Z",
   "eventType": "approval",
   "actor": "operator",
@@ -10,6 +10,13 @@
   "outcome": "succeeded",
   "source": "harness",
   "correlationId": "corr-7f3a9c",
+  "controlState": {
+    "gateType": "hard",
+    "decisionMaker": "human",
+    "policiesInForce": ["danger-zone-approval", "budget-cap:12"],
+    "permissionMode": "guarded",
+    "model": null
+  },
   "payload": {
     "gate": "danger_zone_prod_deploy",
     "reason": "operator confirmed staged rollout window"

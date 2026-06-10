@@ -47,3 +47,13 @@ council-*.json
 premortem-*.md
 premortem-*.html
 premortem-*.json
+
+# UI/UX redesign session artifacts — local, not source.
+# Claude Design handoff bundle, Playwright MCP output, and ad-hoc UI screenshots.
+.design-handoff/
+.playwright-mcp/
+mc-*.png
+
+# Local tool state — codegraph index DB + Claude Code session locks, not source.
+.codegraph/
+.claude/scheduled_tasks.lock

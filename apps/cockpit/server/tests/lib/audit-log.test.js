@@ -53,7 +53,7 @@ describe('audit-log: every recorded event is schema-valid', () => {
     const validate = compileSchema()
     expect(validate(rec)).toBe(true)
     // It stamped the required fields the caller did not provide.
-    expect(rec.schemaVersion).toBe(8)
+    expect(rec.schemaVersion).toBe(9)
     expect(typeof rec.ts).toBe('string')
     expect(new Date(rec.ts).toISOString()).toBe(rec.ts)
     expect(rec.eventType).toBe('spawn')
@@ -62,7 +62,12 @@ describe('audit-log: every recorded event is schema-valid', () => {
 
   it('records each eventType (spawn / approval / merge) as a schema-valid line', async () => {
     await recordAuditEvent({ eventType: 'spawn', source: 'cockpit' })
-    await recordAuditEvent({ eventType: 'approval', source: 'harness', decision: 'approved' })
+    await recordAuditEvent({
+      eventType: 'approval',
+      source: 'harness',
+      decision: 'approved',
+      controlState: { gateType: 'hard', decisionMaker: 'human' },
+    })
     await recordAuditEvent({ eventType: 'merge', source: 'cockpit', subjectId: 'fleet/x/c0' })
     const lines = readAuditLog()
     expect(lines).toHaveLength(3)
@@ -85,10 +90,87 @@ describe('audit-log: every recorded event is schema-valid', () => {
   })
 })
 
+// v9: an 'approval' MUST carry its control context (the schema's conditional);
+// the writer enforces the same rule fail-closed, derived FROM the schema so the
+// two cannot drift.
+describe('audit-log v9: approval events require controlState (fail closed)', () => {
+  it('rejects an approval WITHOUT controlState (nothing written)', async () => {
+    await expect(
+      recordAuditEvent({ eventType: 'approval', source: 'cockpit', decision: 'approved' }),
+    ).rejects.toThrow(/controlState/)
+    expect(fs.existsSync(logPath)).toBe(false)
+  })
+
+  it('rejects an approval whose controlState lacks gateType or decisionMaker', async () => {
+    await expect(
+      recordAuditEvent({
+        eventType: 'approval',
+        source: 'cockpit',
+        controlState: { decisionMaker: 'human' },
+      }),
+    ).rejects.toThrow(/gateType/)
+    await expect(
+      recordAuditEvent({
+        eventType: 'approval',
+        source: 'cockpit',
+        controlState: { gateType: 'hard' },
+      }),
+    ).rejects.toThrow(/decisionMaker/)
+  })
+
+  it('rejects an unknown gateType / decisionMaker value (closed enums from the schema)', async () => {
+    await expect(
+      recordAuditEvent({
+        eventType: 'approval',
+        source: 'cockpit',
+        controlState: { gateType: 'vibes', decisionMaker: 'human' },
+      }),
+    ).rejects.toThrow(/gateType/)
+    await expect(
+      recordAuditEvent({
+        eventType: 'approval',
+        source: 'cockpit',
+        controlState: { gateType: 'hard', decisionMaker: 'committee' },
+      }),
+    ).rejects.toThrow(/decisionMaker/)
+  })
+
+  it('accepts a spawn without controlState AND a spawn with an informational one', async () => {
+    await recordAuditEvent({ eventType: 'spawn', source: 'cockpit' })
+    const rec = await recordAuditEvent({
+      eventType: 'spawn',
+      source: 'cockpit',
+      controlState: { decisionMaker: 'auto', policiesInForce: ['worktree-isolation'] },
+    })
+    const validate = compileSchema()
+    expect(validate(rec)).toBe(true)
+    expect(readAuditLog()).toHaveLength(2)
+  })
+
+  it('a written approval record validates against the v9 schema (ajv, conditional included)', async () => {
+    const rec = await recordAuditEvent({
+      eventType: 'approval',
+      source: 'cockpit',
+      decision: 'denied',
+      controlState: {
+        gateType: 'hard',
+        decisionMaker: 'human',
+        policiesInForce: ['budget-cap:12'],
+      },
+    })
+    const validate = compileSchema()
+    expect(validate(rec)).toBe(true)
+  })
+})
+
 describe('audit-log: APPEND-ONLY invariant', () => {
   it('assigns a monotonically increasing seq to each record', async () => {
     const a = await recordAuditEvent({ eventType: 'spawn', source: 'cockpit' })
-    const b = await recordAuditEvent({ eventType: 'approval', source: 'cockpit' })
+    const b = await recordAuditEvent({
+      eventType: 'approval',
+      source: 'cockpit',
+      controlState: { gateType: 'hard', decisionMaker: 'human' },
+    })
     const c = await recordAuditEvent({ eventType: 'merge', source: 'cockpit' })
     expect(a.seq).toBe(1)
     expect(b.seq).toBe(2)
@@ -108,7 +190,12 @@ describe('audit-log: APPEND-ONLY invariant', () => {
   it('NEVER mutates or truncates prior lines — byte prefix is stable as records are appended', async () => {
     await recordAuditEvent({ eventType: 'spawn', source: 'cockpit', sessionId: 'A' })
     const after1 = fs.readFileSync(logPath, 'utf-8')
-    await recordAuditEvent({ eventType: 'approval', source: 'cockpit', sessionId: 'B' })
+    await recordAuditEvent({
+      eventType: 'approval',
+      source: 'cockpit',
+      sessionId: 'B',
+      controlState: { gateType: 'hard', decisionMaker: 'human' },
+    })
     const after2 = fs.readFileSync(logPath, 'utf-8')
     // The full content after the first write is a byte-exact PREFIX of the content
     // after the second write — proof no earlier byte was rewritten or truncated.

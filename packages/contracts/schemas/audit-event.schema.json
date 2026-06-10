@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mission-control.dev/schemas/audit-event.schema.json",
   "title": "AuditEvent",
-  "description": "One record in the append-only audit log: a durable, after-the-fact account of a consequential action the oversight dashboard orchestrated — an agent spawn, a human approval decision, or a branch merge. The cockpit is the SOLE writer (one append-only JSONL log via the existing atomic-write helper, ADR-0004 local-JSON, no DB); it records both the events it performs directly and the rails-mediated ones it drives via the control-plane CLI shell-out. KNOWN LIMITATION: actions taken against the rails CLI directly (outside the dashboard) are not captured by this log yet — there is no second writer this phase. Permissive (additionalProperties:true) so emitters can attach event-specific detail under `payload` without a schema bump.",
+  "description": "One record in the append-only audit log: a durable account of a consequential action the oversight dashboard orchestrated — an agent spawn, a human approval decision, or a branch merge. The cockpit is the SOLE writer (one append-only JSONL log via the existing atomic-write helper, ADR-0004 local-JSON, no DB); it records both the events it performs directly and the rails-mediated ones it drives via the control-plane CLI shell-out. v9 adds `controlState` — the runtime-governance record of WHICH guardrails were in force, whether the gate was blocking, and who decided — REQUIRED on 'approval' events (see the conditional below) so an approval can never be recorded without its control context. KNOWN LIMITATION: actions taken against the rails CLI directly (outside the dashboard) are not captured by this log yet — there is no second writer this phase. Permissive (additionalProperties:true) so emitters can attach event-specific detail under `payload` without a schema bump.",
   "type": "object",
   "required": ["schemaVersion", "ts", "eventType", "source"],
   "additionalProperties": true,
@@ -54,10 +54,57 @@
       "type": ["string", "null"],
       "description": "An id that ties related events together across surfaces (e.g. a request that triggers a spawn then an approval then a merge), so a multi-step flow can be reconstructed. Null when standalone."
     },
+    "controlState": {
+      "type": ["object", "null"],
+      "description": "The control state in force WHEN the event occurred — the runtime-governance record that makes the log auditable as enforcement, not just observation: which guardrails were active, whether the gate blocked execution, and who decided. Required (with gateType + decisionMaker) on 'approval' events via the conditional below; optional but encouraged elsewhere (e.g. a spawn records the policies the agent was launched under). Fields the emitter does not know are omitted or null — NEVER fabricated.",
+      "additionalProperties": true,
+      "properties": {
+        "gateType": {
+          "type": ["string", "null"],
+          "enum": ["hard", "soft", "policy", null],
+          "description": "How the control point behaved: 'hard' (execution was blocked until the decision), 'soft' (advisory — execution could proceed), or 'policy' (the decision changed the control configuration itself, e.g. a trust grant). Null/omitted when the event is not a control point."
+        },
+        "decisionMaker": {
+          "type": ["string", "null"],
+          "enum": ["human", "auto", null],
+          "description": "Who made the decision this event records: 'human' (an operator acted through the dashboard) or 'auto' (an automated policy/orchestrator step). Null/omitted when no decision was involved."
+        },
+        "policiesInForce": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The guardrails active at event time, as short stable identifiers (e.g. 'budget-cap:12', 'adversarial-verify:1x1', 'quarantine:read-only', 'worktree-isolation', 'trust-store:default-deny'). List only what was ACTUALLY in force — an empty list means 'none known', not 'none'."
+        },
+        "permissionMode": {
+          "type": ["string", "null"],
+          "description": "The session permission mode in force, when known (e.g. a guarded default vs an explicit skip). Null/omitted when not knowable at the call site."
+        },
+        "model": {
+          "type": ["string", "null"],
+          "description": "The model identifier active for the session, when known. Null/omitted when not knowable at the call site."
+        }
+      }
+    },
     "payload": {
       "type": "object",
       "additionalProperties": true,
       "description": "Event-specific detail. Permissive on purpose: emitters attach the extra fields a given eventType needs (e.g. cost, branch name, gate id) without requiring a schema-surface bump for each."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "eventType": { "const": "approval" } },
+        "required": ["eventType"]
+      },
+      "then": {
+        "required": ["controlState"],
+        "properties": {
+          "controlState": {
+            "type": "object",
+            "required": ["gateType", "decisionMaker"]
+          }
+        }
+      }
+    }
+  ]
 }

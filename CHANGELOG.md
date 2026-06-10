@@ -10,11 +10,30 @@ the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
 
 <!-- New entries land here. ONLY S7 (E-release-eng) flips the heading below. -->
 
-## [0.4.0] - 2026-06-08
+### Audit log v2 — control-state capture (runtime governance)
 
-> The `0.4.0 - 2026-06-08` date is a placeholder until a human cuts the tag.
-> The release is cut by tagging `v0.4.0` (see `RELEASING.md`); update this date
-> to the actual cut date at that time.
+**Changed**
+
+- **`audit-event` schema v9 (BREAKING on the contracts axis, sidecar 8 → 9):**
+  every audit record can now carry `controlState` — which guardrails were in
+  force (`policiesInForce`), whether the gate blocked execution
+  (`gateType: hard | soft | policy`), who decided (`decisionMaker: human |
+  auto`), and the `permissionMode`/`model` snapshot when knowable. An
+  `approval` event REQUIRES it (schema conditional + the writer's fail-closed
+  check, both derived from the same schema so they cannot drift) — an approval
+  is never recorded without its control context. All seven emit sites
+  (front-door spawn, tool approval, trust grant, fleet child spawn / synthesis
+  / tool + harness escalations) now record their real control state; unknown
+  fields stay null — never fabricated.
+
+**Decisions**
+
+- **ADR-0006 amendment:** native Agent Teams absorb the fan-out primitive;
+  Fleet's identity is the governance layer (gates / verify / budget /
+  escalation / audit). `strategy: fleet` gains a native-team dispatch substrate
+  when teams exit experimental; no new orchestration engine.
+
+## [0.4.0] - 2026-06-09
 
 ### Phase 4 — Standard (L3)
 

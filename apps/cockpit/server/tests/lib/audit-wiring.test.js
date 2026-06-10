@@ -42,7 +42,7 @@ function validateAgainstContract(event) {
   // Stamp them here so the merged record is what would actually be written, then
   // validate THAT against the contract — proving the call site produces a valid
   // record once the writer adds its fields.
-  const full = { schemaVersion: 8, ts: new Date().toISOString(), seq: 1, ...event }
+  const full = { schemaVersion: 9, ts: new Date().toISOString(), seq: 1, ...event }
   const ok = ajv.compile(schema)(full)
   return { ok, full }
 }
@@ -83,6 +83,9 @@ describe('approval wiring — trust grant (routes/trust.js)', () => {
     expect(ev.source).toBe('cockpit')
     expect(ev.decision).toBe('approved')
     expect(ev.subjectId).toBe(CWD)
+    // v9: a trust grant changes the control configuration itself.
+    expect(ev.controlState.gateType).toBe('policy')
+    expect(ev.controlState.decisionMaker).toBe('human')
     expect(validateAgainstContract(ev).ok).toBe(true)
   })
 
@@ -141,6 +144,9 @@ describe('approval wiring — tool-approval (routes/sessions.js)', () => {
     expect(ev.sessionId).toBe('sess-1')
     expect(ev.subjectId).toBe('appr-9')
     expect(ev.decision).toBe('approved')
+    // v9: the SDK tool approval is a HARD gate decided by a human.
+    expect(ev.controlState.gateType).toBe('hard')
+    expect(ev.controlState.decisionMaker).toBe('human')
     expect(validateAgainstContract(ev).ok).toBe(true)
   })
 
@@ -189,6 +195,10 @@ describe('approval wiring — tool-approval (routes/sessions.js)', () => {
     expect(spawnEvents).toHaveLength(1)
     expect(spawnEvents[0].source).toBe('cockpit')
     expect(spawnEvents[0].payload.cwd).toBe(CWD)
+    // v9: the front-door spawn records who launched it and under what mode —
+    // permissionMode stays null when the request carried none (never fabricated).
+    expect(spawnEvents[0].controlState.decisionMaker).toBe('human')
+    expect(spawnEvents[0].controlState.permissionMode).toBeNull()
     expect(validateAgainstContract(spawnEvents[0]).ok).toBe(true)
   })
 })

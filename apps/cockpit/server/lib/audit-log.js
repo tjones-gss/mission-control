@@ -59,6 +59,27 @@ const REQUIRED = Array.isArray(auditEventSchema.required) ? auditEventSchema.req
 const EVENT_TYPES = auditEventSchema.properties?.eventType?.enum || []
 const SOURCES = auditEventSchema.properties?.source?.enum || []
 
+// v9 controlState enums, read from the schema (null is the schema's "not a
+// control point" marker, not a writable enum member here).
+const CONTROL_PROPS = auditEventSchema.properties?.controlState?.properties || {}
+const GATE_TYPES = (CONTROL_PROPS.gateType?.enum || []).filter((v) => v !== null)
+const DECISION_MAKERS = (CONTROL_PROPS.decisionMaker?.enum || []).filter((v) => v !== null)
+
+// The schema's conditional requirements (the v9 allOf if/then blocks: an
+// 'approval' MUST carry controlState with gateType + decisionMaker). Read FROM
+// the schema so the writer's fail-closed check and the published contract are
+// the same rule — they cannot drift.
+const CONDITIONALS = Array.isArray(auditEventSchema.allOf) ? auditEventSchema.allOf : []
+
+function matchingConditionals(rec) {
+  return CONDITIONALS.filter((branch) => {
+    const ifProps = branch?.if?.properties || {}
+    return Object.entries(ifProps).every(
+      ([key, spec]) => spec && 'const' in spec && rec[key] === spec.const,
+    )
+  })
+}
+
 // Validate a fully-stamped record against the contract. Throws (fail closed) with
 // context on the first violation — an invalid event is NEVER written.
 function assertValid(rec) {
@@ -76,6 +97,45 @@ function assertValid(rec) {
     throw new Error(
       `audit event has unknown source "${rec.source}" (expected one of ${SOURCES.join(', ')})`,
     )
+  }
+  // Conditional requirements (v9): for each schema allOf branch whose `if`
+  // matches this record, enforce the branch's `then` — top-level required keys
+  // plus any nested controlState required keys.
+  for (const branch of matchingConditionals(rec)) {
+    const then = branch.then || {}
+    for (const key of then.required || []) {
+      if (rec[key] === undefined || rec[key] === null) {
+        throw new Error(
+          `audit event of type "${rec.eventType}" missing required field "${key}" (runtime-governance rule: an approval is never recorded without its control context)`,
+        )
+      }
+    }
+    const nestedRequired = then.properties?.controlState?.required || []
+    for (const key of nestedRequired) {
+      if (rec.controlState?.[key] === undefined || rec.controlState?.[key] === null) {
+        throw new Error(
+          `audit event of type "${rec.eventType}" missing required controlState.${key}`,
+        )
+      }
+    }
+  }
+  // controlState enums (when the field is present at all).
+  if (rec.controlState && typeof rec.controlState === 'object') {
+    const { gateType, decisionMaker } = rec.controlState
+    if (gateType !== undefined && gateType !== null && !GATE_TYPES.includes(gateType)) {
+      throw new Error(
+        `audit event has unknown controlState.gateType "${gateType}" (expected one of ${GATE_TYPES.join(', ')})`,
+      )
+    }
+    if (
+      decisionMaker !== undefined &&
+      decisionMaker !== null &&
+      !DECISION_MAKERS.includes(decisionMaker)
+    ) {
+      throw new Error(
+        `audit event has unknown controlState.decisionMaker "${decisionMaker}" (expected one of ${DECISION_MAKERS.join(', ')})`,
+      )
+    }
   }
 }
 
