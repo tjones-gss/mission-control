@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Mission Control is a live cockpit for Claude Code agents. It has two independent halves — know which one you're touching:
+Mission Control is a live cockpit for Claude Code agents — see and steer every running session in one place. It has two independent halves — know which one you're touching:
 
 - **`apps/cockpit`** — "the window." Node.js + React app (Express + Vite). Reads Claude Code's `~/.claude` directly. No harness required to run.
 - **`packages/harness`** — "the rails." Python. Opt-in, per-project guardrail layer. The cockpit shells out to it; it does not import it.
