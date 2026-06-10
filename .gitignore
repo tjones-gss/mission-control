@@ -38,6 +38,10 @@ apps/cockpit/server/data/fleet/
 apps/cockpit/server/data/fleet-templates/
 apps/cockpit/server/data/audit/
 
+# Exported OpenAPI spec (Phase 4 / C-openapi) — a CI build artifact written by
+# `npm run openapi:export`, not source. Regenerated from the @openapi JSDoc.
+apps/cockpit/server/openapi.json
+
 # Council / premortem analysis artifacts — local, revisitable reports (not source).
 # The brace form council-*.{md,html,json} does NOT work in .gitignore (no brace
 # expansion), so enumerate the extensions explicitly.

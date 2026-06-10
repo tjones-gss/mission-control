@@ -33,6 +33,46 @@ the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
   escalation / audit). `strategy: fleet` gains a native-team dispatch substrate
   when teams exit experimental; no new orchestration engine.
 
+### UI/UX redesign — slice 1 (Calm-console themes + "Needs you" triage)
+
+First slices of the Oversight redesign (a Claude Design handoff), ruled
+**ship-narrow-slice / advances-rails** by a council (reports
+`council-mission-control-20260608.*`, `council-redesign-20260608.*`, gitignored).
+TDD-first; client suite **567** green, lint + `vite build` pass. A redesign track
+on top of the 0.4.0 / L3 ladder, merged after the `v0.4.0` tag.
+
+**Added**
+
+- **Calm-console token layer** — semantic `--mc-*` CSS variables in
+  `apps/cockpit/client/src/index.css`. `:root` reproduces the historical
+  gray-950/indigo palette exactly (zero regression); `[data-theme=calm|tron|warm]`
+  override the same names; `body` is driven by the tokens.
+- **Theme system** — a `useTheme` hook (`hooks/useTheme.js`, persists
+  `oversight.theme`) and an **Appearance** tab in Settings (now the default tab),
+  offering four themes (Classic / Calm / Tron / Warm gold).
+- **"Needs you" triage queue** (`components/TriageView/TriageView.jsx`) — the new
+  **default Agents view** (Triage · Board · Detail toggle; Kanban preserved).
+  Attention-ranks the real session list needs→running→calm, with inline one-tap
+  approve/reply reusing the existing `QuickActions` (`POST /api/sessions/:id/message`)
+  write path. No new backend; no fabricated risk flag (a documented seam is left for
+  when the session-list contract carries `riskLevel`).
+
+**Decisions**
+
+- **IA ruling (in `SCOPE.md`, not a standalone ADR):** Runs stays the one
+  orchestration surface; "Pipeline" is a mode _inside_ it, never a sibling tab;
+  `Missions`/`Conductor` collapse into the Pipeline vocabulary.
+
+**Deferred — gated behind the adoption tripwire (per two consecutive councils)**
+
+- The plain-language Pipeline **Composer** (the prototype's was a `setTimeout`+regex
+  mock with no backend).
+- The read-only **Pipeline spine** — blocked on a **contracts-first** change:
+  `harness status --json` must emit the ordered phase list (it currently emits only
+  the active phase/gate) before the cockpit can render the Research→Ship spine.
+- Any broad **multi-component reskin** — the token layer is meant to cascade instead
+  (next step: remap `tailwind.config.js` colors to `--mc-*`).
+
 ## [0.4.0] - 2026-06-09
 
 ### Phase 4 — Standard (L3)

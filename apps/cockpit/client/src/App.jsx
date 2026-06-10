@@ -7,6 +7,7 @@ import {
   HelpCircle,
   LayoutGrid,
   List,
+  Inbox,
   ArrowLeft,
   Bell,
   Settings,
@@ -34,6 +35,7 @@ import { TeamsPanel } from './components/TeamsPanel/TeamsPanel.jsx'
 import { HistoryTab } from './components/HistoryTab/HistoryTab.jsx'
 import { RunsTab } from './components/RunsTab/RunsTab.jsx'
 import { FleetTab } from './components/FleetTab/FleetTab.jsx'
+import { TriageView } from './components/TriageView/TriageView.jsx'
 import { FeatureBrief } from './components/FeatureBrief/FeatureBrief.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
@@ -46,6 +48,7 @@ import { NewSessionForm } from './components/NewSessionForm.jsx'
 import { WelcomeHero } from './components/WelcomeHero.jsx'
 import { ParserDegradedBanner } from './components/ParserDegradedBanner.jsx'
 import { projectLabel } from './utils/session.js'
+import { useTheme } from './hooks/useTheme.js'
 
 // Progressive disclosure: the core loop is always visible; power surfaces live
 // one "Advanced" click away. This matches the repo's stated philosophy (the
@@ -115,6 +118,9 @@ async function sendQuickReply(sessionId, message) {
 }
 
 export default function App() {
+  // Apply the persisted visual theme to <html> on boot (no-op for the default
+  // 'classic' look). The Appearance settings tab drives this.
+  useTheme()
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [activeTab, setActiveTab] = useState('agents')
   const [showAdvanced, setShowAdvanced] = useState(readShowAdvanced)
@@ -152,7 +158,7 @@ export default function App() {
     }
     setActiveTab(id)
   }, [])
-  const [agentView, setAgentView] = useState('board') // 'board' | 'detail'
+  const [agentView, setAgentView] = useState('triage') // 'triage' | 'board' | 'detail'
   const [showLegend, setShowLegend] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
@@ -618,6 +624,13 @@ export default function App() {
                 )}
                 <div className="ml-auto flex gap-1">
                   <button
+                    onClick={() => setAgentView('triage')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${agentView === 'triage' ? 'bg-gray-800 text-gray-200' : 'text-gray-600 hover:text-gray-400'}`}
+                    title="Needs-you triage queue"
+                  >
+                    <Inbox size={11} /> Triage
+                  </button>
+                  <button
                     onClick={() => setAgentView('board')}
                     className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${agentView === 'board' ? 'bg-gray-800 text-gray-200' : 'text-gray-600 hover:text-gray-400'}`}
                     title="Kanban board"
@@ -633,7 +646,17 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              {agentView === 'board' ? (
+              {agentView === 'triage' && (
+                <TriageView
+                  sessions={sessions || []}
+                  selectedId={selectedSessionId}
+                  onSelect={(id) => {
+                    setSelectedSessionId(id)
+                    setAgentView('detail')
+                  }}
+                />
+              )}
+              {agentView === 'board' && (
                 <KanbanBoard
                   sessions={sessions || []}
                   selectedId={selectedSessionId}
@@ -642,7 +665,8 @@ export default function App() {
                     setAgentView('detail')
                   }}
                 />
-              ) : (
+              )}
+              {agentView === 'detail' && (
                 <AgentTree
                   session={selectedSession}
                   sessionUpdateVersion={sessionsVersion}

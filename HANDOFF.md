@@ -1,11 +1,60 @@
-# Handoff — `feature/harness-scaffold`
+# Handoff — Mission Control
 
-The centerpiece for the next session. Phase 0 (decisions/docs), Phase 1
-(hardening), Phase 2 (trustworthy loops + unified spine, L1), Phase 3
-(adoptable, L2), and now **Phase 4 (standard, L3)** are complete. The three
+The centerpiece for the next session. The **L0–L3 hardening ladder is complete**:
+Phase 0 (decisions/docs), Phase 1 (hardening), Phase 2 (trustworthy loops + unified
+spine, L1), Phase 3 (adoptable, L2), and Phase 4 (standard, L3). The three
 reassessment-gate decisions were resolved (see §4) and Phases 2–4 shipped against
-them. Read this first.
+them. **On top of that ladder, a UI/UX redesign track is now in flight** (see the
+redesign block immediately below). Read this first.
 
+> **UI/UX redesign — slice 1 + partial slice 2 (this session · branch
+> `feature/phase-4-l3-standard` · UNCOMMITTED).** A Claude Design handoff
+> (`.design-handoff/`, gitignored) was processed and two councils ruled on it:
+> a product review (**engineering 8 / market 4 / execution 7**) and a redesign
+> ruling (**ship-narrow-slice / advances-rails**). Reports:
+> `council-mission-control-20260608.*` and `council-redesign-20260608.*` (gitignored).
+> The ruling in one line: the redesign is moat-aligned **only because it surfaces the
+> rails** (the guardrailed Pipeline) as the UI's center of gravity — so build the
+> token layer + the triage queue now, and gate the plain-language Composer and any
+> broad reskin behind the adoption tripwire.
+>
+> **Shipped — TDD-first; client suite 567 green (was 545), lint + `vite build` pass:**
+> - **Calm-console token layer** — semantic `--mc-*` CSS variables in
+>   `apps/cockpit/client/src/index.css`. `:root` reproduces today's gray-950/indigo
+>   palette EXACTLY (zero regression); `[data-theme=calm|tron|warm]` override; `body`
+>   reads the tokens.
+> - **Theme system** — `useTheme` hook (`hooks/useTheme.js`, persists
+>   `oversight.theme`) + an **Appearance** tab (`components/settings/AppearanceTab.jsx`,
+>   now the default Settings tab); four themes Classic/Calm/Tron/Warm.
+> - **"Needs you" triage queue** (`components/TriageView/TriageView.jsx`) — the new
+>   **default Agents view** (Triage · Board · Detail toggle; Kanban preserved).
+>   Attention-ranked needs→running→calm over the REAL session list; inline one-tap
+>   approve/reply reuses the existing `QuickActions` (`POST /api/sessions/:id/message`)
+>   write path. No new backend; no fabricated "destructive" flag (the session-list
+>   data carries no risk level — a documented seam is left for when it does).
+>
+> **IA ruling (lightweight — recorded in `SCOPE.md`, deliberately NOT a heavy ADR):**
+> Runs stays the ONE orchestration surface; **"Pipeline" is a mode inside Runs, never
+> a sibling tab**; `Missions`/`Conductor` are legacy mode labels collapsing into it.
+> (Ratifies ADR-0006 "pipeline = spine" + CLAUDE.md "Runs unifies the modes." The
+> brief's "replace Runs" wording is wrong: Runs is the surface; the Missions/Conductor
+> *split* is what's retired.)
+>
+> **Open next-steps:**
+> 1. **Make themes cascade** — remap the palette in `client/tailwind.config.js` so
+>    existing `bg-gray-*`/`indigo` utilities resolve through `--mc-*`. Today only
+>    `body` + `TriageView` are tokenized, so a theme switch is visually subtle.
+> 2. **Fold Dispatch into triage** — collapse `DispatchDrawer.jsx`/`DispatchSignal.jsx`
+>    into a multi-select SelectionBar on the triage queue (retires a surface →
+>    freeze-rule win); the brief's Phase-1 remainder.
+> 3. **Read-only Pipeline spine (slice 2) is BLOCKED on a contracts-first change:**
+>    `harness status --json` emits only the *current* `pipeline.{phase,gate,next_phase}`,
+>    NOT the ordered phase list. The harness must emit the phase list (contracts-first)
+>    before the cockpit can render the Research→Ship spine. Do not parse YAML in the
+>    cockpit.
+> 4. **Adoption tripwire still UNFIRED** — broad redesign (Composer, 52-component
+>    reskin) stays gated until one external human retains the rails a week.
+>
 > **Phase 4 done (this session) — L3 standard, branch `feature/phase-4-l3-standard`.**
 > Closed the L3 release gate across five workstreams: (A) dropped the cross-vendor
 > VIEWING label (docs + grep-guard); (B) published the versioned vendor-neutral
@@ -70,14 +119,22 @@ them. Read this first.
 
 ## 1. Current state
 
-- **Branch:** `feature/harness-scaffold` · **PR:** #5 · 14 commits ahead of `main`.
-- **What's committed:** Phase 0 (ADRs 0004–0007, `SCOPE.md`, `DOD-LADDER.md`,
-  `.prettierrc` `endOfLine:"auto"`) and Phase 1 items 1a–1g, all TDD-first, every
-  commit through the pre-commit gate (lint + tests + secret scan).
-- **Suites — all green:** **991 server** / **529 client** (Vitest) · **143 python**
-  (1 skip, pytest) · **2 gated e2e** (real-subprocess, `RUN_E2E=1`).
+- **Branch:** `feature/phase-4-l3-standard`. Phases 0–4 (L0–L3) are **committed**
+  through `606f7ed`; the UI/UX redesign slice above is **uncommitted** on top.
+- **What's committed:** the full L0–L3 ladder — Phase 0 (ADRs 0004–0007, `SCOPE.md`,
+  `DOD-LADDER.md`), Phase 1 hardening (1a–1g), Phase 2 (consumed spine, L1), Phase 3
+  (adoptable, L2), Phase 4 (standard, L3: contract spec, OpenAPI, audit/OTel, release
+  eng) — all TDD-first, every commit through the pre-commit gate.
+- **What's uncommitted (redesign slice):** the `--mc-*` token layer, `useTheme` +
+  `AppearanceTab`, and `TriageView` (+ tests) — see the redesign block above.
+- **Suites — all green:** **client 567** (Vitest; +22 from the redesign slice — the
+  only suite this slice touched). Server + Python suites are unchanged by the redesign
+  (client-only) and green at the committed L3 state. Lint (prettier) + `vite build`
+  pass.
 - **Contract boundary intact:** the cockpit still shells out to `harness status
-  --json` and renders the structured output — it never reparses harness YAML.
+  --json` and renders the structured output — it never reparses harness YAML. (This
+  is exactly why the read-only Pipeline spine is blocked: the phase list must be
+  *emitted* by the harness, not parsed in the cockpit — see redesign next-step 3.)
 
 ## 2. What shipped
 
