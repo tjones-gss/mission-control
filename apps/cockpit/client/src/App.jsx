@@ -42,6 +42,7 @@ import { LiveFeed } from './components/LiveFeed.jsx'
 import { LegendModal } from './components/LegendModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
 import { ShortcutHelpOverlay } from './components/ShortcutHelpOverlay.jsx'
+import { CommandPalette } from './components/CommandPalette.jsx'
 import { DispatchDrawer, DispatchDrawerHandle } from './components/DispatchDrawer.jsx'
 import { DispatchSignal } from './components/DispatchSignal.jsx'
 import { NewSessionForm } from './components/NewSessionForm.jsx'
@@ -163,6 +164,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [showDispatch, setShowDispatch] = useState(false)
+  const [showPalette, setShowPalette] = useState(false)
   // Dispatch signal animation: { from: {x,y}, to: {x,y}, sessionId } or null
   const [dispatchSignal, setDispatchSignal] = useState(null)
   const [events, setEvents] = useState([])
@@ -360,6 +362,7 @@ export default function App() {
   const selectedSessionRef = useRef(selectedSession)
   const showSettingsRef = useRef(showSettings)
   const showLegendRef = useRef(showLegend)
+  const showPaletteRef = useRef(showPalette)
   useEffect(() => {
     sessionsRef.current = sessions
   }, [sessions])
@@ -375,6 +378,9 @@ export default function App() {
   useEffect(() => {
     showLegendRef.current = showLegend
   }, [showLegend])
+  useEffect(() => {
+    showPaletteRef.current = showPalette
+  }, [showPalette])
 
   const shortcutHandlers = useMemo(
     () => ({
@@ -394,7 +400,8 @@ export default function App() {
       },
       openDetail: () => setAgentView('detail'),
       backToBoard: () => {
-        if (showSettingsRef.current) setShowSettings(false)
+        if (showPaletteRef.current) setShowPalette(false)
+        else if (showSettingsRef.current) setShowSettings(false)
         else if (showLegendRef.current) setShowLegend(false)
         else setAgentView('board')
       },
@@ -426,6 +433,7 @@ export default function App() {
         if (id) muteSession(id)
       },
       toggleDispatch: () => setShowDispatch((prev) => !prev),
+      commandPalette: () => setShowPalette((prev) => !prev),
     }),
     [muteSession],
   ) // stable — only depends on muteSession which is a useCallback
@@ -749,6 +757,18 @@ export default function App() {
         </aside>
       </div>
 
+      <CommandPalette
+        open={showPalette}
+        onClose={() => setShowPalette(false)}
+        sessions={sessions}
+        onNavigate={(sessionId) => {
+          // A palette hit deep-links into the Agents/Inspect detail view for
+          // that session (same jump as History search and Fleet cards).
+          setActiveTab('agents')
+          setSelectedSessionId(sessionId)
+          setAgentView('detail')
+        }}
+      />
       {showLegend && <LegendModal onClose={() => setShowLegend(false)} />}
       {showSettings && (
         <SettingsModal

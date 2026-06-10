@@ -1,0 +1,240 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
+import { server } from '../mocks/server.js'
+import { CommandPalette } from '../../components/CommandPalette.jsx'
+
+// ─── App-level wiring (Ctrl+K opens, Esc closes) ────────────────────────────
+// App is heavy (SSE, notifications, sound, streaming) so those hooks are
+// stubbed — but the REAL useKeyboardShortcuts stays so the Ctrl+K → palette
+// wiring is exercised end to end.
+const h = vi.hoisted(() => ({ sessions: [] }))
+
+vi.mock('../../hooks/useApi.js', () => ({
+  useApi: (url) => ({
+    data: url === '/api/sessions' ? h.sessions : null,
+    loading: false,
+    error: null,
+    refetch: () => {},
+  }),
+}))
+vi.mock('../../hooks/useSSE.js', () => ({ useSSE: () => ({ connected: true }) }))
+vi.mock('../../hooks/useNotifications.js', () => ({
+  useNotifications: () => ({
+    requestPermission: () => {},
+    muteSession: () => {},
+    mutedIds: { current: new Set() },
+  }),
+  getNotificationPrefs: () => ({ sound: false, desktop: false }),
+}))
+vi.mock('../../hooks/useSound.js', () => ({ useSound: () => ({ play: () => {} }) }))
+vi.mock('../../hooks/useStreamingSession.js', () => ({ useStreamingSession: () => ({}) }))
+
+import App from '../../App.jsx'
+
+const SESSIONS = [
+  {
+    sessionId: 'sess-local',
+    slug: 'deploy-fixes',
+    cwd: 'C:/work/mission-control',
+    displayName: null,
+    isActive: false,
+    needsInput: false,
+    lastModified: Date.now() - 60_000,
+  },
+  {
+    sessionId: 'sess-other',
+    slug: 'unrelated-work',
+    cwd: 'C:/work/other-project',
+    displayName: null,
+    isActive: false,
+    needsInput: false,
+    lastModified: Date.now() - 120_000,
+  },
+]
+
+const MESSAGE_HITS = [
+  {
+    sessionId: 'sess-1',
+    idx: 4,
+    role: 'assistant',
+    ts: '2026-06-01T00:00:05Z',
+    cwd: 'C:/work/mission-control',
+    docType: 'message',
+    snippet: 'fixed the <mark>deploy</mark> pipeline by pinning node',
+    rank: -1.2,
+    lastModified: Date.now() - 1000,
+    slug: 'fix-deploy',
+    model: null,
+  },
+]
+
+function mockSearch(results = MESSAGE_HITS) {
+  const calls = []
+  server.use(
+    http.get('/api/search', ({ request }) => {
+      calls.push(new URL(request.url))
+      return HttpResponse.json({ query: 'deploy', count: results.length, results })
+    }),
+  )
+  return calls
+}
+
+beforeEach(() => {
+  localStorage.clear()
+})
+
+describe('CommandPalette — open/close via keyboard shortcut (App wiring)', () => {
+  it('opens on Ctrl+K and closes on Escape', async () => {
+    h.sessions = SESSIONS
+    render(<App />)
+
+    expect(screen.queryByRole('dialog', { name: /command palette/i })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true })
+    expect(screen.getByRole('dialog', { name: /command palette/i })).toBeInTheDocument()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /command palette/i })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('opens on Cmd+K (metaKey) too', () => {
+    h.sessions = SESSIONS
+    render(<App />)
+
+    fireEvent.keyDown(document.body, { key: 'k', metaKey: true })
+    expect(screen.getByRole('dialog', { name: /command palette/i })).toBeInTheDocument()
+  })
+})
+
+describe('CommandPalette — search', () => {
+  it('debounces rapid typing into a single /api/search call with the final query', async () => {
+    const calls = mockSearch()
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={() => {}} onClose={() => {}} />)
+
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: 'dep' } })
+    fireEvent.change(input, { target: { value: 'deplo' } })
+    fireEvent.change(input, { target: { value: 'deploy' } })
+
+    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1))
+    // Allow any straggler timers to flush — there must be none.
+    await new Promise((r) => setTimeout(r, 350))
+    expect(calls).toHaveLength(1)
+    expect(calls[0].searchParams.get('q')).toBe('deploy')
+  })
+
+  it('renders grouped results: matching sessions first, then message hits with snippets', async () => {
+    mockSearch()
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={() => {}} onClose={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+
+    await waitFor(() => expect(screen.getByText(/pipeline by pinning node/)).toBeInTheDocument())
+
+    // Group headers present
+    expect(screen.getByText('Sessions')).toBeInTheDocument()
+    expect(screen.getByText('Messages')).toBeInTheDocument()
+
+    // Sessions group comes first: the first option is the matching session
+    const options = screen.getAllByRole('option')
+    expect(options[0]).toHaveTextContent('deploy-fixes')
+    // Non-matching session is filtered out
+    expect(screen.queryByText('unrelated-work')).not.toBeInTheDocument()
+
+    // Snippet <mark> highlights render as real elements, never raw HTML text
+    expect(document.querySelectorAll('mark').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText(/<mark>/)).not.toBeInTheDocument()
+  })
+
+  it('surfaces the 503 hint when the search index is unavailable', async () => {
+    server.use(
+      http.get('/api/search', () =>
+        HttpResponse.json(
+          { error: 'Search index unavailable', hint: 'Delete cockpit.db and restart.' },
+          { status: 503 },
+        ),
+      ),
+    )
+    render(<CommandPalette open sessions={[]} onNavigate={() => {}} onClose={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+    await waitFor(() =>
+      expect(screen.getByText(/delete cockpit\.db and restart/i)).toBeInTheDocument(),
+    )
+  })
+})
+
+describe('CommandPalette — navigation', () => {
+  it('Enter navigates to the top (session) result and closes', async () => {
+    mockSearch()
+    const onNavigate = vi.fn()
+    const onClose = vi.fn()
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={onNavigate} onClose={onClose} />)
+
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: 'deploy' } })
+    await waitFor(() => expect(screen.getByText('deploy-fixes')).toBeInTheDocument())
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onNavigate).toHaveBeenCalledWith('sess-local')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('ArrowDown moves the selection before Enter', async () => {
+    mockSearch()
+    const onNavigate = vi.fn()
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={onNavigate} onClose={() => {}} />)
+
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: 'deploy' } })
+    await waitFor(() => expect(screen.getByText(/pipeline by pinning node/)).toBeInTheDocument())
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onNavigate).toHaveBeenCalledWith('sess-1')
+  })
+
+  it('clicking a message hit navigates to its session and closes', async () => {
+    mockSearch()
+    const onNavigate = vi.fn()
+    const onClose = vi.fn()
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={onNavigate} onClose={onClose} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+    await waitFor(() => expect(screen.getByText(/pipeline by pinning node/)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText(/pipeline by pinning node/).closest('[role="option"]'))
+    expect(onNavigate).toHaveBeenCalledWith('sess-1')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('Escape calls onClose', () => {
+    const onClose = vi.fn()
+    render(<CommandPalette open sessions={[]} onNavigate={() => {}} onClose={onClose} />)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalled()
+  })
+})
+
+describe('CommandPalette — states', () => {
+  it('renders nothing when closed', () => {
+    render(<CommandPalette open={false} sessions={[]} onNavigate={() => {}} onClose={() => {}} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows an idle prompt when the query is empty', () => {
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={() => {}} onClose={() => {}} />)
+    expect(screen.getByText(/search sessions and everything/i)).toBeInTheDocument()
+  })
+
+  it('shows an empty state when there are no hits anywhere', async () => {
+    mockSearch([])
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={() => {}} onClose={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'zebra' } })
+    await waitFor(() => expect(screen.getByText(/no matches/i)).toBeInTheDocument())
+  })
+})

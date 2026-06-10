@@ -19,6 +19,7 @@ const DEFAULT_SHORTCUTS = {
   toggleSettings: ',',
   toggleMute: 'm',
   toggleDispatch: 'd',
+  commandPalette: 'Ctrl+k',
 }
 
 const ACTION_LABELS = {
@@ -38,6 +39,7 @@ const ACTION_LABELS = {
   toggleSettings: 'Open settings',
   toggleMute: 'Mute session',
   toggleDispatch: 'Open dispatch manager',
+  commandPalette: 'Open command palette',
 }
 
 function loadShortcuts() {
@@ -62,7 +64,10 @@ function keyMatchesBinding(e, binding) {
   const needShift = parts.includes('Shift')
   const needAlt = parts.includes('Alt')
 
-  if (needCtrl !== e.ctrlKey) return false
+  // Cmd (metaKey) counts as the Ctrl modifier so 'Ctrl+k' bindings work as
+  // ⌘K on macOS. This also stops unmodified bindings (e.g. plain 'j') from
+  // firing while Cmd/Ctrl is held.
+  if (needCtrl !== (e.ctrlKey || e.metaKey)) return false
   if (needAlt !== e.altKey) return false
 
   // For printable characters that require Shift to type (e.g. '?', '!', '+'),
@@ -82,11 +87,12 @@ export function useKeyboardShortcuts(handlers) {
 
   useEffect(() => {
     const onKeyDown = (e) => {
-      // Ignore when typing in inputs (except Escape)
+      // Ignore when typing in inputs — except Escape and Ctrl/Cmd-modified
+      // combos (e.g. Ctrl+K toggles the command palette even mid-typing).
       const tag = e.target.tagName
       const isEditable =
         tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable
-      if (isEditable && e.key !== 'Escape') return
+      if (isEditable && e.key !== 'Escape' && !e.ctrlKey && !e.metaKey) return
 
       for (const [action, binding] of Object.entries(shortcuts)) {
         if (keyMatchesBinding(e, binding)) {
