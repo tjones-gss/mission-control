@@ -6,6 +6,7 @@ import os from 'os'
 import { fileURLToPath } from 'url'
 import multer from 'multer'
 import { getAllSessions, getSessionById } from '../parsers/sessions.js'
+import { worstClassification } from '../utils/commandClassifier.js'
 import { getConfigForSession } from '../parsers/config.js'
 import { getSessionMessages } from '../parsers/messages.js'
 import { getMemoryForSession } from '../parsers/memory.js'
@@ -281,11 +282,35 @@ export function _resetSessionsCache() {
   sessionsCache = { data: null, expiresAt: 0 }
 }
 
+// Risk-typed approvals: join the live in-memory PTY approval state onto a
+// stateless JSONL-derived session summary. riskLevel is the WORST pending
+// classification (null when none pending / not classified — never fabricated),
+// and an unresolved approval forces needsInput — a blocked tool call IS
+// "waiting on you" even though the file-based heuristic can't see it.
+function withLiveApprovalRisk(summary) {
+  const status = getQueryStatus(summary.sessionId) || { pendingApprovals: [] }
+  const pending = Array.isArray(status.pendingApprovals) ? status.pendingApprovals : []
+  const worst = worstClassification(pending.map((a) => a.riskLevel).filter(Boolean))
+  const worstApproval = worst ? pending.find((a) => a.riskLevel === worst) : null
+  return {
+    ...summary,
+    riskLevel: worst ?? null,
+    riskDescription: worstApproval?.riskDescription ?? null,
+    pendingApprovalCount: pending.length,
+    needsInput: Boolean(summary.needsInput) || pending.length > 0,
+  }
+}
+
 /**
  * @openapi
  * /api/sessions:
  *   get:
- *     summary: List discovered agent sessions (enriched with display names).
+ *     summary: List discovered agent sessions (enriched with display names + live-approval risk).
+ *     description: >-
+ *       Each summary carries riskLevel/riskDescription — the WORST pending
+ *       tool-approval classification (SAFE_READONLY | UNKNOWN | REQUIRES_REVIEW |
+ *       CODE_EXECUTION | DESTRUCTIVE) or null when nothing is pending —
+ *       plus pendingApprovalCount; an unresolved approval forces needsInput true.
  *     tags: [Sessions]
  *     responses:
  *       200:
@@ -295,10 +320,12 @@ router.get('/', async (req, res, next) => {
   try {
     const sessions = getCachedSessions()
     const names = await loadSessionNames()
-    const enriched = sessions.map((s) => ({
-      ...s,
-      displayName: names[s.sessionId] || null,
-    }))
+    const enriched = sessions.map((s) =>
+      withLiveApprovalRisk({
+        ...s,
+        displayName: names[s.sessionId] || null,
+      }),
+    )
     res.json(enriched)
   } catch (err) {
     next(err)
@@ -326,7 +353,7 @@ router.get('/:sessionId', async (req, res) => {
   const session = getSessionById(req.params.sessionId)
   if (!session) return res.status(404).json({ error: 'Session not found' })
   const names = await loadSessionNames()
-  res.json({ ...session, displayName: names[session.sessionId] || null })
+  res.json(withLiveApprovalRisk({ ...session, displayName: names[session.sessionId] || null }))
 })
 
 router.get('/:sessionId/messages', (req, res) => {
@@ -851,13 +878,18 @@ router.post('/:sessionId/tool-approval', (req, res) => {
     decision: decision === 'allow' ? 'approved' : 'denied',
     outcome: 'succeeded',
     // v9 controlState: the SDK tool approval is a HARD gate — the tool call was
-    // blocked until this human decision resolved it.
+    // blocked until this human decision resolved it. resolveApproval returns the
+    // approval itself, so the decision's risk classification (when one was
+    // computed at detection time) rides the audit record — never fabricated.
     controlState: {
       gateType: 'hard',
       decisionMaker: 'human',
       policiesInForce: ['tool-approval-gate'],
     },
-    payload: { kind: 'tool_approval' },
+    payload: {
+      kind: 'tool_approval',
+      riskLevel: (typeof resolved === 'object' && resolved?.riskLevel) || null,
+    },
   })
 
   res.json({ ok: true })

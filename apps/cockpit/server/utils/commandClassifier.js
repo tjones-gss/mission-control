@@ -271,6 +271,25 @@ export function classify(command) {
   return buildResult(worst, specificDesc)
 }
 
+/**
+ * Pick the worst classification from a list of classification strings
+ * (by SEVERITY order). Returns null for an empty/no-match list.
+ * @param {string[]} classifications
+ * @returns {string|null}
+ */
+export function worstClassification(classifications) {
+  let worst = null
+  let worstIdx = -1
+  for (const c of classifications || []) {
+    const idx = SEVERITY.indexOf(c)
+    if (idx > worstIdx) {
+      worstIdx = idx
+      worst = c
+    }
+  }
+  return worst
+}
+
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
 function buildResult(classification, specificDescription) {

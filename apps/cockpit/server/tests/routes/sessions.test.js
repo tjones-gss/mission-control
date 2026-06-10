@@ -127,12 +127,22 @@ beforeEach(() => {
 // ─── GET / ──────────────────────────────────────────────────────────────────
 
 describe('GET /', () => {
-  it('returns getAllSessions() result with displayName', async () => {
+  it('returns getAllSessions() result with displayName + live-approval risk fields', async () => {
     const sessions = [{ id: 'abc', messages: [] }]
     getAllSessions.mockReturnValue(sessions)
     const res = await request(app).get('/')
     expect(res.status).toBe(200)
-    expect(res.body).toEqual([{ id: 'abc', messages: [], displayName: null }])
+    expect(res.body).toEqual([
+      {
+        id: 'abc',
+        messages: [],
+        displayName: null,
+        riskLevel: null,
+        riskDescription: null,
+        pendingApprovalCount: 0,
+        needsInput: false,
+      },
+    ])
   })
 
   it('returns empty array when no sessions', async () => {
@@ -140,6 +150,47 @@ describe('GET /', () => {
     const res = await request(app).get('/')
     expect(res.status).toBe(200)
     expect(res.body).toEqual([])
+  })
+
+  // Risk-typed approvals: a session with a live pending approval surfaces the
+  // WORST pending risk on the session summary, and an unresolved approval IS
+  // "needs you" — needsInput flips true even though the JSONL heuristic
+  // (stateless, file-based) cannot see the in-memory PTY approval.
+  it('surfaces the worst pending-approval risk + forces needsInput on the summary', async () => {
+    getAllSessions.mockReturnValue([{ sessionId: 'sess-risky', needsInput: false }])
+    getQueryStatus.mockReturnValue({
+      active: true,
+      pendingApprovals: [
+        { approvalId: 'a1', toolName: 'Bash', riskLevel: 'CODE_EXECUTION', riskDescription: 'x' },
+        {
+          approvalId: 'a2',
+          toolName: 'Bash',
+          riskLevel: 'DESTRUCTIVE',
+          riskDescription: 'Recursive force remove',
+        },
+      ],
+    })
+    const res = await request(app).get('/')
+    expect(res.status).toBe(200)
+    expect(res.body[0]).toMatchObject({
+      sessionId: 'sess-risky',
+      riskLevel: 'DESTRUCTIVE',
+      riskDescription: 'Recursive force remove',
+      pendingApprovalCount: 2,
+      needsInput: true,
+    })
+  })
+
+  it('keeps risk fields null for sessions with no pending approvals', async () => {
+    getAllSessions.mockReturnValue([{ sessionId: 'sess-calm', needsInput: true }])
+    getQueryStatus.mockReturnValue({ active: false, pendingApprovals: [] })
+    const res = await request(app).get('/')
+    expect(res.body[0]).toMatchObject({
+      riskLevel: null,
+      riskDescription: null,
+      pendingApprovalCount: 0,
+      needsInput: true,
+    })
   })
 })
 
@@ -153,12 +204,19 @@ describe('GET /:sessionId', () => {
     expect(res.body.error).toMatch(/session not found/i)
   })
 
-  it('200 with session data when found', async () => {
+  it('200 with session data when found (enriched with live-approval risk fields)', async () => {
     const session = { id: 'abc123', messages: [], active: false }
     getSessionById.mockReturnValue(session)
     const res = await request(app).get('/abc123')
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ ...session, displayName: null })
+    expect(res.body).toEqual({
+      ...session,
+      displayName: null,
+      riskLevel: null,
+      riskDescription: null,
+      pendingApprovalCount: 0,
+      needsInput: false,
+    })
   })
 })
 

@@ -10,12 +10,36 @@ import { formatCost } from '../../utils/cost.js'
 // to the real session list + the existing /api/sessions/:id/message write path
 // (via QuickActions) — no mock data, no new backend.
 //
-// Honesty note (council MEDIUM): per-tool risk (DESTRUCTIVE etc.) lives on
-// `streaming.pendingApprovals`, NOT on the session-list objects, so we do NOT
-// render a red "destructive" flag here from data we don't have. When the session
-// summary contract carries a riskLevel, gate the danger styling on it then.
+// Risk badge: the session summary now carries `riskLevel`/`riskDescription` —
+// the WORST live pending-approval classification, joined server-side from the
+// real PTY approval state (GET /api/sessions). null means "nothing classified",
+// so no badge renders — the danger styling is gated on REAL data only.
 
 const ONE_HOUR = 3_600_000
+
+// Display labels for the classifier's risk levels. SAFE_READONLY/UNKNOWN render
+// no badge — they are not attention signals.
+const RISK_BADGES = {
+  DESTRUCTIVE: { label: 'Destructive', tone: 'danger' },
+  CODE_EXECUTION: { label: 'Runs code', tone: 'warn' },
+  REQUIRES_REVIEW: { label: 'Needs review', tone: 'warn' },
+}
+
+function RiskBadge({ riskLevel, riskDescription }) {
+  const badge = RISK_BADGES[riskLevel]
+  if (!badge) return null
+  const color = badge.tone === 'danger' ? 'var(--mc-danger)' : 'var(--mc-warn)'
+  const bg = badge.tone === 'danger' ? 'var(--mc-danger-soft)' : 'var(--mc-warn-soft)'
+  return (
+    <span
+      title={riskDescription || undefined}
+      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+      style={{ color, backgroundColor: bg }}
+    >
+      {badge.label}
+    </span>
+  )
+}
 
 function topTools(toolUseCounts, n = 2) {
   if (!toolUseCounts || typeof toolUseCounts !== 'object') return []
@@ -24,13 +48,19 @@ function topTools(toolUseCounts, n = 2) {
     .slice(0, n)
 }
 
-// A card for an agent that is blocking on the user.
+// A card for an agent that is blocking on the user. A DESTRUCTIVE pending
+// approval restyles the card's edge to the danger tone — real data only.
 function AttnCard({ session, onSelect }) {
   const label = projectLabel(session)
+  const danger = session.riskLevel === 'DESTRUCTIVE'
   return (
-    <div className="relative rounded-xl border border-[var(--mc-accent-line)] bg-[var(--mc-surface)] p-4 transition-colors">
+    <div
+      className="relative rounded-xl border bg-[var(--mc-surface)] p-4 transition-colors"
+      style={{ borderColor: danger ? 'var(--mc-danger)' : 'var(--mc-accent-line)' }}
+    >
       <span
-        className="absolute left-0 top-4 bottom-4 w-[3px] rounded bg-[var(--mc-accent)]"
+        className="absolute left-0 top-4 bottom-4 w-[3px] rounded"
+        style={{ backgroundColor: danger ? 'var(--mc-danger)' : 'var(--mc-accent)' }}
         aria-hidden="true"
       />
       <button
@@ -38,10 +68,17 @@ function AttnCard({ session, onSelect }) {
         className="flex w-full items-center gap-2.5 text-left"
       >
         <span className="relative flex h-2 w-2 shrink-0">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--mc-warn)] opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--mc-warn)]" />
+          <span
+            className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
+            style={{ backgroundColor: danger ? 'var(--mc-danger)' : 'var(--mc-warn)' }}
+          />
+          <span
+            className="relative inline-flex h-2 w-2 rounded-full"
+            style={{ backgroundColor: danger ? 'var(--mc-danger)' : 'var(--mc-warn)' }}
+          />
         </span>
         <span className="truncate text-sm font-semibold text-[var(--mc-fg)]">{label}</span>
+        <RiskBadge riskLevel={session.riskLevel} riskDescription={session.riskDescription} />
         {session.permissionMode && (
           <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--mc-fg-4)] bg-[var(--mc-surface-2)]">
             {session.permissionMode}

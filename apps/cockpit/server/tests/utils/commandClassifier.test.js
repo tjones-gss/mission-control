@@ -2,8 +2,29 @@ import {
   classify,
   splitCompound,
   getBaseCommand,
+  worstClassification,
   Classification,
 } from '../../utils/commandClassifier.js'
+
+describe('worstClassification()', () => {
+  it('returns the worst classification by severity order', () => {
+    expect(
+      worstClassification([
+        Classification.SAFE_READONLY,
+        Classification.DESTRUCTIVE,
+        Classification.CODE_EXECUTION,
+      ]),
+    ).toBe(Classification.DESTRUCTIVE)
+    expect(worstClassification([Classification.UNKNOWN, Classification.REQUIRES_REVIEW])).toBe(
+      Classification.REQUIRES_REVIEW,
+    )
+  })
+
+  it('returns null for an empty or absent list', () => {
+    expect(worstClassification([])).toBeNull()
+    expect(worstClassification(undefined)).toBeNull()
+  })
+})
 
 describe('Classification enum', () => {
   it('has all expected values', () => {

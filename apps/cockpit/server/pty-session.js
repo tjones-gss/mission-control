@@ -107,7 +107,15 @@ export function getQueryStatus(sessionId) {
     active: s.busy,
     pendingApprovals: [...s.approvals.values()]
       .filter((a) => !a.resolved)
-      .map((a) => ({ approvalId: a.approvalId, toolName: a.toolName, input: a.input })),
+      .map((a) => ({
+        approvalId: a.approvalId,
+        toolName: a.toolName,
+        input: a.input,
+        // Risk classification (Bash commands only today); null means
+        // "not classified", never a fabricated default.
+        riskLevel: a.riskLevel ?? null,
+        riskDescription: a.riskDescription ?? null,
+      })),
   }
 }
 
@@ -132,7 +140,9 @@ export function resolveApproval(sessionId, approvalId, decision) {
   s.recentOutput = ''
 
   emit('tool_approval_resolved', { sessionId, approvalId, ts: Date.now() })
-  return true
+  // Return the approval itself (truthy, so existing boolean callers keep
+  // working) — callers audit the decision and need its risk classification.
+  return approval
 }
 
 export function cancelQuery(sessionId) {
@@ -558,17 +568,9 @@ function handlePtyData(sessionId, data) {
       // Extract a snippet around the approval for context
       const lines = clean.split('\n').slice(-15).join('\n')
 
-      const approval = {
-        approvalId,
-        toolName,
-        input: { raw: lines },
-        resolved: false,
-      }
-      s.approvals.set(approvalId, approval)
-      pendingApprovals.set(approvalId, approval)
-      if (s._completionState) s._completionState.sawActivity = true
-
-      // Classify bash commands for risk-level indicators in the UI
+      // Classify bash commands for risk-level indicators in the UI. Stored ON
+      // the approval (not just the SSE event) so the polled status and the
+      // session-list summary surface the same classification.
       let riskLevel = null
       let riskDescription = null
       if (toolName === 'Bash' || toolName === 'bash') {
@@ -581,6 +583,18 @@ function handlePtyData(sessionId, data) {
           riskDescription = result.description
         }
       }
+
+      const approval = {
+        approvalId,
+        toolName,
+        input: { raw: lines },
+        riskLevel,
+        riskDescription,
+        resolved: false,
+      }
+      s.approvals.set(approvalId, approval)
+      pendingApprovals.set(approvalId, approval)
+      if (s._completionState) s._completionState.sawActivity = true
 
       emit('tool_approval_request', {
         sessionId,
