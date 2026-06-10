@@ -4,6 +4,152 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Calm-console token layer (Oversight redesign, ADR-0005 rails-slice).
+ *
+ * Semantic CSS variables that the redesign's surfaces consume so the look is a
+ * single-token swap, not a 52-component hand-edit. `:root` reproduces the
+ * historical cold-gray/indigo palette EXACTLY, so the default `classic` theme is
+ * a no-op for existing users; `calm`/`tron`/`warm` (from the design handoff)
+ * override the same names behind a `data-theme` attribute set by useTheme.js.
+ * New components should prefer these vars over hardcoded Tailwind color literals;
+ * the rest convert opportunistically (the council's "no big-bang reskin" rule).
+ * ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --mc-bg: #030712; /* gray-950 — current app background */
+  --mc-bg-2: #0b0f18;
+  --mc-surface: #111827; /* gray-900 */
+  --mc-surface-2: #18212f;
+  --mc-surface-3: #212c3d;
+  --mc-border: #1f2937; /* gray-800 */
+  --mc-border-2: #2c3a4d;
+  --mc-border-3: #3a4a60;
+  --mc-fg: #f3f4f6; /* gray-100 */
+  --mc-fg-2: #c2c9d4;
+  --mc-fg-3: #9ca3af; /* gray-400 */
+  --mc-fg-4: #6b7280; /* gray-500 */
+  --mc-fg-5: #4b5563;
+  --mc-accent: #6366f1; /* indigo-500 */
+  --mc-accent-2: #a5b4fc;
+  --mc-accent-deep: #4338ca;
+  --mc-on-accent: #ffffff;
+  --mc-accent-soft: rgba(99, 102, 241, 0.15);
+  --mc-accent-line: rgba(99, 102, 241, 0.45);
+  --mc-accent-glow: rgba(99, 102, 241, 0.32);
+  --mc-ok: #4ade80;
+  --mc-ok-soft: rgba(74, 222, 128, 0.13);
+  --mc-warn: #fbbf24;
+  --mc-warn-soft: rgba(251, 191, 36, 0.14);
+  --mc-danger: #f87171;
+  --mc-danger-soft: rgba(248, 113, 113, 0.14);
+  --mc-info: #60a5fa;
+  --mc-info-soft: rgba(96, 165, 250, 0.15);
+  --mc-glass: rgba(17, 24, 39, 0.7);
+  --mc-glass-brd: rgba(165, 180, 252, 0.12);
+}
+
+/* Calm — vibrant-but-chill periwinkle on blue-slate (the design's default). */
+[data-theme='calm'] {
+  --mc-bg: #14161f;
+  --mc-bg-2: #171a25;
+  --mc-surface: #1d212e;
+  --mc-surface-2: #252a3a;
+  --mc-surface-3: #2f3648;
+  --mc-border: #2a3143;
+  --mc-border-2: #3a4258;
+  --mc-border-3: #4d5670;
+  --mc-fg: #eef1f8;
+  --mc-fg-2: #c5cbd9;
+  --mc-fg-3: #8c94a8;
+  --mc-fg-4: #646d84;
+  --mc-fg-5: #495066;
+  --mc-accent: #7f8dff;
+  --mc-accent-2: #aeb6ff;
+  --mc-accent-deep: #5a64df;
+  --mc-on-accent: #10142c;
+  --mc-accent-soft: rgba(127, 141, 255, 0.15);
+  --mc-accent-line: rgba(127, 141, 255, 0.42);
+  --mc-accent-glow: rgba(127, 141, 255, 0.4);
+  --mc-ok: #4fd6a0;
+  --mc-ok-soft: rgba(79, 214, 160, 0.14);
+  --mc-warn: #f5c163;
+  --mc-warn-soft: rgba(245, 193, 99, 0.15);
+  --mc-danger: #f47b7b;
+  --mc-danger-soft: rgba(244, 123, 123, 0.15);
+  --mc-info: #6fb0f5;
+  --mc-info-soft: rgba(111, 176, 245, 0.15);
+  --mc-glass: rgba(29, 33, 46, 0.66);
+  --mc-glass-brd: rgba(174, 182, 255, 0.12);
+}
+
+/* Tron — deep blue-black + electric cyan. */
+[data-theme='tron'] {
+  --mc-bg: #070a12;
+  --mc-bg-2: #0a0e1a;
+  --mc-surface: #0e1524;
+  --mc-surface-2: #131d31;
+  --mc-surface-3: #1b2742;
+  --mc-border: #18233a;
+  --mc-border-2: #273650;
+  --mc-border-3: #35496e;
+  --mc-fg: #e9f3ff;
+  --mc-fg-2: #adc0d8;
+  --mc-fg-3: #6e87a4;
+  --mc-fg-4: #4c5f79;
+  --mc-fg-5: #33455c;
+  --mc-accent: #2de2ff;
+  --mc-accent-2: #7eecff;
+  --mc-accent-deep: #119fc4;
+  --mc-on-accent: #04141a;
+  --mc-accent-soft: rgba(45, 226, 255, 0.11);
+  --mc-accent-line: rgba(45, 226, 255, 0.34);
+  --mc-accent-glow: rgba(45, 226, 255, 0.34);
+  --mc-ok: #2fe6b0;
+  --mc-ok-soft: rgba(47, 230, 176, 0.13);
+  --mc-warn: #ffae4a;
+  --mc-warn-soft: rgba(255, 174, 74, 0.14);
+  --mc-danger: #ff5d6e;
+  --mc-danger-soft: rgba(255, 93, 110, 0.14);
+  --mc-info: #5aa6ff;
+  --mc-info-soft: rgba(90, 166, 255, 0.15);
+  --mc-glass: rgba(14, 21, 36, 0.66);
+  --mc-glass-brd: rgba(126, 236, 255, 0.13);
+}
+
+/* Warm gold — cream-on-charcoal (the design's original warm-dark substrate). */
+[data-theme='warm'] {
+  --mc-bg: #13110d;
+  --mc-bg-2: #17140f;
+  --mc-surface: #1c1813;
+  --mc-surface-2: #231e17;
+  --mc-surface-3: #2b251c;
+  --mc-border: #2d271e;
+  --mc-border-2: #3c3527;
+  --mc-border-3: #4d4332;
+  --mc-fg: #f5f0e6;
+  --mc-fg-2: #cec5b4;
+  --mc-fg-3: #9a9080;
+  --mc-fg-4: #6c6357;
+  --mc-fg-5: #4a4338;
+  --mc-accent: #d6a45f;
+  --mc-accent-2: #e8c089;
+  --mc-accent-deep: #b1843f;
+  --mc-on-accent: #1c1408;
+  --mc-accent-soft: rgba(214, 164, 95, 0.12);
+  --mc-accent-line: rgba(214, 164, 95, 0.34);
+  --mc-accent-glow: rgba(214, 164, 95, 0.22);
+  --mc-ok: #43d499;
+  --mc-ok-soft: rgba(67, 212, 153, 0.13);
+  --mc-warn: #ecb24d;
+  --mc-warn-soft: rgba(236, 178, 77, 0.14);
+  --mc-danger: #ec6a62;
+  --mc-danger-soft: rgba(236, 106, 98, 0.14);
+  --mc-info: #7aa7d9;
+  --mc-info-soft: rgba(122, 167, 217, 0.14);
+  --mc-glass: rgba(28, 24, 19, 0.72);
+  --mc-glass-brd: rgba(255, 255, 255, 0.08);
+}
+
 @layer components {
   .prose p {
     @apply my-1.5;
@@ -37,7 +183,12 @@
 }
 
 body {
-  @apply bg-gray-950 text-gray-100 font-mono;
+  @apply font-mono;
+  /* Driven by the token layer so a theme swap recolors the base palette. The
+   * default (:root/classic) values equal gray-950 / gray-100, so this is a
+   * no-op for the existing look. */
+  background-color: var(--mc-bg);
+  color: var(--mc-fg);
 }
 
 ::-webkit-scrollbar {

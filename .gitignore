@@ -38,6 +38,10 @@ apps/cockpit/server/data/fleet/
 apps/cockpit/server/data/fleet-templates/
 apps/cockpit/server/data/audit/
 
+# Exported OpenAPI spec (Phase 4 / C-openapi) — a CI build artifact written by
+# `npm run openapi:export`, not source. Regenerated from the @openapi JSDoc.
+apps/cockpit/server/openapi.json
+
 # Council / premortem analysis artifacts — local, revisitable reports (not source).
 # The brace form council-*.{md,html,json} does NOT work in .gitignore (no brace
 # expansion), so enumerate the extensions explicitly.
@@ -47,3 +51,13 @@ council-*.json
 premortem-*.md
 premortem-*.html
 premortem-*.json
+
+# UI/UX redesign session artifacts — local, not source.
+# Claude Design handoff bundle, Playwright MCP output, and ad-hoc UI screenshots.
+.design-handoff/
+.playwright-mcp/
+mc-*.png
+
+# Local tool state — codegraph index DB + Claude Code session locks, not source.
+.codegraph/
+.claude/scheduled_tasks.lock
