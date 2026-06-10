@@ -67,6 +67,16 @@ surface. Read this first.
 >    Cursor/Copilot user and get ONE external adopter. **Stop building before
 >    firing this.**
 >
+> **Tripwire RELAXED (2026-06-10, owner decision — personal-tool focus):**
+> Mission Control is not gearing for a market release; the goal is a personal
+> major tool (the "epicenter" plan, `~/.claude/plans/elegant-watching-lightning.md`).
+> The adoption tripwire is therefore relaxed for **personal-value work** — the
+> ADR-0008 lane (SQLite read-cache → full-text search → ⌘K palette → AFK
+> notify → cost analytics → knowledge surfacing) builds without waiting for an
+> external adopter. The tripwire still gates **market-facing polish only**
+> (Composer + broad reskin, item 4 above). Do not re-apply the old blanket
+> gate to the personal-value lane.
+>
 > **Phase 4 done (this session) — L3 standard, branch `feature/phase-4-l3-standard`.**
 > Closed the L3 release gate across five workstreams: (A) dropped the cross-vendor
 > VIEWING label (docs + grep-guard); (B) published the versioned vendor-neutral

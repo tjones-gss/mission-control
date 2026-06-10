@@ -2,6 +2,15 @@ vi.mock('../../parsers/sessions.js', () => ({
   getAllSessions: vi.fn().mockReturnValue([]),
   getSessionById: vi.fn().mockReturnValue(null),
 }))
+// ADR-0008: the session list is served from the SQLite index when available;
+// dbUnavailable (or a not-yet-rebuilt index) falls back to getAllSessions().
+vi.mock('../../lib/db/session-index.js', () => ({
+  listSessions: vi.fn().mockReturnValue([]),
+  isIndexReady: vi.fn().mockReturnValue(false),
+}))
+vi.mock('../../lib/db/connection.js', () => ({
+  isDbUnavailable: vi.fn().mockReturnValue(false),
+}))
 vi.mock('../../parsers/messages.js', () => ({
   getSessionMessages: vi.fn().mockReturnValue(null),
 }))
@@ -106,12 +115,9 @@ import {
 } from '../../pty-session.js'
 import { onEvent } from '../../sse.js'
 import { logger } from '../../lib/logger.js'
-import {
-  router,
-  _resetSessionsCache,
-  truncateForLog,
-  parseStreamJsonStdout,
-} from '../../routes/sessions.js'
+import { listSessions, isIndexReady } from '../../lib/db/session-index.js'
+import { isDbUnavailable } from '../../lib/db/connection.js'
+import { router, truncateForLog, parseStreamJsonStdout } from '../../routes/sessions.js'
 
 const app = express()
 app.use(express.json())
@@ -119,9 +125,9 @@ app.use('/', router)
 
 beforeEach(() => {
   vi.resetAllMocks()
-  // The GET / handler memoizes getAllSessions() with a short TTL; reset
-  // between tests so a prior test's mock return value doesn't leak.
-  _resetSessionsCache()
+  // After resetAllMocks the db-index mocks return undefined → the route takes
+  // the degraded/fallback path (getAllSessions), which is what the legacy
+  // tests below exercise. Index-served tests opt in explicitly.
 })
 
 // ─── GET / ──────────────────────────────────────────────────────────────────
@@ -190,6 +196,65 @@ describe('GET /', () => {
       riskDescription: null,
       pendingApprovalCount: 0,
       needsInput: true,
+    })
+  })
+})
+
+// ─── GET / — SQLite session index (ADR-0008) ────────────────────────────────
+// The 3s TTL cache is gone. When the db is healthy and the boot rebuild has
+// completed, the list is served from the index; the parser scan is the
+// degraded fallback only.
+
+describe('GET / — session index vs fallback', () => {
+  it('serves from listSessions() when the db is available and the index is ready', async () => {
+    isDbUnavailable.mockReturnValue(false)
+    isIndexReady.mockReturnValue(true)
+    listSessions.mockReturnValue([{ sessionId: 'from-index', needsInput: false }])
+    const res = await request(app).get('/')
+    expect(res.status).toBe(200)
+    expect(res.body[0]).toMatchObject({ sessionId: 'from-index' })
+    expect(listSessions).toHaveBeenCalled()
+    expect(getAllSessions).not.toHaveBeenCalled()
+  })
+
+  it('falls back to getAllSessions() when the db is unavailable', async () => {
+    isDbUnavailable.mockReturnValue(true)
+    isIndexReady.mockReturnValue(true)
+    getAllSessions.mockReturnValue([{ sessionId: 'from-scan', needsInput: false }])
+    const res = await request(app).get('/')
+    expect(res.status).toBe(200)
+    expect(res.body[0]).toMatchObject({ sessionId: 'from-scan' })
+    expect(listSessions).not.toHaveBeenCalled()
+  })
+
+  it('falls back to getAllSessions() while the boot rebuild has not completed', async () => {
+    isDbUnavailable.mockReturnValue(false)
+    isIndexReady.mockReturnValue(false)
+    getAllSessions.mockReturnValue([{ sessionId: 'pre-rebuild', needsInput: false }])
+    const res = await request(app).get('/')
+    expect(res.status).toBe(200)
+    expect(res.body[0]).toMatchObject({ sessionId: 'pre-rebuild' })
+    expect(listSessions).not.toHaveBeenCalled()
+  })
+
+  it('keeps the withLiveApprovalRisk enrichment on index-served summaries', async () => {
+    isDbUnavailable.mockReturnValue(false)
+    isIndexReady.mockReturnValue(true)
+    listSessions.mockReturnValue([{ sessionId: 'sess-idx-risk', needsInput: false }])
+    getQueryStatus.mockReturnValue({
+      active: true,
+      pendingApprovals: [
+        { approvalId: 'a1', toolName: 'Bash', riskLevel: 'DESTRUCTIVE', riskDescription: 'rm -rf' },
+      ],
+    })
+    const res = await request(app).get('/')
+    expect(res.body[0]).toMatchObject({
+      sessionId: 'sess-idx-risk',
+      riskLevel: 'DESTRUCTIVE',
+      riskDescription: 'rm -rf',
+      pendingApprovalCount: 1,
+      needsInput: true,
+      displayName: null,
     })
   })
 })

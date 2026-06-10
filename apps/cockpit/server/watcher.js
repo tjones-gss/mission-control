@@ -5,6 +5,7 @@ import { emit } from './sse.js'
 import { onSessionEvent } from './intelligence/triggers.js'
 import { getKnownConductorRoots } from './parsers/conductor.js'
 import { getKnownHarnessRoots } from './parsers/harness.js'
+import { upsertSession, removeSession } from './lib/db/session-index.js'
 
 export { addClient, removeClient, emit } from './sse.js'
 
@@ -36,6 +37,18 @@ function parseHarnessPath(filePath) {
   const projectPath = filePath.slice(0, idx)
   if (!projectPath) return null
   return { projectPath }
+}
+
+// A session transcript is a DIRECT child of a project dir:
+// projects/<project>/<sessionId>.jsonl. Nested .jsonl files — subagent
+// transcripts at projects/<project>/<sessionId>/subagents/agent-*.jsonl —
+// parse as plausible sessions, so a prefix+suffix check would index them as
+// phantom top-level 'agent-...' sessions (ADR-0008). Depth check, not name
+// check: rel is relative to CLAUDE_DIR, so a session is exactly 3 segments.
+function isSessionTranscript(rel) {
+  if (!rel.endsWith('.jsonl')) return false
+  const parts = rel.split(/[\\/]/)
+  return parts.length === 3 && parts[0] === 'projects'
 }
 
 export function startWatcher() {
@@ -145,7 +158,11 @@ export function startWatcher() {
 
     const rel = path.relative(CLAUDE_DIR, filePath)
 
-    if (rel.startsWith('projects') && filePath.endsWith('.jsonl')) {
+    if (isSessionTranscript(rel)) {
+      // ADR-0008: invalidate exactly this session in the SQLite index BEFORE
+      // the SSE emit, so the refetch the event triggers reads fresh rows.
+      // upsertSession is a safe no-op when the db is unavailable.
+      upsertSession(filePath)
       emit('session_update', { filePath: rel, ts: Date.now() })
       const sessionId = path.basename(filePath, '.jsonl')
       onSessionEvent(sessionId)
@@ -177,7 +194,9 @@ export function startWatcher() {
     if (emitHarness(filePath)) return
 
     const rel = path.relative(CLAUDE_DIR, filePath)
-    if (rel.startsWith('projects') && filePath.endsWith('.jsonl')) {
+    if (isSessionTranscript(rel)) {
+      // ADR-0008: index the new session before announcing it (see 'change').
+      upsertSession(filePath)
       emit('new_session', { filePath: rel, ts: Date.now() })
       const sessionId = path.basename(filePath, '.jsonl')
       onSessionEvent(sessionId)
@@ -197,7 +216,14 @@ export function startWatcher() {
     if (emitHarness(filePath)) return
 
     const rel = path.relative(CLAUDE_DIR, filePath)
-    if (rel.startsWith('workflows')) {
+    if (isSessionTranscript(rel)) {
+      // ADR-0008 gap fix: a deleted session JSONL was previously unhandled,
+      // leaving a stale index row and a stale client list. Remove the row,
+      // then reuse session_update (the client's refetch signal) with a
+      // reason, matching the name_changed/name_cleared emits in routes.
+      removeSession(path.basename(filePath, '.jsonl'))
+      emit('session_update', { filePath: rel, ts: Date.now(), reason: 'removed' })
+    } else if (rel.startsWith('workflows')) {
       emit('workflows_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('skills') || rel.startsWith('commands')) {
       emit('skills_update', { filePath: rel, ts: Date.now() })

@@ -38,6 +38,12 @@ apps/cockpit/server/data/fleet/
 apps/cockpit/server/data/fleet-templates/
 apps/cockpit/server/data/audit/
 
+# ADR-0008 SQLite derived read-cache — cockpit.db (+ WAL/SHM siblings) is a pure
+# derived cache rebuilt from ~/.claude, never source.
+apps/cockpit/server/data/*.db
+apps/cockpit/server/data/*.db-wal
+apps/cockpit/server/data/*.db-shm
+
 # Exported OpenAPI spec (Phase 4 / C-openapi) — a CI build artifact written by
 # `npm run openapi:export`, not source. Regenerated from the @openapi JSDoc.
 apps/cockpit/server/openapi.json

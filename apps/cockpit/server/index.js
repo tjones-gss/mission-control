@@ -26,6 +26,7 @@ import { router as railsRouter } from './routes/rails.js'
 import { router as trustRouter } from './routes/trust.js'
 import { router as fleetRouter } from './routes/fleet.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
+import { rebuildAll } from './lib/db/session-index.js'
 import { initOtel, tracingMiddleware } from './lib/otel.js'
 import { mountOpenApi } from './lib/openapi.js'
 import { startWatcher } from './watcher.js'
@@ -137,6 +138,13 @@ export function start() {
     // run is wedged at 'running'. Fire-and-forget; a failure is logged, never fatal.
     reconcileFleetRuns().catch((err) =>
       logger.warn({ detail: err?.message || err }, 'fleet_boot_reconcile_failed'),
+    )
+    // ADR-0008 boot rebuild — background, chunked with setImmediate, reparsing
+    // only (mtime,size) diffs. Until it completes, GET /api/sessions serves the
+    // direct parser scan; on failure the index simply stays not-ready (the
+    // degraded mode is the pre-index behavior, never an outage).
+    rebuildAll().catch((err) =>
+      logger.warn({ detail: err?.message || err }, 'session_index_rebuild_failed'),
     )
   })
 
