@@ -10,6 +10,21 @@ the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
 
 <!-- New entries land here. ONLY S7 (E-release-eng) flips the heading below. -->
 
+### Theme cascade — gray/indigo resolve through the token layer
+
+**Changed**
+
+- **`tailwind.config.js` remaps the `gray` + `indigo` palettes** through new
+  `--mc-gray-*` / `--mc-indigo-*` RGB channel variables
+  (`rgb(var(--mc-gray-900) / <alpha-value>)`), so all ~850 existing utility
+  usages — including the 43 alpha-modifier forms like `bg-gray-900/50` —
+  follow the active theme with zero component edits. `:root` pins the EXACT
+  default Tailwind channels (classic is pixel-identical); calm/tron/warm remap
+  each rung onto their semantic tokens. A theme-switch is now a whole-app
+  change, not a body+TriageView-only change. Guarded by
+  `src/tests/theme-cascade.test.js` (24 cases: alpha slots, classic ground
+  truth, full per-theme override coverage).
+
 ### Harness MCP server — the rails as a vendor-neutral MCP surface
 
 **Added**

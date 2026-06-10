@@ -150,6 +150,113 @@
   --mc-glass-brd: rgba(255, 255, 255, 0.08);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Theme CASCADE channels (redesign next-step "make themes cascade").
+ *
+ * tailwind.config.js remaps the `gray` and `indigo` palettes to these
+ * space-separated RGB channel variables via `rgb(var(--mc-gray-900) /
+ * <alpha-value>)`, so all ~850 existing `bg-gray-*` / `indigo-*` utility
+ * usages — including the /50 alpha-modifier forms — resolve through the
+ * theme WITHOUT touching any component. `:root` pins the EXACT default
+ * Tailwind channel values (classic stays pixel-identical); each data-theme
+ * remaps the rungs onto its semantic tokens. Keep these channels in sync
+ * with the hex tokens above — the theme-cascade guard test reds on drift.
+ * ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --mc-gray-100: 243 244 246;
+  --mc-gray-200: 229 231 235;
+  --mc-gray-300: 209 213 219;
+  --mc-gray-400: 156 163 175;
+  --mc-gray-500: 107 114 128;
+  --mc-gray-600: 75 85 99;
+  --mc-gray-700: 55 65 81;
+  --mc-gray-800: 31 41 55;
+  --mc-gray-900: 17 24 39;
+  --mc-gray-950: 3 7 18;
+  --mc-indigo-100: 224 231 255;
+  --mc-indigo-200: 199 210 254;
+  --mc-indigo-300: 165 180 252;
+  --mc-indigo-400: 129 140 248;
+  --mc-indigo-500: 99 102 241;
+  --mc-indigo-600: 79 70 229;
+  --mc-indigo-700: 67 56 202;
+  --mc-indigo-800: 55 48 163;
+  --mc-indigo-900: 49 46 129;
+  --mc-indigo-950: 30 27 75;
+}
+
+/* Calm: rungs mapped onto the calm semantic tokens (fg/border/surface/accent). */
+[data-theme='calm'] {
+  --mc-gray-100: 238 241 248;
+  --mc-gray-200: 197 203 217;
+  --mc-gray-300: 197 203 217;
+  --mc-gray-400: 140 148 168;
+  --mc-gray-500: 100 109 132;
+  --mc-gray-600: 73 80 102;
+  --mc-gray-700: 58 66 88;
+  --mc-gray-800: 42 49 67;
+  --mc-gray-900: 29 33 46;
+  --mc-gray-950: 20 22 31;
+  --mc-indigo-100: 174 182 255;
+  --mc-indigo-200: 174 182 255;
+  --mc-indigo-300: 174 182 255;
+  --mc-indigo-400: 174 182 255;
+  --mc-indigo-500: 127 141 255;
+  --mc-indigo-600: 127 141 255;
+  --mc-indigo-700: 90 100 223;
+  --mc-indigo-800: 90 100 223;
+  --mc-indigo-900: 90 100 223;
+  --mc-indigo-950: 90 100 223;
+}
+
+/* Tron: rungs mapped onto the tron semantic tokens. */
+[data-theme='tron'] {
+  --mc-gray-100: 233 243 255;
+  --mc-gray-200: 173 192 216;
+  --mc-gray-300: 173 192 216;
+  --mc-gray-400: 110 135 164;
+  --mc-gray-500: 76 95 121;
+  --mc-gray-600: 51 69 92;
+  --mc-gray-700: 39 54 80;
+  --mc-gray-800: 24 35 58;
+  --mc-gray-900: 14 21 36;
+  --mc-gray-950: 7 10 18;
+  --mc-indigo-100: 126 236 255;
+  --mc-indigo-200: 126 236 255;
+  --mc-indigo-300: 126 236 255;
+  --mc-indigo-400: 126 236 255;
+  --mc-indigo-500: 45 226 255;
+  --mc-indigo-600: 45 226 255;
+  --mc-indigo-700: 17 159 196;
+  --mc-indigo-800: 17 159 196;
+  --mc-indigo-900: 17 159 196;
+  --mc-indigo-950: 17 159 196;
+}
+
+/* Warm gold: rungs mapped onto the warm semantic tokens. */
+[data-theme='warm'] {
+  --mc-gray-100: 245 240 230;
+  --mc-gray-200: 206 197 180;
+  --mc-gray-300: 206 197 180;
+  --mc-gray-400: 154 144 128;
+  --mc-gray-500: 108 99 87;
+  --mc-gray-600: 74 67 56;
+  --mc-gray-700: 60 53 39;
+  --mc-gray-800: 45 39 30;
+  --mc-gray-900: 28 24 19;
+  --mc-gray-950: 19 17 13;
+  --mc-indigo-100: 232 192 137;
+  --mc-indigo-200: 232 192 137;
+  --mc-indigo-300: 232 192 137;
+  --mc-indigo-400: 232 192 137;
+  --mc-indigo-500: 214 164 95;
+  --mc-indigo-600: 214 164 95;
+  --mc-indigo-700: 177 132 63;
+  --mc-indigo-800: 177 132 63;
+  --mc-indigo-900: 177 132 63;
+  --mc-indigo-950: 177 132 63;
+}
+
 @layer components {
   .prose p {
     @apply my-1.5;

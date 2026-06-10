@@ -1,7 +1,21 @@
+// The gray + indigo palettes resolve through the --mc-* theme-cascade channel
+// variables (defined in src/index.css), so every existing `bg-gray-*` /
+// `indigo-*` utility — including /50 alpha-modifier forms — follows the active
+// data-theme without touching any component. `:root` pins the exact default
+// Tailwind channels, so the classic theme is pixel-identical to the
+// pre-cascade build. Guarded by src/tests/theme-cascade.test.js.
+const RUNGS = [100, 200, 300, 400, 500, 600, 700, 800, 900, 950]
+const themed = (palette) =>
+  Object.fromEntries(RUNGS.map((r) => [r, `rgb(var(--mc-${palette}-${r}) / <alpha-value>)`]))
+
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      colors: {
+        gray: themed('gray'),
+        indigo: themed('indigo'),
+      },
       boxShadow: {
         'glow-green': '0 0 8px rgba(74, 222, 128, 0.25)',
         'glow-yellow': '0 0 8px rgba(234, 179, 8, 0.25)',
