@@ -1,3 +1,14 @@
+// Phase 6 — intelligence/cache.js is now a thin facade over
+// lib/db/intelligence-store.js (the intelligence table in cockpit.db). The
+// exported API is unchanged — analyzer.js/triggers.js/routes need zero edits —
+// but entries persist across restarts instead of evaporating on a 60s TTL.
+// inFlight stays an in-memory Promise registry (promises don't serialize).
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
+import { openDb, closeDb } from '../../lib/db/connection.js'
+import { _resetMemFallbackForTests } from '../../lib/db/intelligence-store.js'
 import {
   getCached,
   setCached,
@@ -6,13 +17,25 @@ import {
   clearInFlight,
 } from '../../intelligence/cache.js'
 
-// The cache module uses module-level Maps, so we need to manage state carefully.
-// We'll use unique session IDs per test to avoid cross-test interference.
-
+let tmpDir
+let dbPath
 let testCounter = 0
+
 function uniqueId() {
   return `test-session-${++testCounter}-${Date.now()}`
 }
+
+beforeEach(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-cache-test-'))
+  dbPath = path.join(tmpDir, 'cockpit.db')
+  openDb(dbPath)
+  _resetMemFallbackForTests()
+})
+
+afterEach(() => {
+  closeDb()
+  fs.rmSync(tmpDir, { recursive: true, force: true })
+})
 
 describe('getCached / setCached', () => {
   it('returns null for uncached session', () => {
@@ -29,36 +52,30 @@ describe('getCached / setCached', () => {
     expect(cached.timestamp).toBeGreaterThan(0)
   })
 
-  it('returns null for expired entries', () => {
+  it('does NOT expire entries — staleness is the caller’s decision (triggers.js)', () => {
     vi.useFakeTimers()
     const id = uniqueId()
-    setCached(id, { summary: 'will expire' })
-    vi.advanceTimersByTime(61_000) // TTL is 60s
-    expect(getCached(id)).toBeNull()
+    setCached(id, { summary: 'durable now' })
+    vi.advanceTimersByTime(61_000) // the old in-memory TTL was 60s
+    const cached = getCached(id)
+    expect(cached).not.toBeNull()
+    expect(cached.result).toEqual({ summary: 'durable now' })
     vi.useRealTimers()
   })
 
-  it('evicts oldest entry when cache exceeds max size', () => {
-    vi.useFakeTimers({ now: Date.now() })
+  it('persists across a restart (closeDb + reopen)', () => {
+    const id = uniqueId()
+    setCached(id, { summary: 'survives restarts' })
+    closeDb()
+    openDb(dbPath)
+    expect(getCached(id)?.result).toEqual({ summary: 'survives restarts' })
+  })
 
-    // Insert 21 entries with distinct timestamps — max cache size is 20
-    const ids = []
-    for (let i = 0; i < 21; i++) {
-      const id = `eviction-${Date.now()}-${i}`
-      ids.push(id)
-      setCached(id, { index: i })
-      vi.advanceTimersByTime(100) // ensure clearly different timestamps
-    }
-
-    // The newest entry should always be present
-    expect(getCached(ids[20])).not.toBeNull()
-
-    // At least one of the earlier entries must have been evicted
-    const earlyEntries = ids.slice(0, 5)
-    const someEvicted = earlyEntries.some((id) => getCached(id) === null)
-    expect(someEvicted).toBe(true)
-
-    vi.useRealTimers()
+  it('overwrites the previous entry for the same session', () => {
+    const id = uniqueId()
+    setCached(id, { summary: 'old' })
+    setCached(id, { summary: 'new' })
+    expect(getCached(id).result).toEqual({ summary: 'new' })
   })
 })
 

@@ -15,6 +15,7 @@ function fireKey(key, opts = {}) {
     bubbles: true,
     cancelable: true,
     ctrlKey: opts.ctrlKey || false,
+    metaKey: opts.metaKey || false,
     shiftKey: opts.shiftKey || false,
     altKey: opts.altKey || false,
   })
@@ -28,6 +29,7 @@ function fireKeyOnElement(element, key, opts = {}) {
     bubbles: true,
     cancelable: true,
     ctrlKey: opts.ctrlKey || false,
+    metaKey: opts.metaKey || false,
     shiftKey: opts.shiftKey || false,
     altKey: opts.altKey || false,
   })
@@ -39,12 +41,13 @@ function fireKeyOnElement(element, key, opts = {}) {
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 describe('exports', () => {
-  it('exports DEFAULT_SHORTCUTS with all 16 actions', () => {
-    expect(Object.keys(DEFAULT_SHORTCUTS)).toHaveLength(16)
+  it('exports DEFAULT_SHORTCUTS with all 17 actions', () => {
+    expect(Object.keys(DEFAULT_SHORTCUTS)).toHaveLength(17)
     expect(DEFAULT_SHORTCUTS.nextSession).toBe('j')
     expect(DEFAULT_SHORTCUTS.prevSession).toBe('k')
     expect(DEFAULT_SHORTCUTS.quickApprove).toBe('y')
     expect(DEFAULT_SHORTCUTS.toggleDispatch).toBe('d')
+    expect(DEFAULT_SHORTCUTS.commandPalette).toBe('Ctrl+k')
   })
 
   it('exports ACTION_LABELS for all actions', () => {
@@ -177,6 +180,52 @@ describe('useKeyboardShortcuts — modifier keys', () => {
       fireKey('k', { ctrlKey: true })
     })
     expect(handlers.prevSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the command palette on Ctrl+k by default', () => {
+    const handlers = { commandPalette: vi.fn(), prevSession: vi.fn() }
+    renderHook(() => useKeyboardShortcuts(handlers))
+
+    act(() => {
+      fireKey('k', { ctrlKey: true })
+    })
+    expect(handlers.commandPalette).toHaveBeenCalledTimes(1)
+    // Plain 'k' (prevSession) must NOT be swallowed by the Ctrl binding
+    expect(handlers.prevSession).not.toHaveBeenCalled()
+  })
+
+  it('treats Cmd (metaKey) as the Ctrl modifier — Cmd+K opens the palette', () => {
+    const handlers = { commandPalette: vi.fn() }
+    renderHook(() => useKeyboardShortcuts(handlers))
+
+    act(() => {
+      fireKey('k', { metaKey: true })
+    })
+    expect(handlers.commandPalette).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fire unmodified bindings while Cmd/Ctrl is held', () => {
+    const handlers = { nextSession: vi.fn() }
+    renderHook(() => useKeyboardShortcuts(handlers))
+
+    act(() => {
+      fireKey('j', { metaKey: true })
+    })
+    act(() => {
+      fireKey('j', { ctrlKey: true })
+    })
+    expect(handlers.nextSession).not.toHaveBeenCalled()
+  })
+
+  it('allows Ctrl/Cmd-modified shortcuts even when focus is in an input', () => {
+    const handlers = { commandPalette: vi.fn() }
+    renderHook(() => useKeyboardShortcuts(handlers))
+
+    const input = document.createElement('input')
+    act(() => {
+      fireKeyOnElement(input, 'k', { ctrlKey: true })
+    })
+    expect(handlers.commandPalette).toHaveBeenCalledTimes(1)
   })
 
   it('does not match when wrong modifier is pressed', () => {

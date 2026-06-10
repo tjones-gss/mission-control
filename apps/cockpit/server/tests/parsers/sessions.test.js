@@ -27,7 +27,7 @@ vi.mock('../../sse.js', () => ({
 }))
 
 import fs from 'fs'
-import { getAllSessions, getSessionById } from '../../parsers/sessions.js'
+import { getAllSessions, getSessionById, computeSessionTimeFields } from '../../parsers/sessions.js'
 import { emit } from '../../sse.js'
 import { _resetDegradedDedupe } from '../../lib/claude-format.js'
 
@@ -683,5 +683,41 @@ describe('getSessionById()', () => {
     const result = getSessionById('my-session')
     expect(result).not.toBeNull()
     expect(result.sessionId).toBe('my-session')
+  })
+})
+
+// ─── computeSessionTimeFields() — ADR-0008 read-time recompute ──────────────
+// isActive/needsInput are functions of Date.now(); the SQLite session index
+// must recompute them at read time via this exported pure helper instead of
+// serving the values frozen into the stored summary JSON.
+
+describe('computeSessionTimeFields()', () => {
+  const FIVE_MIN = 5 * 60 * 1000
+  const FOUR_HOURS = 4 * 60 * 60 * 1000
+  const NOW = 1_750_000_000_000
+
+  it('is active within the 5-minute window (and therefore never needsInput)', () => {
+    const out = computeSessionTimeFields(NOW - FIVE_MIN + 1000, true, NOW)
+    expect(out).toEqual({ isActive: true, needsInput: false })
+  })
+
+  it('needs input when inactive, inside the 4-hour window, and last main turn was end_turn', () => {
+    const out = computeSessionTimeFields(NOW - 10 * 60 * 1000, true, NOW)
+    expect(out).toEqual({ isActive: false, needsInput: true })
+  })
+
+  it('does not need input when the last main turn was not end_turn', () => {
+    const out = computeSessionTimeFields(NOW - 10 * 60 * 1000, false, NOW)
+    expect(out).toEqual({ isActive: false, needsInput: false })
+  })
+
+  it('does not need input past the 4-hour abandoned window', () => {
+    const out = computeSessionTimeFields(NOW - FOUR_HOURS - 1000, true, NOW)
+    expect(out).toEqual({ isActive: false, needsInput: false })
+  })
+
+  it('defaults now to Date.now()', () => {
+    const out = computeSessionTimeFields(Date.now(), true)
+    expect(out.isActive).toBe(true)
   })
 })

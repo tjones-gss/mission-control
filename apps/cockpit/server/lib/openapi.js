@@ -48,6 +48,8 @@ export const CORE_PATHS = [
   '/api/conductor',
   '/api/rails/adopt-candidates',
   '/api/rails/adopt',
+  '/api/search',
+  '/api/stats/usage',
 ]
 
 // Build the spec from the JSDoc @openapi blocks in the CORE routers. Pure and

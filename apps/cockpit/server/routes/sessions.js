@@ -6,6 +6,8 @@ import os from 'os'
 import { fileURLToPath } from 'url'
 import multer from 'multer'
 import { getAllSessions, getSessionById } from '../parsers/sessions.js'
+import { listSessions, isIndexReady } from '../lib/db/session-index.js'
+import { isDbUnavailable } from '../lib/db/connection.js'
 import { worstClassification } from '../utils/commandClassifier.js'
 import { getConfigForSession } from '../parsers/config.js'
 import { getSessionMessages } from '../parsers/messages.js'
@@ -259,27 +261,16 @@ async function saveSessionNames(names) {
 // Read endpoints
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Memoize getAllSessions() with a short TTL. Scanning every project's
-// .jsonl history is fully synchronous and can take 500ms-2s with 60+
-// sessions on disk. The dashboard fires this from useApi on first paint
-// and tab switches; without caching, parallel e2e workers saturate the
-// single-threaded event loop and time out. The watcher emits SSE events
-// on file changes, so a 3s TTL still feels live.
-let sessionsCache = { data: null, expiresAt: 0 }
-const SESSIONS_CACHE_TTL_MS = 3_000
+// ADR-0008: the SQLite session index replaces the old 3s TTL cache. The
+// watcher upserts exactly the session that changed (event-driven
+// invalidation), and listSessions() recomputes isActive/needsInput at read
+// time. Degraded mode: when the db is unavailable — deleting cockpit.db must
+// always be a safe user action — or while the boot rebuild hasn't completed
+// yet (cold/stale index), fall back to the direct synchronous parser scan,
+// which is the exact pre-index behavior.
 function getCachedSessions() {
-  const now = Date.now()
-  if (sessionsCache.data && sessionsCache.expiresAt > now) return sessionsCache.data
-  const data = getAllSessions()
-  sessionsCache = { data, expiresAt: now + SESSIONS_CACHE_TTL_MS }
-  return data
-}
-
-// Exported so the unit tests can reset between cases — vi.resetAllMocks()
-// doesn't clear the route's in-memory cache, which would otherwise leak
-// the previous test's mock return value into the next test.
-export function _resetSessionsCache() {
-  sessionsCache = { data: null, expiresAt: 0 }
+  if (isDbUnavailable() || !isIndexReady()) return getAllSessions()
+  return listSessions()
 }
 
 // Risk-typed approvals: join the live in-memory PTY approval state onto a

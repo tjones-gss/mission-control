@@ -20,8 +20,15 @@ async function runIfSignificant(sessionId) {
   const session = getSessionById(sessionId)
   if (!session) return
 
-  const snapshot = snapshots.get(sessionId)
   const cached = getCached(sessionId)
+  // In-memory snapshot first; fall back to the PERSISTED snapshot stored with
+  // the cached entry (intelligence table) so change-detection survives
+  // restarts instead of re-analyzing every session on every boot.
+  const snapshot =
+    snapshots.get(sessionId) ??
+    (cached && cached.messageCount != null
+      ? { messageCount: cached.messageCount, subagentCount: cached.subagentCount ?? 0 }
+      : null)
 
   const subagentCount = session.agentTree?.subagents?.length || 0
   const messageCount = session.messageCount || 0
@@ -40,9 +47,16 @@ export async function runAnalysis(sessionId, session) {
   // Skip if already in flight
   if (getInFlight(sessionId)) return getCached(sessionId)?.result
 
+  // Snapshot taken from the session being analyzed — persisted alongside the
+  // result so the staleness comparison above works across restarts.
+  const snapshot = {
+    messageCount: session?.messageCount || 0,
+    subagentCount: session?.agentTree?.subagents?.length || 0,
+  }
+
   const promise = analyzeSession(session)
     .then((result) => {
-      setCached(sessionId, result)
+      setCached(sessionId, result, snapshot)
       emit('intelligence_update', { sessionId })
       clearInFlight(sessionId)
       return result

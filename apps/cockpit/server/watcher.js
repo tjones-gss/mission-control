@@ -5,6 +5,8 @@ import { emit } from './sse.js'
 import { onSessionEvent } from './intelligence/triggers.js'
 import { getKnownConductorRoots } from './parsers/conductor.js'
 import { getKnownHarnessRoots } from './parsers/harness.js'
+import { upsertSession, removeSession } from './lib/db/session-index.js'
+import { indexMemoryFile, removeMemoryFile } from './lib/db/memory-index.js'
 
 export { addClient, removeClient, emit } from './sse.js'
 
@@ -29,13 +31,42 @@ function parseConductorPath(filePath) {
 
 // Parse a path that lives under <projectPath>/.harness/... so the emitted SSE
 // event carries the project the client should refetch. Returns null if the path
-// doesn't sit under a .harness directory.
+// doesn't sit under a .harness directory. rel is the path INSIDE .harness/.
 function parseHarnessPath(filePath) {
   const idx = filePath.indexOf(HARNESS_SEP)
   if (idx === -1) return null
   const projectPath = filePath.slice(0, idx)
   if (!projectPath) return null
-  return { projectPath }
+  return { projectPath, rel: filePath.slice(idx + HARNESS_SEP.length) }
+}
+
+// A pending approval is a FILE inside .harness/approvals/pending/ — the harness
+// writes one request file per gate and the approve CLI moves/decides it. Depth
+// check (>= 3 segments) so the pending/ dir itself appearing doesn't match.
+function isPendingApprovalRel(rel) {
+  const parts = rel.split(/[\\/]/)
+  return parts.length >= 3 && parts[0] === 'approvals' && parts[1] === 'pending'
+}
+
+// A session transcript is a DIRECT child of a project dir:
+// projects/<project>/<sessionId>.jsonl. Nested .jsonl files — subagent
+// transcripts at projects/<project>/<sessionId>/subagents/agent-*.jsonl —
+// parse as plausible sessions, so a prefix+suffix check would index them as
+// phantom top-level 'agent-...' sessions (ADR-0008). Depth check, not name
+// check: rel is relative to CLAUDE_DIR, so a session is exactly 3 segments.
+function isSessionTranscript(rel) {
+  if (!rel.endsWith('.jsonl')) return false
+  const parts = rel.split(/[\\/]/)
+  return parts.length === 3 && parts[0] === 'projects'
+}
+
+// A memory doc is projects/<project>/memory/<file>.md — the exact layout
+// parsers/memory.js reads (MEMORY.md included). Depth check like
+// isSessionTranscript, so a stray .md elsewhere under projects/ never indexes.
+function isMemoryDoc(rel) {
+  if (!rel.toLowerCase().endsWith('.md')) return false
+  const parts = rel.split(/[\\/]/)
+  return parts.length === 4 && parts[0] === 'projects' && parts[2] === 'memory'
 }
 
 export function startWatcher() {
@@ -129,27 +160,46 @@ export function startWatcher() {
     return true
   }
 
-  function emitHarness(filePath) {
+  function emitHarness(filePath, fsEvent) {
     const parsed = parseHarnessPath(filePath)
     if (!parsed) return false
     emit('harness_update', {
       projectPath: parsed.projectPath,
       ts: Date.now(),
     })
+    // Phase 4 (AFK gate notifier): a file appearing/changing under
+    // approvals/pending/ is an approval-gate OPENING — emit a distinct event so
+    // lib/notify.js can react without false-positives from other .harness
+    // writes. An unlink means the request was decided/removed, not pending.
+    if (fsEvent !== 'unlink' && isPendingApprovalRel(parsed.rel)) {
+      emit('harness_approval_pending', {
+        projectPath: parsed.projectPath,
+        filePath: parsed.rel,
+        ts: Date.now(),
+      })
+    }
     return true
   }
 
   watcher.on('change', (filePath) => {
     if (emitConductor(filePath)) return
-    if (emitHarness(filePath)) return
+    if (emitHarness(filePath, 'change')) return
 
     const rel = path.relative(CLAUDE_DIR, filePath)
 
-    if (rel.startsWith('projects') && filePath.endsWith('.jsonl')) {
+    if (isSessionTranscript(rel)) {
+      // ADR-0008: invalidate exactly this session in the SQLite index BEFORE
+      // the SSE emit, so the refetch the event triggers reads fresh rows.
+      // upsertSession is a safe no-op when the db is unavailable.
+      upsertSession(filePath)
       emit('session_update', { filePath: rel, ts: Date.now() })
       const sessionId = path.basename(filePath, '.jsonl')
       onSessionEvent(sessionId)
     } else if (rel.startsWith('projects') && rel.includes('memory')) {
+      // Phase 6: memory docs feed the knowledge index — refresh it BEFORE the
+      // emit (the client refetch must read fresh rows). Safe no-op when the
+      // path isn't a real memory .md or the db is degraded.
+      if (isMemoryDoc(rel)) indexMemoryFile(filePath)
       emit('memory_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('tasks')) {
       emit('task_update', { filePath: rel, ts: Date.now() })
@@ -174,10 +224,12 @@ export function startWatcher() {
 
   watcher.on('add', (filePath) => {
     if (emitConductor(filePath)) return
-    if (emitHarness(filePath)) return
+    if (emitHarness(filePath, 'add')) return
 
     const rel = path.relative(CLAUDE_DIR, filePath)
-    if (rel.startsWith('projects') && filePath.endsWith('.jsonl')) {
+    if (isSessionTranscript(rel)) {
+      // ADR-0008: index the new session before announcing it (see 'change').
+      upsertSession(filePath)
       emit('new_session', { filePath: rel, ts: Date.now() })
       const sessionId = path.basename(filePath, '.jsonl')
       onSessionEvent(sessionId)
@@ -185,6 +237,11 @@ export function startWatcher() {
       // dir we weren't watching yet — re-derive roots and add them.
       addConductorWatchers()
       addHarnessWatchers()
+    } else if (isMemoryDoc(rel)) {
+      // Phase 6: a brand-new memory file (chokidar 'add', which the
+      // change-handler branch never sees) — index it, then announce it.
+      indexMemoryFile(filePath)
+      emit('memory_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('workflows')) {
       emit('workflows_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('skills') || rel.startsWith('commands')) {
@@ -194,10 +251,22 @@ export function startWatcher() {
 
   watcher.on('unlink', (filePath) => {
     if (emitConductor(filePath)) return
-    if (emitHarness(filePath)) return
+    if (emitHarness(filePath, 'unlink')) return
 
     const rel = path.relative(CLAUDE_DIR, filePath)
-    if (rel.startsWith('workflows')) {
+    if (isSessionTranscript(rel)) {
+      // ADR-0008 gap fix: a deleted session JSONL was previously unhandled,
+      // leaving a stale index row and a stale client list. Remove the row,
+      // then reuse session_update (the client's refetch signal) with a
+      // reason, matching the name_changed/name_cleared emits in routes.
+      removeSession(path.basename(filePath, '.jsonl'))
+      emit('session_update', { filePath: rel, ts: Date.now(), reason: 'removed' })
+    } else if (isMemoryDoc(rel)) {
+      // Phase 6: a deleted memory file leaves stale knowledge rows — reap
+      // them and tell clients to refetch.
+      removeMemoryFile(filePath)
+      emit('memory_update', { filePath: rel, ts: Date.now() })
+    } else if (rel.startsWith('workflows')) {
       emit('workflows_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('skills') || rel.startsWith('commands')) {
       emit('skills_update', { filePath: rel, ts: Date.now() })

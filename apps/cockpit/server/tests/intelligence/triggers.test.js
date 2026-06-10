@@ -187,6 +187,48 @@ describe('runIfSignificant (via onSessionEvent + timer advance)', () => {
     expect(analyzeSession).toHaveBeenCalledWith(session2)
   })
 
+  // Phase 6 restart survival: a fresh process has an EMPTY in-memory snapshot
+  // map, but the persisted entry carries messageCount/subagentCount — the
+  // comparison must use those, not re-analyze every session on every boot.
+  it('uses the PERSISTED snapshot when the in-memory one is missing (restart)', async () => {
+    const id = uniqueId() // new id == empty in-memory snapshot map == fresh boot
+    const session = { agentTree: { subagents: [{}] }, messageCount: 4 }
+    getSessionById.mockReturnValue(session)
+    getCached.mockReturnValue({
+      result: { summary: 'persisted' },
+      timestamp: Date.now(),
+      messageCount: 4,
+      subagentCount: 1,
+    })
+    getInFlight.mockReturnValue(null)
+
+    onSessionEvent(id)
+    vi.advanceTimersByTime(10000)
+    await vi.runAllTimersAsync()
+
+    expect(analyzeSession).not.toHaveBeenCalled()
+  })
+
+  it('re-analyzes after restart when the persisted snapshot differs from the session', async () => {
+    const id = uniqueId()
+    const session = { agentTree: { subagents: [{}] }, messageCount: 9 }
+    getSessionById.mockReturnValue(session)
+    getCached.mockReturnValue({
+      result: { summary: 'persisted' },
+      timestamp: Date.now(),
+      messageCount: 4,
+      subagentCount: 1,
+    })
+    getInFlight.mockReturnValue(null)
+    analyzeSession.mockResolvedValue({ summary: 'refreshed' })
+
+    onSessionEvent(id)
+    vi.advanceTimersByTime(10000)
+    await vi.runAllTimersAsync()
+
+    expect(analyzeSession).toHaveBeenCalledWith(session)
+  })
+
   it('skips analysis when cache is fresh AND nothing changed', async () => {
     const id = uniqueId()
     const session = { agentTree: { subagents: [{}] }, messageCount: 4 }
@@ -241,7 +283,12 @@ describe('runAnalysis', () => {
     expect(result).toEqual(analysisResult)
     expect(analyzeSession).toHaveBeenCalledWith(session)
     expect(setInFlight).toHaveBeenCalledWith(id, expect.any(Promise))
-    expect(setCached).toHaveBeenCalledWith(id, analysisResult)
+    // Phase 6: the staleness snapshot is PERSISTED with the result so
+    // change-detection survives restarts (intelligence table columns).
+    expect(setCached).toHaveBeenCalledWith(id, analysisResult, {
+      messageCount: 2,
+      subagentCount: 0,
+    })
     expect(emit).toHaveBeenCalledWith('intelligence_update', { sessionId: id })
     expect(clearInFlight).toHaveBeenCalledWith(id)
   })

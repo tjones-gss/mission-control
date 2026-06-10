@@ -34,6 +34,7 @@ vocabulary: `Proposed · Accepted · Rejected · Deprecated · Superseded`. Ever
 | [0005](0005-moat-and-surface-strategy.md) | Moat thesis & surface strategy | Accepted |
 | [0006](0006-canonical-orchestration-model.md) | Canonical orchestration model (pipeline = spine) | Accepted |
 | [0007](0007-core-vs-experimental-scope.md) | Core vs experimental scope + surface freeze | Accepted |
+| [0008](0008-sqlite-derived-read-cache.md) | SQLite derived read-cache for session index and Fleet state | Accepted |
 
 ## Grandfathered per-package ADRs (indexed, not moved)
 

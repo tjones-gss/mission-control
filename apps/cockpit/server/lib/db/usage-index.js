@@ -1,0 +1,161 @@
+// ADR-0008 Phase 5 — the usage rollups behind GET /api/stats/usage.
+//
+// One row per (session, UTC day, model family) in `usage_daily`, accumulating
+// the exact same usage fields parsers/sessions.js sums into tokenUsage
+// (input_tokens / output_tokens / cache_read_input_tokens /
+// cache_creation_input_tokens). Population happens INSIDE the same
+// upsertSession transaction in session-index.js as a whole-session reindex.
+//
+// Tokens are stored, never dollars: pricing is applied at read time via the
+// MODEL_PRICING tables in utils/cost.js, so a price-table change never
+// requires a cache rebuild.
+import { getDb } from './connection.js'
+import { detectModelFamily, calculateCost, calculateCacheHitRate } from '../../utils/cost.js'
+
+export const GROUP_BYS = ['project', 'day', 'model']
+
+// UTC day of a record timestamp, or null when unparseable/missing — usage on
+// a record we cannot date has no daily bucket to live in, so it is skipped
+// (real Claude JSONL stamps every assistant record).
+function dayOf(timestamp) {
+  if (!timestamp) return null
+  const ms = Date.parse(timestamp)
+  if (Number.isNaN(ms)) return null
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+/**
+ * Reduce parsed JSONL records to daily usage buckets:
+ * [{ day, modelFamily, input, output, cacheRead, cacheWrite }], ordered by
+ * first appearance. Pure; exported for direct testing.
+ */
+export function extractUsageDaily(records) {
+  const buckets = new Map()
+  for (const r of records) {
+    const usage = r.message?.usage
+    if (!usage) continue
+    const day = dayOf(r.timestamp)
+    if (!day) continue
+    const modelFamily = detectModelFamily(r.message?.model) ?? 'unknown'
+    const key = `${day}\u0000${modelFamily}`
+    let bucket = buckets.get(key)
+    if (!bucket) {
+      bucket = { day, modelFamily, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+      buckets.set(key, bucket)
+    }
+    bucket.input += usage.input_tokens || 0
+    bucket.output += usage.output_tokens || 0
+    bucket.cacheRead += usage.cache_read_input_tokens || 0
+    bucket.cacheWrite += usage.cache_creation_input_tokens || 0
+  }
+  return [...buckets.values()]
+}
+
+/**
+ * Whole-session reindex on the CALLER's db handle, so it joins the
+ * surrounding upsertSession transaction (session row, message rows, and usage
+ * rows commit or roll back together).
+ */
+export function reindexSessionUsage(db, sessionId, records) {
+  db.prepare('DELETE FROM usage_daily WHERE session_id = ?').run(sessionId)
+  const insert = db.prepare(
+    `INSERT INTO usage_daily (session_id, day, model_family, input, output, cache_read, cache_write)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+  for (const b of extractUsageDaily(records)) {
+    insert.run(sessionId, b.day, b.modelFamily, b.input, b.output, b.cacheRead, b.cacheWrite)
+  }
+}
+
+// key expression + join per groupBy. project resolves through the session
+// index (cwd); a usage row whose session vanished mid-query groups under ''.
+const GROUP_SQL = {
+  day: { keyExpr: 'u.day', join: '' },
+  model: { keyExpr: 'u.model_family', join: '' },
+  project: {
+    keyExpr: "coalesce(s.cwd, '')",
+    join: 'LEFT JOIN sessions s ON s.session_id = u.session_id',
+  },
+}
+
+function emptyTotals() {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, cacheHitRate: 0 }
+}
+
+// calculateCost prices a tokenUsage for a model string; the bare family name
+// ('sonnet') round-trips through its detectModelFamily, so the existing
+// pricing path is reused verbatim. Unknown families price at 0.
+function priceFamily(tokens, family) {
+  return calculateCost(tokens, family)?.totalCost ?? 0
+}
+
+/**
+ * Pure SQL aggregation over usage_daily, grouped by project|day|model, priced
+ * at read time. Returns { groupBy, rows, totals }; rows carry per-group token
+ * sums, dollar cost, and cache-hit-rate. Empty (zero-total) result in
+ * degraded mode — the route layer 503s before ever calling here.
+ */
+export function getUsageStats({ groupBy = 'day' } = {}) {
+  const empty = { groupBy, rows: [], totals: emptyTotals() }
+  const db = getDb()
+  if (!db) return empty
+  const group = GROUP_SQL[groupBy]
+  if (!group) return empty
+
+  let grouped
+  try {
+    grouped = db
+      .prepare(
+        `SELECT ${group.keyExpr}    AS key,
+                u.model_family      AS family,
+                SUM(u.input)        AS input,
+                SUM(u.output)       AS output,
+                SUM(u.cache_read)   AS cacheRead,
+                SUM(u.cache_write)  AS cacheWrite
+         FROM usage_daily u ${group.join}
+         GROUP BY key, family`,
+      )
+      .all()
+  } catch {
+    // Same degraded contract as the rest of lib/db: a broken handle yields an
+    // empty result, never a thrown 500 — openDb() recovery heals the cache.
+    return empty
+  }
+
+  // Fold the per-(key, family) sums into per-key rows: pricing differs per
+  // family, so cost must be computed before families merge.
+  const byKey = new Map()
+  const totals = emptyTotals()
+  for (const g of grouped) {
+    let row = byKey.get(g.key)
+    if (!row) {
+      row = { key: g.key, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }
+      byKey.set(g.key, row)
+    }
+    const tokens = {
+      input: g.input,
+      output: g.output,
+      cacheRead: g.cacheRead,
+      cacheWrite: g.cacheWrite,
+    }
+    const cost = priceFamily(tokens, g.family)
+    for (const field of ['input', 'output', 'cacheRead', 'cacheWrite']) {
+      row[field] += tokens[field]
+      totals[field] += tokens[field]
+    }
+    row.cost += cost
+    totals.cost += cost
+  }
+
+  const rows = [...byKey.values()].map((row) => ({
+    ...row,
+    totalTokens: row.input + row.output + row.cacheRead + row.cacheWrite,
+    cacheHitRate: calculateCacheHitRate(row),
+  }))
+  // Days read as a trend (ascending); projects and models read as a ranking.
+  if (groupBy === 'day') rows.sort((a, b) => a.key.localeCompare(b.key))
+  else rows.sort((a, b) => b.cost - a.cost)
+
+  totals.cacheHitRate = calculateCacheHitRate(totals)
+  return { groupBy, rows, totals }
+}

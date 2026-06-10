@@ -25,8 +25,13 @@ import { router as harnessRouter } from './routes/harness.js'
 import { router as railsRouter } from './routes/rails.js'
 import { router as trustRouter } from './routes/trust.js'
 import { router as fleetRouter } from './routes/fleet.js'
+import { router as searchRouter } from './routes/search.js'
+import { router as statsRouter } from './routes/stats.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
+import { rebuildAll } from './lib/db/session-index.js'
+import { rebuildMemoryIndex } from './lib/db/memory-index.js'
 import { initOtel, tracingMiddleware } from './lib/otel.js'
+import { initNotify } from './lib/notify.js'
 import { mountOpenApi } from './lib/openapi.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
@@ -52,6 +57,12 @@ export function buildApp() {
   // pass-through when disabled) wraps every route.
   initOtel()
   app.use(tracingMiddleware)
+
+  // AFK gate notifier (Phase 4) — env-gated (OVERSIGHT_WEBHOOK_URL) and OFF by
+  // default, same contract as OTel above: unset = total no-op. When set it
+  // subscribes to the internal SSE pub/sub and POSTs approval-pending events to
+  // the webhook. Notify-only — there is NO inbound path.
+  initNotify()
 
   // Middleware stack (order matters)
   // DNS-rebinding guard runs FIRST — before CORS, routes, and everything else —
@@ -88,6 +99,8 @@ export function buildApp() {
   app.use('/api/rails', railsRouter)
   app.use('/api/trust', trustRouter)
   app.use('/api/fleet', fleetRouter)
+  app.use('/api/search', searchRouter)
+  app.use('/api/stats', statsRouter)
 
   // OpenAPI docs surface (Phase 4 / C-openapi). Mounted AFTER express.json + the
   // routers but BEFORE the '/api' 404 catch-all, so GET /api/docs(.json) is not
@@ -137,6 +150,19 @@ export function start() {
     // run is wedged at 'running'. Fire-and-forget; a failure is logged, never fatal.
     reconcileFleetRuns().catch((err) =>
       logger.warn({ detail: err?.message || err }, 'fleet_boot_reconcile_failed'),
+    )
+    // ADR-0008 boot rebuild — background, chunked with setImmediate, reparsing
+    // only (mtime,size) diffs. Until it completes, GET /api/sessions serves the
+    // direct parser scan; on failure the index simply stays not-ready (the
+    // degraded mode is the pre-index behavior, never an outage).
+    rebuildAll().catch((err) =>
+      logger.warn({ detail: err?.message || err }, 'session_index_rebuild_failed'),
+    )
+    // Phase 6: the knowledge lane of the same rebuild — project memory docs
+    // into the search index. Same contract: background, failure is logged and
+    // search simply lacks memory docs until the next boot.
+    rebuildMemoryIndex().catch((err) =>
+      logger.warn({ detail: err?.message || err }, 'memory_index_rebuild_failed'),
     )
   })
 

@@ -6,6 +6,37 @@ import { signalDegraded } from '../lib/claude-format.js'
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude', 'projects')
 const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
+const ABANDONED_THRESHOLD_MS = 4 * 60 * 60 * 1000 // 4 hours
+
+/**
+ * ADR-0008: isActive/needsInput are functions of Date.now(), so a cached
+ * summary can never serve them verbatim — the SQLite session index recomputes
+ * them at read time through this same pure helper the parser uses.
+ *
+ * A session "needs input" only if (a) it's not currently active, (b) it was
+ * modified within the abandoned threshold, AND (c) the very last main-thread
+ * record was an assistant message with stop_reason === 'end_turn'
+ * (lastMainEndTurn). See the needsInput history note in parseSessionFile.
+ */
+export function computeSessionTimeFields(lastModified, lastMainEndTurn, now = Date.now()) {
+  const isActive = now - lastModified < ACTIVE_THRESHOLD_MS
+  const needsInput =
+    !isActive && now - lastModified < ABANDONED_THRESHOLD_MS && Boolean(lastMainEndTurn)
+  return { isActive, needsInput }
+}
+
+/**
+ * One-line summary of a tool_use input — the canonical shape used both for a
+ * session's lastAction and (ADR-0008 Phase 2) the searchable tool-input docs
+ * in the message index. Keep the two surfaces identical by construction.
+ */
+export function summarizeToolUse(name, input = {}) {
+  if (name === 'Bash') return (input.command || '').slice(0, 80)
+  if (['Read', 'Write', 'Edit', 'MultiEdit'].includes(name)) return input.file_path || ''
+  if (name === 'Agent') return (input.prompt || '').slice(0, 60)
+  if (name === 'Skill') return input.skill || ''
+  return String(Object.values(input)[0] || '').slice(0, 80)
+}
 
 export function getAllSessions() {
   const sessions = []
@@ -59,7 +90,26 @@ export function getSessionById(sessionId) {
   return null
 }
 
+/**
+ * ADR-0008: parse a session file straight from its path, returning both the
+ * summary (the verbatim shape parseSessionFile produces — what the session
+ * index stores as summary_json), the raw lastMainEndTurn signal the index
+ * needs to recompute needsInput at read time, and the parsed records so the
+ * message index (Phase 2) can reindex without a second file read. Returns
+ * null for unparseable or metadata-only files, same as parseSessionFile.
+ */
+export function parseSessionRecord(filePath) {
+  const filename = path.basename(filePath)
+  const projectDirName = path.basename(path.dirname(filePath))
+  return parseSessionFileDetailed(filePath, projectDirName, filename)
+}
+
 function parseSessionFile(filePath, projectDirName, filename) {
+  const parsed = parseSessionFileDetailed(filePath, projectDirName, filename)
+  return parsed ? parsed.summary : null
+}
+
+function parseSessionFileDetailed(filePath, projectDirName, filename) {
   try {
     const stat = fs.statSync(filePath)
     const content = fs.readFileSync(filePath, 'utf-8')
@@ -99,7 +149,6 @@ function parseSessionFile(filePath, projectDirName, filename) {
     const version = records.find((r) => r.version)?.version || null
     const firstTimestamp = records[0]?.timestamp
     const lastModified = stat.mtimeMs
-    const isActive = Date.now() - lastModified < ACTIVE_THRESHOLD_MS
 
     // Build agent tree from isSidechain + parentUuid + meta files
     const subagentsDir = path.join(path.dirname(filePath), sessionId, 'subagents')
@@ -166,15 +215,10 @@ function parseSessionFile(filePath, projectDirName, filename) {
             lastThought = (block.thinking || '').slice(0, 350)
           }
           if (!lastAction && block.type === 'tool_use') {
-            const inp = block.input || {}
-            let summary
-            if (block.name === 'Bash') summary = (inp.command || '').slice(0, 80)
-            else if (['Read', 'Write', 'Edit', 'MultiEdit'].includes(block.name))
-              summary = inp.file_path || ''
-            else if (block.name === 'Agent') summary = (inp.prompt || '').slice(0, 60)
-            else if (block.name === 'Skill') summary = inp.skill || ''
-            else summary = String(Object.values(inp)[0] || '').slice(0, 80)
-            lastAction = { name: block.name, summary }
+            lastAction = {
+              name: block.name,
+              summary: summarizeToolUse(block.name, block.input || {}),
+            }
           }
           if (!lastText && block.type === 'text') {
             lastText = (block.text || '').slice(0, 250)
@@ -199,27 +243,25 @@ function parseSessionFile(filePath, projectDirName, filename) {
     //      is contradictory — an active session is currently running, so
     //      it cannot also be waiting for the user. We now require !isActive.
     //
-    // Result: a session is "needs input" only if (a) it's not currently
-    // active, (b) it was modified within the abandoned threshold, AND
-    // (c) the very last main-thread record is an assistant message with
-    // stop_reason === 'end_turn'.
-    const ABANDONED_THRESHOLD_MS = 4 * 60 * 60 * 1000 // 4 hours
-    let needsInput = false
-    if (!isActive && Date.now() - lastModified < ABANDONED_THRESHOLD_MS) {
-      for (let i = records.length - 1; i >= 0; i--) {
-        const r = records[i]
-        if (r.isSidechain) continue
-        if (r.type === 'assistant') {
-          const stopReason = r.message?.stop_reason || r.stop_reason
-          if (stopReason === 'end_turn') {
-            needsInput = true
-          }
+    // The raw signal (lastMainEndTurn: the very last main-thread record is an
+    // assistant message with stop_reason === 'end_turn') is extracted here;
+    // the time gating lives in computeSessionTimeFields so the session index
+    // can recompute isActive/needsInput at read time (ADR-0008).
+    let lastMainEndTurn = false
+    for (let i = records.length - 1; i >= 0; i--) {
+      const r = records[i]
+      if (r.isSidechain) continue
+      if (r.type === 'assistant') {
+        const stopReason = r.message?.stop_reason || r.stop_reason
+        if (stopReason === 'end_turn') {
+          lastMainEndTurn = true
         }
-        break // only check the very last main-thread record
       }
+      break // only check the very last main-thread record
     }
+    const { isActive, needsInput } = computeSessionTimeFields(lastModified, lastMainEndTurn)
 
-    return {
+    const summary = {
       sessionId,
       slug,
       cwd,
@@ -243,6 +285,7 @@ function parseSessionFile(filePath, projectDirName, filename) {
       hasBeenCompacted,
       compactionSummary,
     }
+    return { summary, lastMainEndTurn, records }
   } catch {
     return null
   }
