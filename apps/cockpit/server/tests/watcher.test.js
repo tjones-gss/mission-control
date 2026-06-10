@@ -33,10 +33,16 @@ vi.mock('../lib/db/session-index.js', () => ({
   removeSession: vi.fn(),
 }))
 
+vi.mock('../lib/db/memory-index.js', () => ({
+  indexMemoryFile: vi.fn(),
+  removeMemoryFile: vi.fn(),
+}))
+
 import chokidar from 'chokidar'
 import { emit } from '../sse.js'
 import { onSessionEvent } from '../intelligence/triggers.js'
 import { upsertSession, removeSession } from '../lib/db/session-index.js'
+import { indexMemoryFile, removeMemoryFile } from '../lib/db/memory-index.js'
 import { startWatcher } from '../watcher.js'
 
 describe('watcher', () => {
@@ -267,6 +273,57 @@ describe('watcher', () => {
     expect(emit).toHaveBeenCalledWith('session_update', {
       filePath: path.relative(CLAUDE_DIR, direct),
       ts: expect.any(Number),
+    })
+  })
+
+  // ── Phase 6: memory docs feed the knowledge index ──────────────────────────
+  // projects/<proj>/memory/*.md changes already emitted memory_update; now they
+  // also index/remove the doc BEFORE the emit (same fresh-before-refetch
+  // ordering as sessions), and add/unlink emit memory_update too.
+  describe('memory doc indexing', () => {
+    const MEMORY_FILE = path.join(CLAUDE_DIR, 'projects', 'proj', 'memory', 'gotchas.md')
+
+    it('indexes the memory doc BEFORE emitting memory_update on change', () => {
+      const calls = []
+      indexMemoryFile.mockImplementation(() => calls.push('index'))
+      emit.mockImplementation(() => calls.push('emit'))
+      startWatcher()
+      handlers.change(MEMORY_FILE)
+      expect(indexMemoryFile).toHaveBeenCalledWith(MEMORY_FILE)
+      expect(emit).toHaveBeenCalledWith('memory_update', {
+        filePath: path.relative(CLAUDE_DIR, MEMORY_FILE),
+        ts: expect.any(Number),
+      })
+      expect(calls.indexOf('index')).toBeLessThan(calls.indexOf('emit'))
+    })
+
+    it('indexes and emits memory_update on add', () => {
+      startWatcher()
+      handlers.add(MEMORY_FILE)
+      expect(indexMemoryFile).toHaveBeenCalledWith(MEMORY_FILE)
+      expect(emit).toHaveBeenCalledWith('memory_update', {
+        filePath: path.relative(CLAUDE_DIR, MEMORY_FILE),
+        ts: expect.any(Number),
+      })
+    })
+
+    it('removes from the index and emits memory_update on unlink', () => {
+      startWatcher()
+      handlers.unlink(MEMORY_FILE)
+      expect(removeMemoryFile).toHaveBeenCalledWith(MEMORY_FILE)
+      expect(emit).toHaveBeenCalledWith('memory_update', {
+        filePath: path.relative(CLAUDE_DIR, MEMORY_FILE),
+        ts: expect.any(Number),
+      })
+    })
+
+    it('does not index non-markdown or non-memory project files', () => {
+      startWatcher()
+      handlers.change(path.join(CLAUDE_DIR, 'projects', 'proj', 'memory', 'scratch.txt'))
+      handlers.add(path.join(CLAUDE_DIR, 'projects', 'proj', 'README.md'))
+      handlers.unlink(path.join(CLAUDE_DIR, 'projects', 'proj', 'README.md'))
+      expect(indexMemoryFile).not.toHaveBeenCalled()
+      expect(removeMemoryFile).not.toHaveBeenCalled()
     })
   })
 

@@ -133,9 +133,10 @@ describe('CommandPalette — search', () => {
 
     await waitFor(() => expect(screen.getByText(/pipeline by pinning node/)).toBeInTheDocument())
 
-    // Group headers present
-    expect(screen.getByText('Sessions')).toBeInTheDocument()
-    expect(screen.getByText('Messages')).toBeInTheDocument()
+    // Group headers present (selector: the type-filter pill is also labeled
+    // "Messages", but it is a button — headings are divs)
+    expect(screen.getByText('Sessions', { selector: 'div' })).toBeInTheDocument()
+    expect(screen.getByText('Messages', { selector: 'div' })).toBeInTheDocument()
 
     // Sessions group comes first: the first option is the matching session
     const options = screen.getAllByRole('option')
@@ -163,6 +164,77 @@ describe('CommandPalette — search', () => {
     await waitFor(() =>
       expect(screen.getByText(/delete cockpit\.db and restart/i)).toBeInTheDocument(),
     )
+  })
+})
+
+// ── Phase 6: knowledge surfacing — the doc-type filter ───────────────────────
+const MEMORY_HIT = {
+  sessionId: 'memory:C:/Users/t/.claude/projects/C--proj/memory/install-topology.md',
+  idx: 0,
+  role: null,
+  ts: '2026-06-01T00:00:00Z',
+  cwd: 'C:/Users/t/.claude/projects/C--proj/memory/install-topology.md',
+  docType: 'memory',
+  snippet: 'root npm install covers only <mark>deploy</mark> workspaces',
+  rank: -0.8,
+  lastModified: Date.now() - 5000,
+  slug: 'install-topology.md',
+  model: null,
+}
+
+describe('CommandPalette — type filter', () => {
+  it('renders the filter pills with All active by default and omits type= from the query', async () => {
+    const calls = mockSearch()
+    render(<CommandPalette open sessions={[]} onNavigate={() => {}} onClose={() => {}} />)
+
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Memory' })).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+    await waitFor(() => expect(calls.length).toBe(1))
+    expect(calls[0].searchParams.get('type')).toBeNull()
+  })
+
+  it('selecting a type refetches with type= and marks the pill active', async () => {
+    const calls = mockSearch([MEMORY_HIT])
+    render(<CommandPalette open sessions={[]} onNavigate={() => {}} onClose={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+    await waitFor(() => expect(calls.length).toBe(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Memory' }))
+    await waitFor(() => expect(calls.length).toBe(2))
+    expect(calls[1].searchParams.get('type')).toBe('memory')
+    expect(screen.getByRole('button', { name: 'Memory' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('renders memory hits with their filename and doc label, and selecting one only closes', async () => {
+    mockSearch([MEMORY_HIT])
+    const onNavigate = vi.fn()
+    const onClose = vi.fn()
+    render(<CommandPalette open sessions={[]} onNavigate={onNavigate} onClose={onClose} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+    await waitFor(() => expect(screen.getByText('install-topology.md')).toBeInTheDocument())
+    expect(screen.getByText('memory')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText(/covers only/).closest('[role="option"]'))
+    expect(onNavigate).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('summary hits navigate to their session like message hits', async () => {
+    mockSearch([{ ...MESSAGE_HITS[0], docType: 'summary', role: null }])
+    const onNavigate = vi.fn()
+    render(<CommandPalette open sessions={[]} onNavigate={onNavigate} onClose={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+    await waitFor(() => expect(screen.getByText(/pipeline by pinning node/)).toBeInTheDocument())
+    expect(screen.getByText('summary')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText(/pipeline by pinning node/).closest('[role="option"]'))
+    expect(onNavigate).toHaveBeenCalledWith('sess-1')
   })
 })
 

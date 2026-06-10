@@ -20,8 +20,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Bump on any schema change — the cache is thrown away and rebuilt, so no
 // migration ceremony is ever needed. v2: messages + messages_fts (Phase 2).
-// v3: usage_daily token rollups (Phase 5).
-export const DB_SCHEMA_VERSION = 3
+// v3: usage_daily token rollups (Phase 5). v4: intelligence results (Phase 6).
+export const DB_SCHEMA_VERSION = 4
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS meta (
@@ -91,6 +91,18 @@ const SCHEMA_SQL = `
     PRIMARY KEY (session_id, day, model_family)
   );
   CREATE INDEX IF NOT EXISTS idx_usage_daily_day ON usage_daily(day);
+
+  -- Phase 6: durable intelligence analyses (lib/db/intelligence-store.js,
+  -- fronted by intelligence/cache.js). analyzed_at is a ms epoch;
+  -- message_count/subagent_count are the staleness snapshot at analysis time
+  -- (nullable — callers that predate the snapshot pass nothing).
+  CREATE TABLE IF NOT EXISTS intelligence (
+    session_id     TEXT PRIMARY KEY,
+    analyzed_at    REAL NOT NULL,
+    message_count  INTEGER,
+    subagent_count INTEGER,
+    result_json    TEXT NOT NULL
+  );
 `
 
 let db = null

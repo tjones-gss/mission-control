@@ -6,6 +6,7 @@ import { onSessionEvent } from './intelligence/triggers.js'
 import { getKnownConductorRoots } from './parsers/conductor.js'
 import { getKnownHarnessRoots } from './parsers/harness.js'
 import { upsertSession, removeSession } from './lib/db/session-index.js'
+import { indexMemoryFile, removeMemoryFile } from './lib/db/memory-index.js'
 
 export { addClient, removeClient, emit } from './sse.js'
 
@@ -57,6 +58,15 @@ function isSessionTranscript(rel) {
   if (!rel.endsWith('.jsonl')) return false
   const parts = rel.split(/[\\/]/)
   return parts.length === 3 && parts[0] === 'projects'
+}
+
+// A memory doc is projects/<project>/memory/<file>.md — the exact layout
+// parsers/memory.js reads (MEMORY.md included). Depth check like
+// isSessionTranscript, so a stray .md elsewhere under projects/ never indexes.
+function isMemoryDoc(rel) {
+  if (!rel.toLowerCase().endsWith('.md')) return false
+  const parts = rel.split(/[\\/]/)
+  return parts.length === 4 && parts[0] === 'projects' && parts[2] === 'memory'
 }
 
 export function startWatcher() {
@@ -186,6 +196,10 @@ export function startWatcher() {
       const sessionId = path.basename(filePath, '.jsonl')
       onSessionEvent(sessionId)
     } else if (rel.startsWith('projects') && rel.includes('memory')) {
+      // Phase 6: memory docs feed the knowledge index — refresh it BEFORE the
+      // emit (the client refetch must read fresh rows). Safe no-op when the
+      // path isn't a real memory .md or the db is degraded.
+      if (isMemoryDoc(rel)) indexMemoryFile(filePath)
       emit('memory_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('tasks')) {
       emit('task_update', { filePath: rel, ts: Date.now() })
@@ -223,6 +237,11 @@ export function startWatcher() {
       // dir we weren't watching yet — re-derive roots and add them.
       addConductorWatchers()
       addHarnessWatchers()
+    } else if (isMemoryDoc(rel)) {
+      // Phase 6: a brand-new memory file (chokidar 'add', which the
+      // change-handler branch never sees) — index it, then announce it.
+      indexMemoryFile(filePath)
+      emit('memory_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('workflows')) {
       emit('workflows_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('skills') || rel.startsWith('commands')) {
@@ -242,6 +261,11 @@ export function startWatcher() {
       // reason, matching the name_changed/name_cleared emits in routes.
       removeSession(path.basename(filePath, '.jsonl'))
       emit('session_update', { filePath: rel, ts: Date.now(), reason: 'removed' })
+    } else if (isMemoryDoc(rel)) {
+      // Phase 6: a deleted memory file leaves stale knowledge rows — reap
+      // them and tell clients to refetch.
+      removeMemoryFile(filePath)
+      emit('memory_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('workflows')) {
       emit('workflows_update', { filePath: rel, ts: Date.now() })
     } else if (rel.startsWith('skills') || rel.startsWith('commands')) {

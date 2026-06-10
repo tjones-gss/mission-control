@@ -29,6 +29,7 @@ import { router as searchRouter } from './routes/search.js'
 import { router as statsRouter } from './routes/stats.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
 import { rebuildAll } from './lib/db/session-index.js'
+import { rebuildMemoryIndex } from './lib/db/memory-index.js'
 import { initOtel, tracingMiddleware } from './lib/otel.js'
 import { initNotify } from './lib/notify.js'
 import { mountOpenApi } from './lib/openapi.js'
@@ -156,6 +157,12 @@ export function start() {
     // degraded mode is the pre-index behavior, never an outage).
     rebuildAll().catch((err) =>
       logger.warn({ detail: err?.message || err }, 'session_index_rebuild_failed'),
+    )
+    // Phase 6: the knowledge lane of the same rebuild — project memory docs
+    // into the search index. Same contract: background, failure is logged and
+    // search simply lacks memory docs until the next boot.
+    rebuildMemoryIndex().catch((err) =>
+      logger.warn({ detail: err?.message || err }, 'memory_index_rebuild_failed'),
     )
   })
 

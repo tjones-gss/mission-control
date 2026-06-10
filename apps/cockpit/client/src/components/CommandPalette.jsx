@@ -11,6 +11,15 @@ const DEBOUNCE_MS = 200
 const SESSION_LIMIT = 6
 const MESSAGE_LIMIT = 12
 
+// Phase 6 — knowledge surfacing: the doc-type filter mirrors the server's
+// GET /api/search?type=. 'all' (the default) omits the param entirely.
+const TYPE_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'message', label: 'Messages' },
+  { id: 'memory', label: 'Memory' },
+  { id: 'summary', label: 'Summaries' },
+]
+
 function formatTs(ms) {
   return new Date(ms).toLocaleString([], {
     month: 'short',
@@ -96,6 +105,7 @@ function PaletteRow({ active, onSelect, children }) {
  */
 export function CommandPalette({ open, onClose, sessions, onNavigate }) {
   const [query, setQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
   const [hits, setHits] = useState([])
   const [status, setStatus] = useState('idle') // idle | loading | done | error
   const [errorHint, setErrorHint] = useState(null)
@@ -106,6 +116,7 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
   useEffect(() => {
     if (!open) {
       setQuery('')
+      setTypeFilter('all')
       setHits([])
       setStatus('idle')
       setErrorHint(null)
@@ -126,6 +137,7 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
     setStatus('loading')
     const timer = setTimeout(async () => {
       const params = new URLSearchParams({ q: query, limit: MESSAGE_LIMIT })
+      if (typeFilter !== 'all') params.set('type', typeFilter)
       try {
         const res = await fetch(`/api/search?${params}`, { signal: controller.signal })
         if (!res.ok) {
@@ -155,7 +167,7 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [open, query])
+  }, [open, query, typeFilter])
 
   const sessionMatches = useMemo(() => matchSessions(sessions, query), [sessions, query])
 
@@ -163,21 +175,27 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
   const items = useMemo(
     () => [
       ...sessionMatches.map((s) => ({ key: `s-${s.sessionId}`, sessionId: s.sessionId })),
-      ...hits.map((h) => ({ key: `m-${h.sessionId}-${h.idx}`, sessionId: h.sessionId })),
+      ...hits.map((h) => ({
+        key: `m-${h.sessionId}-${h.idx}`,
+        sessionId: h.sessionId,
+        docType: h.docType,
+      })),
     ],
     [sessionMatches, hits],
   )
 
-  // New query → selection snaps back to the top result.
+  // New query/filter → selection snaps back to the top result.
   useEffect(() => {
     setActiveIndex(0)
-  }, [query])
+  }, [query, typeFilter])
 
   if (!open) return null
 
   const select = (item) => {
     if (!item) return
-    onNavigate(item.sessionId)
+    // Memory docs are knowledge files, not sessions — there is nothing to
+    // navigate to (their sessionId is the synthetic 'memory:<path>' key).
+    if (item.docType !== 'memory') onNavigate(item.sessionId)
     onClose()
   }
 
@@ -219,6 +237,28 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
         <kbd className="shrink-0 rounded border border-[var(--mc-border-2)] bg-[var(--mc-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--mc-fg-4)]">
           esc
         </kbd>
+      </div>
+
+      <div className="flex items-center gap-1 border-b border-[var(--mc-border)] px-3 py-1.5">
+        {TYPE_FILTERS.map((t) => {
+          const active = typeFilter === t.id
+          return (
+            <button
+              key={t.id}
+              aria-pressed={active}
+              onClick={() => setTypeFilter(t.id)}
+              // Keep keyboard focus in the search input while clicking pills.
+              onMouseDown={(e) => e.preventDefault()}
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                active
+                  ? 'border-[var(--mc-border-2)] bg-[var(--mc-surface-2)] text-[var(--mc-fg)]'
+                  : 'border-transparent text-[var(--mc-fg-4)] hover:text-[var(--mc-fg-2)]'
+              }`}
+            >
+              {t.label}
+            </button>
+          )
+        })}
       </div>
 
       <div className="max-h-[50vh] overflow-y-auto pb-1.5" role="listbox" aria-label="Results">
@@ -278,7 +318,7 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
                     {h.slug || h.sessionId}
                   </span>
                   <span className="shrink-0 text-[10px] uppercase text-[var(--mc-fg-5)]">
-                    {h.role}
+                    {h.role || h.docType}
                   </span>
                   <span className="flex-1" />
                   <span className="shrink-0 text-xs text-[var(--mc-fg-5)]">

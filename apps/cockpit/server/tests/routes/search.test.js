@@ -11,6 +11,8 @@ import os from 'node:os'
 import { buildApp } from '../../index.js'
 import { openDb, closeDb } from '../../lib/db/connection.js'
 import { upsertSession } from '../../lib/db/session-index.js'
+import { indexMemoryFile } from '../../lib/db/memory-index.js'
+import { saveIntelligence } from '../../lib/db/intelligence-store.js'
 
 let tmpDir
 let projectsDir
@@ -134,6 +136,64 @@ describe('GET /api/search', () => {
     upsertSession(writeSessionJsonl('sess-syn', 'parenthetical content'))
     const res = await request(app).get('/api/search').query({ q: '"unbalanced (AND NOT' })
     expect(res.status).toBe(200)
+  })
+
+  // Phase 6 — knowledge surfacing: the type filter over doc_type.
+  describe('type filter', () => {
+    function writeMemoryFile(name, content) {
+      const dir = path.join(projectsDir, 'C--proj', 'memory')
+      fs.mkdirSync(dir, { recursive: true })
+      const filePath = path.join(dir, name)
+      fs.writeFileSync(filePath, content)
+      return filePath
+    }
+
+    function seedKnowledge() {
+      upsertSession(writeSessionJsonl('sess-k', 'the kraken lives in the message'))
+      indexMemoryFile(writeMemoryFile('kraken.md', 'the kraken lives in a memory file'))
+      saveIntelligence('sess-k', {
+        goal: 'tame the kraken in this summary',
+        progress: 'ongoing',
+        flags: [],
+        subagents: 'none',
+        recommendation: null,
+      })
+    }
+
+    it('defaults to all doc types', async () => {
+      seedKnowledge()
+      const res = await request(app).get('/api/search').query({ q: 'kraken' })
+      expect(res.status).toBe(200)
+      const kinds = new Set(res.body.results.map((h) => h.docType))
+      expect(kinds).toEqual(new Set(['message', 'memory', 'summary']))
+      const all = await request(app).get('/api/search').query({ q: 'kraken', type: 'all' })
+      expect(new Set(all.body.results.map((h) => h.docType))).toEqual(kinds)
+    })
+
+    it('narrows to one doc type', async () => {
+      seedKnowledge()
+      const res = await request(app).get('/api/search').query({ q: 'kraken', type: 'memory' })
+      expect(res.status).toBe(200)
+      expect(res.body.results.map((h) => h.docType)).toEqual(['memory'])
+      expect(res.body.results[0].slug).toBe('kraken.md')
+    })
+
+    it('accepts a comma-separated list', async () => {
+      seedKnowledge()
+      const res = await request(app)
+        .get('/api/search')
+        .query({ q: 'kraken', type: 'memory,summary' })
+      expect(res.status).toBe(200)
+      expect(new Set(res.body.results.map((h) => h.docType))).toEqual(
+        new Set(['memory', 'summary']),
+      )
+    })
+
+    it('400s on an unknown type', async () => {
+      const res = await request(app).get('/api/search').query({ q: 'kraken', type: 'sonnet' })
+      expect(res.status).toBe(400)
+      expect(res.body.error).toMatch(/type/i)
+    })
   })
 
   it('503s with a clear hint when the db is unavailable', async () => {

@@ -3,7 +3,7 @@
 // (lib/db/message-index.js). Read-only; the cockpit never writes to ~/.claude.
 import { Router } from 'express'
 import { isDbUnavailable } from '../lib/db/connection.js'
-import { searchMessages, MAX_LIMIT } from '../lib/db/message-index.js'
+import { searchMessages, MAX_LIMIT, SEARCH_DOC_TYPES } from '../lib/db/message-index.js'
 
 const router = Router()
 
@@ -49,6 +49,13 @@ function parseTimeParam(value) {
  *         name: limit
  *         schema: { type: integer, default: 20, maximum: 100 }
  *         description: Max hits to return (clamped to 100).
+ *       - in: query
+ *         name: type
+ *         schema: { type: string, default: all }
+ *         description: >
+ *           Doc-type filter — 'all' (default) or a comma-separated subset of
+ *           message, memory, summary (conversation records, project memory
+ *           files, intelligence analysis summaries).
  *     responses:
  *       200:
  *         description: Matching message hits with `<mark>` snippet highlights and session metadata for deep-linking.
@@ -89,8 +96,24 @@ router.get('/', (req, res) => {
     }
   }
 
+  // Phase 6: doc-type filter — 'all' (the default) means no narrowing.
+  let types
+  const typeRaw = typeof req.query.type === 'string' ? req.query.type.trim() : ''
+  if (typeRaw && typeRaw !== 'all') {
+    types = typeRaw
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    const invalid = types.filter((t) => !SEARCH_DOC_TYPES.includes(t))
+    if (invalid.length > 0 || types.length === 0) {
+      return res.status(400).json({
+        error: `type must be 'all' or a comma-separated subset of: ${SEARCH_DOC_TYPES.join(', ')}`,
+      })
+    }
+  }
+
   const project = typeof req.query.project === 'string' ? req.query.project : undefined
-  const results = searchMessages({ q, project, from, to, limit })
+  const results = searchMessages({ q, project, from, to, limit, types })
   res.json({ query: q, count: results.length, results })
 })
 

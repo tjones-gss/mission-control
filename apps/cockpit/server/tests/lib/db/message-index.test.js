@@ -169,6 +169,19 @@ describe('reindexSessionMessages() — whole-session reindex', () => {
     expect(row.cwd).toBe('C:/work/proj')
     expect(row.doc_type).toBe('message')
   })
+
+  // Phase 6: summary docs share the session_id — the whole-session reindex
+  // must only replace doc_type='message' rows, never knowledge docs.
+  it('leaves non-message docs for the same session untouched', () => {
+    const db = getDb()
+    db.prepare(
+      `INSERT INTO messages (session_id, idx, role, ts, cwd, doc_type, text)
+       VALUES ('s4', -1, NULL, NULL, NULL, 'summary', 'an analysis summary survives')`,
+    ).run()
+    reindexSessionMessages(db, 's4', '/work/p', [user('a fresh message')])
+    const rows = messageRows('s4')
+    expect(rows.map((r) => r.doc_type).sort()).toEqual(['message', 'summary'])
+  })
 })
 
 describe('upsertSession() populates the message index in the same transaction', () => {
@@ -287,6 +300,52 @@ describe('searchMessages()', () => {
     seed()
     expect(() => searchMessages({ q: '"unbalanced AND (NOT' })).not.toThrow()
     expect(searchMessages({ q: 'pipeline"' }).length).toBeGreaterThan(0)
+  })
+
+  // Phase 6: doc_type filter. Knowledge docs (memory/summary) share the
+  // messages table — types narrows the match; omitted means everything.
+  describe('types filter', () => {
+    function seedDocTypes() {
+      seed()
+      getDb()
+        .prepare(
+          `INSERT INTO messages (session_id, idx, role, ts, cwd, doc_type, text)
+           VALUES ('sess-a', -1, NULL, '2026-06-01T00:00:10.000Z', 'C:/work/proj', 'summary',
+                   'pipeline analysis summary doc')`,
+        )
+        .run()
+      getDb()
+        .prepare(
+          `INSERT INTO messages (session_id, idx, role, ts, cwd, doc_type, text)
+           VALUES ('memory:C:/mem/pipeline-notes.md', 0, NULL, '2026-06-01T00:00:20.000Z',
+                   'C:/mem/pipeline-notes.md', 'memory', 'pipeline memory doc body')`,
+        )
+        .run()
+    }
+
+    it('returns all doc types when types is omitted', () => {
+      seedDocTypes()
+      const kinds = new Set(searchMessages({ q: 'pipeline' }).map((h) => h.docType))
+      expect(kinds).toEqual(new Set(['message', 'summary', 'memory']))
+    })
+
+    it('narrows to the requested doc types', () => {
+      seedDocTypes()
+      expect(searchMessages({ q: 'pipeline', types: ['memory'] }).map((h) => h.docType)).toEqual([
+        'memory',
+      ])
+      const two = searchMessages({ q: 'pipeline', types: ['summary', 'memory'] })
+      expect(new Set(two.map((h) => h.docType))).toEqual(new Set(['summary', 'memory']))
+    })
+
+    it('memory docs without a session row still surface (LEFT JOIN, ts-derived recency)', () => {
+      seedDocTypes()
+      const [hit] = searchMessages({ q: 'pipeline', types: ['memory'] })
+      expect(hit.sessionId).toBe('memory:C:/mem/pipeline-notes.md')
+      expect(hit.slug).toBe('pipeline-notes.md')
+      expect(typeof hit.lastModified).toBe('number')
+      expect(hit.lastModified).toBeGreaterThan(Date.parse('2026-06-01T00:00:19Z'))
+    })
   })
 
   it('returns [] for an empty query or when the db is unavailable', () => {

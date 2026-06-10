@@ -11,6 +11,7 @@
 // (the exact summarizeToolUse shapes the parser uses for lastAction).
 // What never does: tool_results (huge, low-signal, often secret-bearing) and
 // base64 payloads. Each block is truncated at ~4KB.
+import path from 'node:path'
 import { getDb } from './connection.js'
 import { summarizeToolUse } from '../../parsers/sessions.js'
 
@@ -18,6 +19,11 @@ export const MAX_BLOCK_CHARS = 4096
 
 const DEFAULT_LIMIT = 20
 export const MAX_LIMIT = 100
+
+// Everything the messages table can hold (Phase 6): conversation records,
+// project memory docs (lib/db/memory-index.js), intelligence summaries
+// (lib/db/intelligence-store.js). The search route validates against this.
+export const SEARCH_DOC_TYPES = ['message', 'memory', 'summary']
 
 // A data URI, or an unbroken 256+ char run of base64 alphabet — either way it
 // is noise to a text index (and possibly an inlined image). Prose never has
@@ -79,7 +85,9 @@ export function extractMessageDocs(records) {
  * or roll back together). The FTS shadow rows follow via triggers.
  */
 export function reindexSessionMessages(db, sessionId, cwd, records) {
-  db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId)
+  // doc_type-scoped: knowledge docs (a 'summary' row shares this session_id)
+  // are owned by their own writers and must survive a conversation reindex.
+  db.prepare(`DELETE FROM messages WHERE session_id = ? AND doc_type = 'message'`).run(sessionId)
   const insert = db.prepare(
     `INSERT INTO messages (session_id, idx, role, ts, cwd, doc_type, text)
      VALUES (?, ?, ?, ?, ?, 'message', ?)`,
@@ -100,14 +108,21 @@ function toFtsQuery(q) {
     .join(' ')
 }
 
+// Knowledge docs (memory) have no sessions row — their recency comes from the
+// row's own ts (the file mtime, ISO). julianday keeps sub-second precision.
+const EFFECTIVE_MTIME_SQL = 'coalesce(s.last_modified, (julianday(m.ts) - 2440587.5) * 86400000.0)'
+
 /**
- * Full-text search joined to the session index.
+ * Full-text search joined (LEFT, since memory docs have no session row) to
+ * the session index.
  * Ordering: BM25 relevance first (smaller is better in FTS5), recency as the
- * tiebreaker. from/to filter on the session's last_modified (ms epoch).
+ * tiebreaker. from/to filter on the effective last-modified (ms epoch):
+ * the session's for conversation docs, the doc's own ts otherwise.
+ * types narrows doc_type (subset of SEARCH_DOC_TYPES); omitted means all.
  * Returns [] in degraded mode — the route layer turns that state into a 503
  * before ever calling here; this is the belt to that suspender.
  */
-export function searchMessages({ q, project, from, to, limit = DEFAULT_LIMIT } = {}) {
+export function searchMessages({ q, project, from, to, limit = DEFAULT_LIMIT, types } = {}) {
   const db = getDb()
   if (!db) return []
   const ftsQuery = toFtsQuery(String(q ?? ''))
@@ -115,16 +130,23 @@ export function searchMessages({ q, project, from, to, limit = DEFAULT_LIMIT } =
 
   const where = ['messages_fts MATCH ?']
   const params = [ftsQuery]
+  const requestedTypes = Array.isArray(types)
+    ? types.filter((t) => SEARCH_DOC_TYPES.includes(t))
+    : []
+  if (requestedTypes.length > 0 && requestedTypes.length < SEARCH_DOC_TYPES.length) {
+    where.push(`m.doc_type IN (${requestedTypes.map(() => '?').join(', ')})`)
+    params.push(...requestedTypes)
+  }
   if (project) {
     where.push(`instr(lower(coalesce(m.cwd, '')), lower(?)) > 0`)
     params.push(String(project))
   }
   if (Number.isFinite(from)) {
-    where.push('s.last_modified >= ?')
+    where.push(`${EFFECTIVE_MTIME_SQL} >= ?`)
     params.push(from)
   }
   if (Number.isFinite(to)) {
-    where.push('s.last_modified <= ?')
+    where.push(`${EFFECTIVE_MTIME_SQL} <= ?`)
     params.push(to)
   }
   const cappedLimit = Math.min(Math.max(Math.trunc(limit) || DEFAULT_LIMIT, 1), MAX_LIMIT)
@@ -141,13 +163,13 @@ export function searchMessages({ q, project, from, to, limit = DEFAULT_LIMIT } =
                 m.doc_type    AS docType,
                 snippet(messages_fts, 0, '<mark>', '</mark>', '…', 12) AS snippet,
                 bm25(messages_fts) AS rank,
-                s.last_modified    AS lastModified,
+                ${EFFECTIVE_MTIME_SQL} AS lastModified,
                 s.summary_json     AS summaryJson
          FROM messages_fts
          JOIN messages m ON m.id = messages_fts.rowid
-         JOIN sessions s ON s.session_id = m.session_id
+         LEFT JOIN sessions s ON s.session_id = m.session_id
          WHERE ${where.join(' AND ')}
-         ORDER BY rank, s.last_modified DESC
+         ORDER BY rank, lastModified DESC
          LIMIT ?`,
       )
       .all(...params, cappedLimit)
@@ -160,12 +182,16 @@ export function searchMessages({ q, project, from, to, limit = DEFAULT_LIMIT } =
   return rows.map((row) => {
     let slug = null
     let model = null
+    if (row.docType === 'memory') {
+      // Memory docs store their file path in cwd; the filename is the title.
+      slug = row.cwd ? path.basename(row.cwd) : null
+    }
     try {
       const summary = JSON.parse(row.summaryJson)
-      slug = summary.slug ?? null
+      slug = summary.slug ?? slug
       model = summary.model ?? null
     } catch {
-      // a malformed summary row only costs the display extras
+      // a malformed (or absent — knowledge docs) summary only costs extras
     }
     return {
       sessionId: row.sessionId,
