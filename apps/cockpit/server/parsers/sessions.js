@@ -25,6 +25,19 @@ export function computeSessionTimeFields(lastModified, lastMainEndTurn, now = Da
   return { isActive, needsInput }
 }
 
+/**
+ * One-line summary of a tool_use input — the canonical shape used both for a
+ * session's lastAction and (ADR-0008 Phase 2) the searchable tool-input docs
+ * in the message index. Keep the two surfaces identical by construction.
+ */
+export function summarizeToolUse(name, input = {}) {
+  if (name === 'Bash') return (input.command || '').slice(0, 80)
+  if (['Read', 'Write', 'Edit', 'MultiEdit'].includes(name)) return input.file_path || ''
+  if (name === 'Agent') return (input.prompt || '').slice(0, 60)
+  if (name === 'Skill') return input.skill || ''
+  return String(Object.values(input)[0] || '').slice(0, 80)
+}
+
 export function getAllSessions() {
   const sessions = []
   if (!fs.existsSync(CLAUDE_DIR)) return sessions
@@ -80,9 +93,10 @@ export function getSessionById(sessionId) {
 /**
  * ADR-0008: parse a session file straight from its path, returning both the
  * summary (the verbatim shape parseSessionFile produces — what the session
- * index stores as summary_json) and the raw lastMainEndTurn signal the index
- * needs to recompute needsInput at read time. Returns null for unparseable
- * or metadata-only files, same as parseSessionFile.
+ * index stores as summary_json), the raw lastMainEndTurn signal the index
+ * needs to recompute needsInput at read time, and the parsed records so the
+ * message index (Phase 2) can reindex without a second file read. Returns
+ * null for unparseable or metadata-only files, same as parseSessionFile.
  */
 export function parseSessionRecord(filePath) {
   const filename = path.basename(filePath)
@@ -201,15 +215,10 @@ function parseSessionFileDetailed(filePath, projectDirName, filename) {
             lastThought = (block.thinking || '').slice(0, 350)
           }
           if (!lastAction && block.type === 'tool_use') {
-            const inp = block.input || {}
-            let summary
-            if (block.name === 'Bash') summary = (inp.command || '').slice(0, 80)
-            else if (['Read', 'Write', 'Edit', 'MultiEdit'].includes(block.name))
-              summary = inp.file_path || ''
-            else if (block.name === 'Agent') summary = (inp.prompt || '').slice(0, 60)
-            else if (block.name === 'Skill') summary = inp.skill || ''
-            else summary = String(Object.values(inp)[0] || '').slice(0, 80)
-            lastAction = { name: block.name, summary }
+            lastAction = {
+              name: block.name,
+              summary: summarizeToolUse(block.name, block.input || {}),
+            }
           }
           if (!lastText && block.type === 'text') {
             lastText = (block.text || '').slice(0, 250)
@@ -276,7 +285,7 @@ function parseSessionFileDetailed(filePath, projectDirName, filename) {
       hasBeenCompacted,
       compactionSummary,
     }
-    return { summary, lastMainEndTurn }
+    return { summary, lastMainEndTurn, records }
   } catch {
     return null
   }

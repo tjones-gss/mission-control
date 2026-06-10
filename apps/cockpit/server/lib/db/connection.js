@@ -19,8 +19,8 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Bump on any schema change — the cache is thrown away and rebuilt, so no
-// migration ceremony is ever needed.
-export const DB_SCHEMA_VERSION = 1
+// migration ceremony is ever needed. v2: messages + messages_fts (Phase 2).
+export const DB_SCHEMA_VERSION = 2
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS meta (
@@ -39,6 +39,40 @@ const SCHEMA_SQL = `
     summary_json       TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_last_modified ON sessions(last_modified);
+
+  -- Phase 2: per-record searchable text, populated inside the same
+  -- upsertSession transaction by lib/db/message-index.js. doc_type leaves room
+  -- for Phase 6 ('memory'/'summary' docs) without another schema bump.
+  CREATE TABLE IF NOT EXISTS messages (
+    id         INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    idx        INTEGER NOT NULL,
+    role       TEXT,
+    ts         TEXT,
+    cwd        TEXT,
+    doc_type   TEXT NOT NULL DEFAULT 'message',
+    text       TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+
+  -- External-content FTS5 over messages.text. The standard trigger trio keeps
+  -- the shadow index in lockstep, so writers only ever touch messages.
+  CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+    text,
+    content='messages',
+    content_rowid='id',
+    tokenize='porter unicode61'
+  );
+  CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+    INSERT INTO messages_fts(rowid, text) VALUES (new.id, new.text);
+  END;
+  CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, old.text);
+  END;
+  CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, old.text);
+    INSERT INTO messages_fts(rowid, text) VALUES (new.id, new.text);
+  END;
 `
 
 let db = null

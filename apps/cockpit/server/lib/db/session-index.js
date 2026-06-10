@@ -12,7 +12,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { getDb } from './connection.js'
+import { getDb, withTransaction } from './connection.js'
+import { reindexSessionMessages } from './message-index.js'
 import { parseSessionRecord, computeSessionTimeFields } from '../../parsers/sessions.js'
 
 const DEFAULT_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
@@ -83,32 +84,41 @@ export function upsertSession(filePath) {
     return false
   }
 
-  const { summary, lastMainEndTurn } = parsed
+  const { summary, lastMainEndTurn, records } = parsed
   try {
-    db.prepare(UPSERT_SQL).run(
-      summary.sessionId,
-      filePath,
-      summary.cwd ?? null,
-      summary.model ?? null,
-      summary.lastModified,
-      lastMainEndTurn ? 1 : 0,
-      stat.mtimeMs,
-      stat.size,
-      JSON.stringify(summary),
-    )
+    // One transaction: the session row and its message-index rows (Phase 2)
+    // commit or roll back together, so search can never see a session whose
+    // messages belong to an older parse.
+    withTransaction((tx) => {
+      tx.prepare(UPSERT_SQL).run(
+        summary.sessionId,
+        filePath,
+        summary.cwd ?? null,
+        summary.model ?? null,
+        summary.lastModified,
+        lastMainEndTurn ? 1 : 0,
+        stat.mtimeMs,
+        stat.size,
+        JSON.stringify(summary),
+      )
+      reindexSessionMessages(tx, summary.sessionId, summary.cwd ?? null, records ?? [])
+    })
     return true
   } catch {
     return false
   }
 }
 
-/** Delete a session row (the watcher unlink path). */
+/** Delete a session row and its message-index rows (the watcher unlink path). */
 export function removeSession(sessionId) {
   const db = getDb()
   if (!db) return false
   try {
-    const result = db.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId)
-    return result.changes > 0
+    return withTransaction((tx) => {
+      tx.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId)
+      const result = tx.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId)
+      return result.changes > 0
+    })
   } catch {
     return false
   }

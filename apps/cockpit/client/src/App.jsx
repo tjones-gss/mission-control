@@ -706,7 +706,16 @@ export default function App() {
           )}
           {activeTab === 'history' && (
             <ErrorBoundary>
-              <HistoryTab historyVersion={historyVersion} />
+              <HistoryTab
+                historyVersion={historyVersion}
+                onOpenSession={(sessionId) => {
+                  // A search-everything hit deep-links into the Agents/Inspect
+                  // detail view for that session (same jump as Fleet cards).
+                  setActiveTab('agents')
+                  setSelectedSessionId(sessionId)
+                  setAgentView('detail')
+                }}
+              />
             </ErrorBoundary>
           )}
           {activeTab === 'runs' && (
