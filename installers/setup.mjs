@@ -133,18 +133,23 @@ function detectPresence(cmd, args = ["--version"]) {
 function preflight() {
   section("Preflight");
 
-  // --- HARD: Node >= 18 (cockpit prerequisite) ---
+  // --- HARD: Node >= 22.13 (cockpit prerequisite — the server's SQLite
+  // read-cache uses the built-in node:sqlite, unflagged from 22.13; see
+  // ADR-0008 and the server package.json `engines` field) ---
   const node = detectVersion(["node"]);
   let cockpitNodeOk = false;
+  const nodeTooOld =
+    node &&
+    (node.version.major < 22 || (node.version.major === 22 && node.version.minor < 13));
   if (!node) {
     fail("Node.js not found on PATH (REQUIRED for the cockpit).");
-    info("Install Node 18+ from https://nodejs.org/ and re-run.");
-  } else if (node.version.major < 18) {
-    fail(`Node ${node.version.raw} found, but the cockpit needs Node >= 18.`);
+    info("Install Node 22.13+ from https://nodejs.org/ and re-run.");
+  } else if (nodeTooOld) {
+    fail(`Node ${node.version.raw} found, but the cockpit needs Node >= 22.13 (node:sqlite).`);
     info("Upgrade Node from https://nodejs.org/ and re-run.");
   } else {
     cockpitNodeOk = true;
-    ok(`Node ${node.version.raw} (>= 18)`);
+    ok(`Node ${node.version.raw} (>= 22.13)`);
   }
 
   // --- HARD: npm (cockpit prerequisite) ---
@@ -268,7 +273,7 @@ function summarizeState({ cockpitOk, railsReady }) {
   if (cockpitOk) {
     ok("Cockpit (the window): prerequisites met — Node + npm present.");
   } else {
-    fail("Cockpit (the window): prerequisites NOT met — Node 18+ and npm are required.");
+    fail("Cockpit (the window): prerequisites NOT met — Node 22.13+ and npm are required.");
   }
 
   if (railsReady) {
@@ -338,7 +343,7 @@ function main() {
   if (!state.cockpitOk) {
     summarizeState(state);
     section("Aborting");
-    fail("Cannot install the cockpit without Node 18+ and npm. Fix the above and re-run.");
+    fail("Cannot install the cockpit without Node 22.13+ and npm. Fix the above and re-run.");
     return 1;
   }
 

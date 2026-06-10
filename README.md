@@ -20,10 +20,25 @@ The cockpit leads with a **Core** view and hides power surfaces behind an
 **Advanced** toggle — progressive disclosure that matches the window-vs-rails
 philosophy instead of presenting everything at once.
 
-- **Core tabs:** **Agents** (list/board/conversation, approve and steer a waiting
-  agent), **Tasks**, **Runs**, **Fleet**, and **History**.
+- **Core tabs:** **Agents** (the "Needs you" triage queue is the default view —
+  attention-ranked with real risk badges and inline approve/steer; Board and
+  Detail modes preserved), **Tasks**, **Runs**, **Fleet**, and **History**
+  (which now has three modes: the activity feed, an **"Everything"
+  full-text search** over every message any agent ever produced, and a
+  **usage/cost stats** view — per-day trend, per-project totals, model mix).
 - **Advanced tabs** (one click away, preference persisted): **Workflows**,
   **Skills**, **Teams**.
+- **⌘K command palette** — search everything from anywhere: sessions by name,
+  then full-text hits with highlighted snippets (memory files and AI session
+  summaries included); Enter jumps straight into the session detail. Backed by
+  a local SQLite read-cache of `~/.claude`
+  ([ADR-0008](docs/adr/0008-sqlite-derived-read-cache.md)) — a pure derived
+  cache you can delete at any time; it rebuilds itself.
+- **AFK gate notifications (notify-only).** Set `OVERSIGHT_WEBHOOK_URL` and the
+  cockpit POSTs a compact payload (session, tool, risk classification, link)
+  whenever an agent hits a tool-approval or danger-zone gate — point it at
+  your Telegram/Slack bridge and get pinged when a fleet needs you. Outbound
+  only: approving still happens in the cockpit, through the audited routes.
 - **Runs** is the unified orchestration surface. Conductor (ADR-driven single runs)
   and Mission Control (the harness mission loop) used to be two top-level tabs; they
   are now two modes under one "Runs" concept.
@@ -73,9 +88,13 @@ first-time user into a power user.
 - **The real control for destructive operations is OS-level sandboxing** —
   containers, VMs, restricted users, scoped credentials. The harness hooks
   complement that; they do not replace it.
-- **Browser-side approval of destructive commands is deliberately NOT shipped
-  yet**, pending a hardened trust model. Today, approval flows live in the
-  harness/CLI layer, not in the cockpit UI.
+- **In-cockpit approvals are risk-typed, never auto-approved.** Tool approvals
+  and harness danger-zone escalations surface in the UI with a real risk
+  classification (`DESTRUCTIVE` / `CODE_EXECUTION` / `REQUIRES_REVIEW` — never
+  fabricated; null when unclassified), and every decision is written to the
+  append-only audit log with its control state (which gates and policies were
+  in force, who decided). The AFK webhook is deliberately notify-only — there
+  is no remote-approve path.
 
 ## Quick start
 
@@ -86,11 +105,12 @@ npm run setup     # or: node installers/setup.mjs
 npm run up
 ```
 
-`npm run setup` is the one-command installer. It checks prerequisites (Node 18+
-and npm are the only hard requirement), installs the root workspaces, and then
-installs the cockpit's `server/` and `client/` (which have their own
-`package.json` and are not workspaces). It does not launch anything by default —
-it prints the next steps. It is safe to re-run.
+`npm run setup` is the one-command installer. It checks prerequisites (Node
+**22.13+** and npm are the only hard requirement — the cockpit server uses the
+built-in `node:sqlite` for its read-cache, declared in its `engines` field),
+installs the root workspaces, and then installs the cockpit's `server/` and
+`client/` (which have their own `package.json` and are not workspaces). It does
+not launch anything by default — it prints the next steps. It is safe to re-run.
 
 Then `npm run up` launches the cockpit dashboard (the Oversight window) and you
 open it at http://localhost:5173. The window is the front door: it works on its
@@ -151,8 +171,11 @@ sandboxing.
   strategy](docs/adr/0005-moat-and-surface-strategy.md),
   [0006 canonical orchestration model](docs/adr/0006-canonical-orchestration-model.md)
   (the harness pipeline is the spine; Fleet is a phase *strategy*; a Workflow is
-  a degenerate single-phase pipeline), and [0007 core vs experimental
-  scope](docs/adr/0007-core-vs-experimental-scope.md).
+  a degenerate single-phase pipeline), [0007 core vs experimental
+  scope](docs/adr/0007-core-vs-experimental-scope.md), and
+  [0008 SQLite derived read-cache](docs/adr/0008-sqlite-derived-read-cache.md)
+  (`cockpit.db` is a pure derived cache of `~/.claude` — the substrate for
+  search, analytics, and knowledge; deleting it is always safe).
 - **[`SCOPE.md`](SCOPE.md)** — the CORE vs EXPERIMENTAL surface split and the
   "no new tab without retiring an overlap" freeze rule.
 - **[`DOD-LADDER.md`](DOD-LADDER.md)** — the definition-of-done ladder (L0 honest →

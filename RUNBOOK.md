@@ -56,6 +56,22 @@ A boot reconciler cross-checks pid liveness on startup and marks unrecoverable
 non-terminal runs `orphaned`, so a server restart never leaves a run wedged at
 `running`.
 
+### The SQLite read-cache (ADR-0008)
+
+- `apps/cockpit/server/data/cockpit.db` (+ `-wal`/`-shm` companions; gitignored)
+  is a **pure derived cache** of `~/.claude`: the session index, the FTS search
+  corpus, daily usage rollups, and persisted intelligence analyses.
+- **Recovery for ANY cache weirdness is one step: delete `cockpit.db` and
+  restart.** The server rebuilds it in the background from `~/.claude`; while
+  the db is unavailable, reads fall back to direct parser scans (slower, never
+  wrong). A schema-version bump or detected corruption triggers the same
+  delete-and-rebuild automatically.
+- The cache is NOT the system of record for anything: fleet runs stay
+  JSON-per-run, the audit log stays append-only JSONL, and `~/.claude` remains
+  the only source of truth for session content.
+- Requires Node **22.13+** (built-in `node:sqlite`; the server `package.json`
+  `engines` field and the installer preflight both enforce this).
+
 ## Deploy
 
 There is no hosted deploy target. "Deploy" means: pull the desired revision, install

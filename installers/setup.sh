@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if ! command -v node >/dev/null 2>&1; then
   echo "error: Node.js was not found on your PATH." >&2
-  echo "  The Mission Control cockpit requires Node 18+ (npm ships with it)." >&2
+  echo "  The Mission Control cockpit requires Node 22.13+ (npm ships with it)." >&2
   echo "  Install from https://nodejs.org/ then re-run: ./installers/setup.sh" >&2
   exit 1
 fi

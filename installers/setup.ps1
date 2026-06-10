@@ -13,7 +13,7 @@ $setup = Join-Path $PSScriptRoot 'setup.mjs'
 $node = Get-Command node -ErrorAction SilentlyContinue
 if ($null -eq $node) {
     Write-Host 'error: Node.js was not found on your PATH.' -ForegroundColor Red
-    Write-Host '  The Mission Control cockpit requires Node 18+ (npm ships with it).'
+    Write-Host '  The Mission Control cockpit requires Node 22.13+ (npm ships with it).'
     Write-Host '  Install from https://nodejs.org/ then re-run: .\installers\setup.ps1'
     exit 1
 }

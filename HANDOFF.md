@@ -1,13 +1,41 @@
 # Handoff — Mission Control
 
-The **L0–L3 ladder is complete AND released**: `v0.4.0` is a real GitHub release
-(tag → `release.yml` → `bom.json` + `openapi.json` attached — the literal L3
-proof artifact). On top of it, **the policy-plane pivot shipped** (this session,
-all merged to `main` via PRs #9–#13): the strategic reframe is that the *viewer*
-is commoditized (Anthropic shipped native Agent View May 2026 and Agent Teams
-are absorbing fan-out), so investment concentrates on the **policy plane** —
-runtime governance, risk-typed approvals, and the rails as a vendor-neutral MCP
-surface. Read this first.
+The **L0–L3 ladder is complete AND released** (`v0.4.0` GitHub release with
+SBOM + OpenAPI attached), the **policy-plane pivot shipped** (PRs #9–#13), and
+**the Epicenter shipped on top of it** (PR #15 — see the block immediately
+below). The standing direction is the personal-tool frame: Mission Control is
+a major personal instrument, not a market release; the next session should
+bias toward **USING the tool on real non-mission-control work** over adding
+features. Read this first.
+
+> **THE EPICENTER — SHIPPED (2026-06-10, PR #15, merged).** The approved plan
+> (`~/.claude/plans/elegant-watching-lightning.md`) was implemented end-to-end
+> by a 22-agent Workflow run (per-phase adversarial verify + completeness
+> critic; critic gaps fixed in the final commit):
+> - **ADR-0008 ACCEPTED + implemented** — `server/data/cockpit.db`
+>   (`node:sqlite`, WAL; import confined to `lib/db/connection.js`) is a PURE
+>   derived cache: delete it any time, it rebuilds from `~/.claude`; corrupt or
+>   version-bumped → automatic delete-and-rebuild; `dbUnavailable` → direct
+>   parser fallback. The 3s session-list TTL is gone (event-driven watcher
+>   invalidation, `unlink` handled, subagent transcripts guarded out). Fleet
+>   runs stay JSON-per-run (authoritative state, not derived). Node **22.13+**
+>   now required (`engines` + installer preflight).
+> - **Search everything** — FTS5 corpus over all session content +
+>   `GET /api/search` + the History "Everything" mode with deep links.
+> - **⌘K CommandPalette** — debounced search from anywhere, grouped results,
+>   type-filter pills (messages/memory/summaries).
+> - **AFK gate notifier** — `OVERSIGHT_WEBHOOK_URL`-gated outbound POST on
+>   approval-pending events (notify-only BY DECISION; no inbound path).
+> - **Cost analytics** — `usage_daily` rollups + `GET /api/stats/usage` + the
+>   History stats mode (tokens stored, priced at read via `utils/cost.js`).
+> - **Knowledge** — memory files + intelligence summaries in the FTS corpus;
+>   analyses + staleness snapshots persist across restarts (unchanged
+>   `intelligence/cache.js` API).
+>
+> **Suites at the PR-15 gate:** server **1252** / client **633** / python
+> **155** — green; coverage stmts 85.9 / branches 76.5 / funcs 89.7 / lines
+> 86.9. Docs synced post-merge (README, CHANGELOG, CLAUDE.md, RUNBOOK,
+> installer preflight 18→22.13).
 
 > **Policy plane — SHIPPED this session (merged: PRs #9 #10 #11 #12 #13):**
 > - **`v0.4.0` released** — tag cut at the Phase-4 merge; release published with
@@ -43,8 +71,8 @@ surface. Read this first.
 >   alpha-modifier forms) follow the theme; classic pixel-identical
 >   (`theme-cascade.test.js`, 24 cases).
 >
-> **Suites at head:** server **1099** / client **594** / python **155** (6
-> skips) — all green, every PR through CI.
+> **Suites at the PR-13 gate (superseded by PR #15 above):** server **1099** /
+> client **594** / python **155** (6 skips) — all green, every PR through CI.
 >
 > **Open next-steps (in priority order):**
 > 1. **SelectionBar — fold Dispatch into triage** (the unfinished half of the

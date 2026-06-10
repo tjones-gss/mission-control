@@ -10,6 +10,50 @@ the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
 
 <!-- New entries land here. ONLY S7 (E-release-eng) flips the heading below. -->
 
+### The Epicenter — ADR-0008 SQLite cache + search everything + palette + AFK notify + analytics + knowledge
+
+[ADR-0008](docs/adr/0008-sqlite-derived-read-cache.md) **Accepted** (amended:
+`cockpit.db` is a PURE derived cache — deleting it is always safe, it rebuilds
+from `~/.claude`; fleet runs stay JSON-per-run; engine is `node:sqlite`
+confined to `lib/db/connection.js`, so the server now requires **Node 22.13+**
+via the `engines` field). Built on top of it, the personal-tool "epicenter"
+capability stack (owner decision: the adoption tripwire is relaxed for
+personal-value work; it still gates the Composer + broad reskin).
+
+**Added**
+
+- **SQLite derived read-cache** (`apps/cockpit/server/lib/db/` — `connection`
+  / `session-index` / `message-index` / `usage-index` / `memory-index` /
+  `intelligence-store`): WAL mode, schema-version delete-and-rebuild, degraded
+  fallback to direct parser reads. The session list is served from the index
+  with event-driven watcher invalidation — the 3-second TTL scan cache is
+  gone, the previously-unhandled session-file `unlink` now removes rows, and
+  subagent transcripts are guarded out of the index (phantom-session fix).
+- **Search everything** — a messages table + external-content **FTS5** index
+  over every session's user/assistant text, thinking, and tool-input
+  summaries (tool_results and base64 excluded; ~4KB block truncation).
+  `GET /api/search?q=&project=&from=&to=&type=&limit=` with snippet
+  highlights and BM25+recency ordering; the **History tab gains an
+  "Everything" mode** with deep links into the session detail.
+- **⌘K Command Palette** (`client/src/components/CommandPalette.jsx`) —
+  debounced search from anywhere; grouped sessions → message hits → knowledge
+  docs with type-filter pills; keyboard navigation; `--mc-*` tokens only.
+- **AFK gate notifier (notify-only)** — `lib/notify.js`, env-gated by
+  `OVERSIGHT_WEBHOOK_URL` (unset = total no-op): POSTs
+  `{sessionId, displayName, riskLevel, riskDescription, toolName, action_url}`
+  on tool-approval and harness danger-zone approval-pending events. **No
+  inbound path** — approving stays on the audited cockpit routes.
+- **Cost analytics** — a `usage_daily` rollup table (tokens stored, priced at
+  read time via the existing `utils/cost.js` tables), `GET /api/stats/usage`
+  (`groupBy=project|day|model`), and a **stats mode inside the History tab**
+  (totals, per-day trend, per-project, model mix — no new top-level tab,
+  per ADR-0007).
+- **Knowledge surfacing** — `~/.claude` memory files and intelligence
+  summaries join the FTS corpus as `doc_type='memory'|'summary'`;
+  intelligence analyses (and their messageCount/subagentCount staleness
+  snapshots) now **persist across restarts** behind the unchanged
+  `intelligence/cache.js` API.
+
 ### Theme cascade — gray/indigo resolve through the token layer
 
 **Changed**
