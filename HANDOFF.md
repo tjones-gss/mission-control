@@ -1,59 +1,71 @@
 # Handoff — Mission Control
 
-The centerpiece for the next session. The **L0–L3 hardening ladder is complete**:
-Phase 0 (decisions/docs), Phase 1 (hardening), Phase 2 (trustworthy loops + unified
-spine, L1), Phase 3 (adoptable, L2), and Phase 4 (standard, L3). The three
-reassessment-gate decisions were resolved (see §4) and Phases 2–4 shipped against
-them. **On top of that ladder, a UI/UX redesign track is now in flight** (see the
-redesign block immediately below). Read this first.
+The **L0–L3 ladder is complete AND released**: `v0.4.0` is a real GitHub release
+(tag → `release.yml` → `bom.json` + `openapi.json` attached — the literal L3
+proof artifact). On top of it, **the policy-plane pivot shipped** (this session,
+all merged to `main` via PRs #9–#13): the strategic reframe is that the *viewer*
+is commoditized (Anthropic shipped native Agent View May 2026 and Agent Teams
+are absorbing fan-out), so investment concentrates on the **policy plane** —
+runtime governance, risk-typed approvals, and the rails as a vendor-neutral MCP
+surface. Read this first.
 
-> **UI/UX redesign — slice 1 + partial slice 2 (this session · branch
-> `feature/phase-4-l3-standard` · UNCOMMITTED).** A Claude Design handoff
-> (`.design-handoff/`, gitignored) was processed and two councils ruled on it:
-> a product review (**engineering 8 / market 4 / execution 7**) and a redesign
-> ruling (**ship-narrow-slice / advances-rails**). Reports:
-> `council-mission-control-20260608.*` and `council-redesign-20260608.*` (gitignored).
-> The ruling in one line: the redesign is moat-aligned **only because it surfaces the
-> rails** (the guardrailed Pipeline) as the UI's center of gravity — so build the
-> token layer + the triage queue now, and gate the plain-language Composer and any
-> broad reskin behind the adoption tripwire.
+> **Policy plane — SHIPPED this session (merged: PRs #9 #10 #11 #12 #13):**
+> - **`v0.4.0` released** — tag cut at the Phase-4 merge; release published with
+>   SBOM + OpenAPI attached. CHANGELOG dated 2026-06-09.
+> - **Redesign slice 1 merged** (#9) — `--mc-*` token layer, `useTheme` +
+>   Appearance tab, TriageView as default Agents view. (The "see and steer"
+>   phrase in CLAUDE.md is load-bearing — `cross-vendor-label.test.js` guards it.)
+> - **Audit log v2 — control-state capture** (#10, contracts **v9**, breaking):
+>   `audit-event.controlState` records policies in force, `gateType`
+>   (hard|soft|policy), `decisionMaker` (human|auto), permissionMode/model
+>   snapshot. REQUIRED on approval events (schema conditional + the writer's
+>   schema-derived fail-closed check). All 7 emit sites record real control
+>   state. This is the EU-AI-Act-Art.12 / NIST-shaped artifact — enforcement
+>   and audit as the same act.
+> - **ADR-0006 amendment** (#10): native Agent Teams absorb spawning; Fleet's
+>   identity is the GOVERNANCE layer; `strategy: fleet` gains a native-team
+>   dispatch substrate when teams exit experimental. No new engine.
+> - **Risk-typed approvals** (#11): the `commandClassifier` result is stored ON
+>   the approval, surfaced in `getQueryStatus`, joined onto session summaries
+>   (`riskLevel`/`riskDescription`/`pendingApprovalCount`, worst-pending wins;
+>   pending approval forces `needsInput`), rendered as TriageView risk badges
+>   (Destructive / Runs code / Needs review), and carried on tool-approval
+>   audit events. Null when unclassified — never fabricated.
+> - **Harness MCP server** (#12): `harness mcp` — READ-ONLY stdio JSON-RPC
+>   (stdlib-only). Tools: `harness_status` (single-sourced with
+>   `status --json` via `harness_core/status.py`), `get_policy_context`,
+>   `get_pending_approvals`. **Deliberately no approve/decide tool** (agent
+>   self-approval is the hole the rails close; a test pins the surface).
+>   This is the realistic second-adopter wedge: Cursor/Copilot users can
+>   consume the rails without the cockpit.
+> - **Theme cascade** (#13): tailwind `gray`/`indigo` resolve through
+>   `--mc-*-rgb` channel vars — all ~850 utility usages (incl. 43
+>   alpha-modifier forms) follow the theme; classic pixel-identical
+>   (`theme-cascade.test.js`, 24 cases).
 >
-> **Shipped — TDD-first; client suite 567 green (was 545), lint + `vite build` pass:**
-> - **Calm-console token layer** — semantic `--mc-*` CSS variables in
->   `apps/cockpit/client/src/index.css`. `:root` reproduces today's gray-950/indigo
->   palette EXACTLY (zero regression); `[data-theme=calm|tron|warm]` override; `body`
->   reads the tokens.
-> - **Theme system** — `useTheme` hook (`hooks/useTheme.js`, persists
->   `oversight.theme`) + an **Appearance** tab (`components/settings/AppearanceTab.jsx`,
->   now the default Settings tab); four themes Classic/Calm/Tron/Warm.
-> - **"Needs you" triage queue** (`components/TriageView/TriageView.jsx`) — the new
->   **default Agents view** (Triage · Board · Detail toggle; Kanban preserved).
->   Attention-ranked needs→running→calm over the REAL session list; inline one-tap
->   approve/reply reuses the existing `QuickActions` (`POST /api/sessions/:id/message`)
->   write path. No new backend; no fabricated "destructive" flag (the session-list
->   data carries no risk level — a documented seam is left for when it does).
+> **Suites at head:** server **1099** / client **594** / python **155** (6
+> skips) — all green, every PR through CI.
 >
-> **IA ruling (lightweight — recorded in `SCOPE.md`, deliberately NOT a heavy ADR):**
-> Runs stays the ONE orchestration surface; **"Pipeline" is a mode inside Runs, never
-> a sibling tab**; `Missions`/`Conductor` are legacy mode labels collapsing into it.
-> (Ratifies ADR-0006 "pipeline = spine" + CLAUDE.md "Runs unifies the modes." The
-> brief's "replace Runs" wording is wrong: Runs is the surface; the Missions/Conductor
-> *split* is what's retired.)
->
-> **Open next-steps:**
-> 1. **Make themes cascade** — remap the palette in `client/tailwind.config.js` so
->    existing `bg-gray-*`/`indigo` utilities resolve through `--mc-*`. Today only
->    `body` + `TriageView` are tokenized, so a theme switch is visually subtle.
-> 2. **Fold Dispatch into triage** — collapse `DispatchDrawer.jsx`/`DispatchSignal.jsx`
->    into a multi-select SelectionBar on the triage queue (retires a surface →
->    freeze-rule win); the brief's Phase-1 remainder.
-> 3. **Read-only Pipeline spine (slice 2) is BLOCKED on a contracts-first change:**
->    `harness status --json` emits only the *current* `pipeline.{phase,gate,next_phase}`,
->    NOT the ordered phase list. The harness must emit the phase list (contracts-first)
->    before the cockpit can render the Research→Ship spine. Do not parse YAML in the
+> **Open next-steps (in priority order):**
+> 1. **SelectionBar — fold Dispatch into triage** (the unfinished half of the
+>    cascade workstream): collapse `DispatchDrawer.jsx`/`DispatchSignal.jsx`
+>    into a multi-select SelectionBar on TriageView (broadcast / set mode /
+>    approve N safe / snooze) — retires a surface per the freeze rule. The
+>    design-handoff `triage.jsx` SelectionBar is the UX spec. "Approve N safe"
+>    is now honest — riskLevel exists on summaries.
+> 2. **Read-only Pipeline spine (slice 2) — BLOCKED on contracts-first:**
+>    the harness must emit the ordered phase list in `harness status --json`
+>    (today: only current `pipeline.{phase,gate}`). Then render the
+>    Research→Ship spine as a mode inside Runs. Do not parse YAML in the
 >    cockpit.
-> 4. **Adoption tripwire still UNFIRED** — broad redesign (Composer, 52-component
->    reskin) stays gated until one external human retains the rails a week.
+> 3. **Audit v2 follow-through:** the harness-side writer gap still stands
+>    (decisions made against the rails CLI directly are not audited) — now
+>    more visible since the MCP server advertises pending approvals.
+> 4. **Adoption tripwire still UNFIRED** — Composer + broad reskin stay gated
+>    until one external human retains the rails a week. The MCP server is the
+>    cheapest tripwire experiment: package `harness mcp` setup for a
+>    Cursor/Copilot user and get ONE external adopter. **Stop building before
+>    firing this.**
 >
 > **Phase 4 done (this session) — L3 standard, branch `feature/phase-4-l3-standard`.**
 > Closed the L3 release gate across five workstreams: (A) dropped the cross-vendor
