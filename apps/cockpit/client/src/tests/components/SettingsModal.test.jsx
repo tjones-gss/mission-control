@@ -90,8 +90,15 @@ describe('SettingsModal — rendering', () => {
     expect(screen.getByText('Shortcuts')).toBeInTheDocument()
   })
 
-  it('shows Notifications tab content by default', () => {
+  it('shows the Appearance tab by default with theme options', () => {
     renderModal()
+    expect(screen.getByRole('radio', { name: /Classic/ })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Calm/ })).toBeInTheDocument()
+  })
+
+  it('shows Notifications tab content when its tab is selected', () => {
+    renderModal()
+    fireEvent.click(screen.getByText('Notifications'))
     expect(screen.getByText('Desktop notifications')).toBeInTheDocument()
     expect(screen.getByText('Sound')).toBeInTheDocument()
   })
@@ -116,6 +123,7 @@ describe('SettingsModal — tab switching', () => {
 describe('SettingsModal — notifications tab', () => {
   it('toggles are checked by default (default prefs)', () => {
     renderModal()
+    fireEvent.click(screen.getByText('Notifications'))
     const switches = screen.getAllByRole('switch')
     expect(switches[0]).toHaveAttribute('aria-checked', 'true')
     expect(switches[1]).toHaveAttribute('aria-checked', 'true')
@@ -123,6 +131,7 @@ describe('SettingsModal — notifications tab', () => {
 
   it('clicking Desktop notifications toggle updates aria-checked', () => {
     renderModal()
+    fireEvent.click(screen.getByText('Notifications'))
     const switches = screen.getAllByRole('switch')
     fireEvent.click(switches[0])
     expect(switches[0]).toHaveAttribute('aria-checked', 'false')
@@ -130,6 +139,7 @@ describe('SettingsModal — notifications tab', () => {
 
   it('persists preference changes to localStorage', () => {
     renderModal()
+    fireEvent.click(screen.getByText('Notifications'))
     const switches = screen.getAllByRole('switch')
     fireEvent.click(switches[0]) // Disable notifications
 
@@ -141,6 +151,7 @@ describe('SettingsModal — notifications tab', () => {
   it('test sound button calls playPreset', () => {
     const soundEngine = createMockSoundEngine()
     renderModal({ soundEngine })
+    fireEvent.click(screen.getByText('Notifications'))
     fireEvent.click(screen.getByText('Test sound'))
     expect(soundEngine.playPreset).toHaveBeenCalledWith('chime')
   })

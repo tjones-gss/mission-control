@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { AppearanceTab } from './AppearanceTab.jsx'
 import { NotificationsTab } from './NotificationsTab.jsx'
 import { SoundsVoiceTab } from './SoundsVoiceTab.jsx'
 import { ShortcutsTab } from './ShortcutsTab.jsx'
 import { TrustedFoldersTab } from './TrustedFoldersTab.jsx'
 
 const TABS = [
+  { id: 'appearance', label: 'Appearance' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'sounds', label: 'Sounds & Voice' },
   { id: 'shortcuts', label: 'Shortcuts' },
@@ -12,7 +14,7 @@ const TABS = [
 ]
 
 export function SettingsTabs({ soundEngine, shortcuts, updateShortcut, resetShortcuts }) {
-  const [activeTab, setActiveTab] = useState('notifications')
+  const [activeTab, setActiveTab] = useState('appearance')
 
   return (
     <div>
@@ -32,6 +34,7 @@ export function SettingsTabs({ soundEngine, shortcuts, updateShortcut, resetShor
         ))}
       </div>
       <div className="px-5 py-4">
+        {activeTab === 'appearance' && <AppearanceTab />}
         {activeTab === 'notifications' && <NotificationsTab soundEngine={soundEngine} />}
         {activeTab === 'sounds' && <SoundsVoiceTab soundEngine={soundEngine} />}
         {activeTab === 'shortcuts' && (

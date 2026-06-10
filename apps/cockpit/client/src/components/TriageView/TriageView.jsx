@@ -1,0 +1,233 @@
+import { useState } from 'react'
+import { Clock, Cpu, ChevronDown, ChevronRight } from 'lucide-react'
+import { QuickActions } from '../QuickActions.jsx'
+import { projectLabel } from '../../utils/session.js'
+import { formatCost } from '../../utils/cost.js'
+
+// The "Needs you" triage home (Oversight redesign). Instead of the equal-weight
+// Active/Idle/Done kanban, it ranks by ATTENTION: the few agents blocking on you
+// first (with the real one-tap reply path inline), everything calm below. Wired
+// to the real session list + the existing /api/sessions/:id/message write path
+// (via QuickActions) — no mock data, no new backend.
+//
+// Honesty note (council MEDIUM): per-tool risk (DESTRUCTIVE etc.) lives on
+// `streaming.pendingApprovals`, NOT on the session-list objects, so we do NOT
+// render a red "destructive" flag here from data we don't have. When the session
+// summary contract carries a riskLevel, gate the danger styling on it then.
+
+const ONE_HOUR = 3_600_000
+
+function topTools(toolUseCounts, n = 2) {
+  if (!toolUseCounts || typeof toolUseCounts !== 'object') return []
+  return Object.entries(toolUseCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+}
+
+// A card for an agent that is blocking on the user.
+function AttnCard({ session, onSelect }) {
+  const label = projectLabel(session)
+  return (
+    <div className="relative rounded-xl border border-[var(--mc-accent-line)] bg-[var(--mc-surface)] p-4 transition-colors">
+      <span
+        className="absolute left-0 top-4 bottom-4 w-[3px] rounded bg-[var(--mc-accent)]"
+        aria-hidden="true"
+      />
+      <button
+        onClick={() => onSelect(session.sessionId)}
+        className="flex w-full items-center gap-2.5 text-left"
+      >
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--mc-warn)] opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--mc-warn)]" />
+        </span>
+        <span className="truncate text-sm font-semibold text-[var(--mc-fg)]">{label}</span>
+        {session.permissionMode && (
+          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--mc-fg-4)] bg-[var(--mc-surface-2)]">
+            {session.permissionMode}
+          </span>
+        )}
+        <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] text-[var(--mc-fg-4)]">
+          <Clock size={12} /> waiting
+        </span>
+      </button>
+
+      {session.lastText && (
+        <p className="mt-2.5 text-xs leading-snug text-[var(--mc-fg-2)] line-clamp-2">
+          {session.lastText}
+        </p>
+      )}
+
+      <div className="mt-2 flex items-center gap-2">
+        {/* Real write path: posts to /api/sessions/:id/message. onReply opens the
+            full conversation to type a custom answer. */}
+        <QuickActions sessionId={session.sessionId} onReply={() => onSelect(session.sessionId)} />
+      </div>
+    </div>
+  )
+}
+
+// A calm tile for an agent that is running but not blocking.
+function RunningTile({ session, onSelect }) {
+  const label = projectLabel(session)
+  const tools = topTools(session.toolUseCounts)
+  return (
+    <button
+      onClick={() => onSelect(session.sessionId)}
+      className="flex flex-col rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface)] p-3.5 text-left transition-colors hover:border-[var(--mc-border-2)] hover:bg-[var(--mc-surface-2)]"
+    >
+      <div className="flex items-center gap-2">
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--mc-ok)] opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--mc-ok)]" />
+        </span>
+        <span className="truncate text-[13px] font-semibold text-[var(--mc-fg)]">{label}</span>
+      </div>
+      {session.lastText && (
+        <div className="mt-2 flex items-center gap-1.5 text-xs text-[var(--mc-fg-3)]">
+          <Cpu size={12} className="shrink-0 text-[var(--mc-fg-4)]" />
+          <span className="truncate">{session.lastText}</span>
+        </div>
+      )}
+      <div className="mt-2.5 flex items-center gap-1.5">
+        {tools.map(([tool, count]) => (
+          <span
+            key={tool}
+            className="inline-flex items-center gap-0.5 rounded border border-[var(--mc-border)] bg-[var(--mc-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--mc-fg-3)]"
+          >
+            <span className="max-w-[72px] truncate">{tool}</span>
+            <span className="text-[var(--mc-fg-4)]">{count}</span>
+          </span>
+        ))}
+        {session.estimatedCost && (
+          <span className="ml-auto text-[10px] text-[var(--mc-ok)]">
+            {formatCost(session.estimatedCost.totalCost)}
+          </span>
+        )}
+      </div>
+    </button>
+  )
+}
+
+// A compact row for idle/done sessions.
+function CalmRow({ session, onSelect }) {
+  const label = projectLabel(session)
+  const done = !session.isActive && session.lastModified <= Date.now() - ONE_HOUR
+  return (
+    <button
+      onClick={() => onSelect(session.sessionId)}
+      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--mc-surface)]"
+    >
+      <span
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ backgroundColor: done ? 'var(--mc-accent)' : 'var(--mc-fg-5)' }}
+        aria-hidden="true"
+      />
+      <span className="w-40 shrink-0 truncate text-[13px] font-medium text-[var(--mc-fg-2)]">
+        {label}
+      </span>
+      <span className="flex-1 truncate text-xs text-[var(--mc-fg-3)]">{session.lastText}</span>
+      {done && (
+        <span className="shrink-0 rounded-full bg-[var(--mc-ok-soft)] px-2 py-0.5 text-[10px] text-[var(--mc-ok)]">
+          done
+        </span>
+      )}
+    </button>
+  )
+}
+
+function SectionHead({ children, count, color }) {
+  return (
+    <div className="mb-3.5 flex items-center gap-2.5">
+      <span
+        className="h-2 w-2 rounded-full"
+        style={{ backgroundColor: color }}
+        aria-hidden="true"
+      />
+      <h2 className="text-[15px] font-bold text-[var(--mc-fg)]">{children}</h2>
+      <span className="rounded-full bg-[var(--mc-surface)] px-2 py-0.5 text-xs font-semibold text-[var(--mc-fg-4)]">
+        {count}
+      </span>
+    </div>
+  )
+}
+
+export function TriageView({ sessions = [], selectedId, onSelect = () => {} }) {
+  const [showCalm, setShowCalm] = useState(true)
+  const list = Array.isArray(sessions) ? sessions : []
+
+  const needs = list.filter((s) => s.needsInput)
+  const running = list.filter((s) => s.isActive && !s.needsInput)
+  const calm = list.filter((s) => !s.isActive && !s.needsInput)
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-[var(--mc-bg)]">
+      <div className="mx-auto max-w-5xl px-7 py-6">
+        {/* Needs you */}
+        <section aria-label="Needs you">
+          <SectionHead count={needs.length} color="var(--mc-warn)">
+            Needs you
+          </SectionHead>
+          {needs.length === 0 ? (
+            <div className="rounded-xl border border-[var(--mc-border)] bg-[var(--mc-surface)] px-5 py-7 text-center text-sm text-[var(--mc-fg-3)]">
+              All clear — nothing waiting on you.
+            </div>
+          ) : (
+            <div className="grid gap-3.5">
+              {needs.map((s) => (
+                <AttnCard key={s.sessionId} session={s} onSelect={onSelect} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Running */}
+        <section aria-label="Running" className="mt-8">
+          <SectionHead count={running.length} color="var(--mc-ok)">
+            Running
+          </SectionHead>
+          {running.length === 0 ? (
+            <p className="px-1 text-xs italic text-[var(--mc-fg-4)]">Nothing running right now.</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {running.map((s) => (
+                <RunningTile key={s.sessionId} session={s} onSelect={onSelect} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Idle & done */}
+        <section aria-label="Idle & done" className="mt-8">
+          <button
+            onClick={() => setShowCalm((v) => !v)}
+            className="mb-3.5 flex items-center gap-2.5"
+            aria-expanded={showCalm}
+          >
+            {showCalm ? (
+              <ChevronDown size={16} className="text-[var(--mc-fg-4)]" />
+            ) : (
+              <ChevronRight size={16} className="text-[var(--mc-fg-4)]" />
+            )}
+            <h2 className="text-[15px] font-bold text-[var(--mc-fg-2)]">Idle &amp; done</h2>
+            <span className="rounded-full bg-[var(--mc-surface)] px-2 py-0.5 text-xs font-semibold text-[var(--mc-fg-4)]">
+              {calm.length}
+            </span>
+          </button>
+          {showCalm && calm.length > 0 && (
+            <div className="rounded-xl border border-[var(--mc-border)] bg-[var(--mc-surface)] p-1.5">
+              {calm.map((s) => (
+                <CalmRow key={s.sessionId} session={s} onSelect={onSelect} />
+              ))}
+            </div>
+          )}
+          {calm.length === 0 && (
+            <p className="px-1 text-xs italic text-[var(--mc-fg-4)]">
+              No idle or completed sessions.
+            </p>
+          )}
+        </section>
+      </div>
+    </div>
+  )
+}
