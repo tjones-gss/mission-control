@@ -20,7 +20,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Bump on any schema change — the cache is thrown away and rebuilt, so no
 // migration ceremony is ever needed. v2: messages + messages_fts (Phase 2).
-export const DB_SCHEMA_VERSION = 2
+// v3: usage_daily token rollups (Phase 5).
+export const DB_SCHEMA_VERSION = 3
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS meta (
@@ -73,6 +74,23 @@ const SCHEMA_SQL = `
     INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, old.text);
     INSERT INTO messages_fts(rowid, text) VALUES (new.id, new.text);
   END;
+
+  -- Phase 5: per-session daily token rollups, populated inside the same
+  -- upsertSession transaction by lib/db/usage-index.js. day is the UTC
+  -- YYYY-MM-DD of the record timestamp; model_family is haiku/sonnet/opus
+  -- (or 'unknown'). Pricing happens at read time from utils/cost.js, so a
+  -- price change never requires a reindex.
+  CREATE TABLE IF NOT EXISTS usage_daily (
+    session_id   TEXT NOT NULL,
+    day          TEXT NOT NULL,
+    model_family TEXT NOT NULL,
+    input        INTEGER NOT NULL DEFAULT 0,
+    output       INTEGER NOT NULL DEFAULT 0,
+    cache_read   INTEGER NOT NULL DEFAULT 0,
+    cache_write  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (session_id, day, model_family)
+  );
+  CREATE INDEX IF NOT EXISTS idx_usage_daily_day ON usage_daily(day);
 `
 
 let db = null

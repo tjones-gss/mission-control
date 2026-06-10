@@ -229,6 +229,50 @@ describe('HistoryTab — search everything mode', () => {
   })
 })
 
+// ─── Usage stats mode (ADR-0008 Phase 5) ──────────────────────────────────────
+
+describe('HistoryTab — usage stats mode', () => {
+  const EMPTY_USAGE = (groupBy) => ({
+    groupBy,
+    rows: [],
+    totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, cacheHitRate: 0 },
+  })
+
+  function mockUsageEndpoint() {
+    server.use(
+      http.get('/api/stats/usage', ({ request }) => {
+        const groupBy = new URL(request.url).searchParams.get('groupBy') || 'day'
+        return HttpResponse.json(EMPTY_USAGE(groupBy))
+      }),
+    )
+  }
+
+  it('toggles into the usage stats mode inside the History tab', async () => {
+    setupMocks()
+    mockUsageEndpoint()
+    render(<HistoryTab historyVersion={0} onOpenSession={() => {}} />)
+    await waitFor(() => screen.getAllByText('git status'))
+
+    await userEvent.click(screen.getByRole('button', { name: /usage stats/i }))
+    // The stats panel replaces the feed (still inside the History tab — no new top-level tab).
+    await waitFor(() => expect(screen.getByText(/no token usage indexed yet/i)).toBeInTheDocument())
+    expect(screen.queryByText('npm run dev')).not.toBeInTheDocument()
+  })
+
+  it('returns to the feed when toggled back', async () => {
+    setupMocks()
+    mockUsageEndpoint()
+    render(<HistoryTab historyVersion={0} onOpenSession={() => {}} />)
+    await waitFor(() => screen.getAllByText('git status'))
+
+    const toggle = screen.getByRole('button', { name: /usage stats/i })
+    await userEvent.click(toggle)
+    await waitFor(() => screen.getByText(/no token usage indexed yet/i))
+    await userEvent.click(screen.getByRole('button', { name: /back to feed/i }))
+    expect(screen.getByText('npm run dev')).toBeInTheDocument()
+  })
+})
+
 // ─── Load more ────────────────────────────────────────────────────────────────
 
 describe('HistoryTab — load more', () => {

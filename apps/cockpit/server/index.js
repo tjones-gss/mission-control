@@ -26,6 +26,7 @@ import { router as railsRouter } from './routes/rails.js'
 import { router as trustRouter } from './routes/trust.js'
 import { router as fleetRouter } from './routes/fleet.js'
 import { router as searchRouter } from './routes/search.js'
+import { router as statsRouter } from './routes/stats.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
 import { rebuildAll } from './lib/db/session-index.js'
 import { initOtel, tracingMiddleware } from './lib/otel.js'
@@ -98,6 +99,7 @@ export function buildApp() {
   app.use('/api/trust', trustRouter)
   app.use('/api/fleet', fleetRouter)
   app.use('/api/search', searchRouter)
+  app.use('/api/stats', statsRouter)
 
   // OpenAPI docs surface (Phase 4 / C-openapi). Mounted AFTER express.json + the
   // routers but BEFORE the '/api' 404 catch-all, so GET /api/docs(.json) is not

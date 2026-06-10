@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { LayoutList, List, Sparkles } from 'lucide-react'
+import { BarChart3, LayoutList, List, Sparkles } from 'lucide-react'
 import { HistoryStatsBar } from './HistoryStatsBar.jsx'
 import { HistoryFeed } from './HistoryFeed.jsx'
 import { HistorySearch } from './HistorySearch.jsx'
+import { HistoryUsageStats } from './HistoryUsageStats.jsx'
 
 const PAGE_SIZE = 100
 
@@ -18,6 +19,9 @@ export function HistoryTab({ historyVersion, onOpenSession }) {
   // 'filter' = the classic display-field filter over the feed;
   // 'everything' = full-text /api/search over all indexed session messages.
   const [searchMode, setSearchMode] = useState('filter')
+  // Usage analytics mode (ADR-0008 Phase 5) — still inside the History tab
+  // (no new top-level tab per ADR-0007); replaces the feed/search body.
+  const [statsMode, setStatsMode] = useState(false)
 
   const fetchStats = useCallback(async (signal) => {
     try {
@@ -91,6 +95,19 @@ export function HistoryTab({ historyVersion, onOpenSession }) {
           <Sparkles size={11} />
           Everything
         </button>
+        <button
+          onClick={() => setStatsMode((s) => !s)}
+          aria-label={statsMode ? 'Back to feed' : 'Usage stats'}
+          title={
+            statsMode
+              ? 'Back to the command feed'
+              : 'Token usage and cost analytics across all sessions'
+          }
+          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${statsMode ? 'bg-gray-800 text-gray-200' : 'text-gray-600 hover:text-gray-400'}`}
+        >
+          <BarChart3 size={11} />
+          Stats
+        </button>
         <select
           value={projectFilter}
           onChange={(e) => {
@@ -119,7 +136,9 @@ export function HistoryTab({ historyVersion, onOpenSession }) {
         )}
       </div>
 
-      {searchMode === 'everything' ? (
+      {statsMode ? (
+        <HistoryUsageStats />
+      ) : searchMode === 'everything' ? (
         <HistorySearch query={search} project={projectFilter} onOpenSession={onOpenSession} />
       ) : (
         <HistoryFeed
