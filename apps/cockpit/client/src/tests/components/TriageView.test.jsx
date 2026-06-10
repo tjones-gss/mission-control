@@ -67,6 +67,38 @@ describe('TriageView — needs-you cards', () => {
     expect(screen.getByText('wants to run tests')).toBeInTheDocument()
   })
 
+  it('renders a Destructive badge when the summary carries riskLevel DESTRUCTIVE', () => {
+    renderView([
+      makeSession('api-gateway', {
+        needsInput: true,
+        riskLevel: 'DESTRUCTIVE',
+        riskDescription: 'Recursive force remove',
+      }),
+    ])
+    const badge = screen.getByText('Destructive')
+    expect(badge).toBeInTheDocument()
+    expect(badge).toHaveAttribute('title', 'Recursive force remove')
+  })
+
+  it('renders review/code badges for the lesser risk levels', () => {
+    renderView([
+      makeSession('a', { needsInput: true, riskLevel: 'REQUIRES_REVIEW' }),
+      makeSession('b', { needsInput: true, riskLevel: 'CODE_EXECUTION' }),
+    ])
+    expect(screen.getByText('Needs review')).toBeInTheDocument()
+    expect(screen.getByText('Runs code')).toBeInTheDocument()
+  })
+
+  it('renders NO risk badge when riskLevel is null or safe (never fabricated)', () => {
+    renderView([
+      makeSession('clean', { needsInput: true, riskLevel: null }),
+      makeSession('safe', { needsInput: true, riskLevel: 'SAFE_READONLY' }),
+    ])
+    expect(screen.queryByText('Destructive')).not.toBeInTheDocument()
+    expect(screen.queryByText('Needs review')).not.toBeInTheDocument()
+    expect(screen.queryByText('Runs code')).not.toBeInTheDocument()
+  })
+
   it('offers the real one-tap reply actions (reuses QuickActions)', () => {
     renderView([makeSession('a', { needsInput: true })])
     const needs = screen.getByRole('region', { name: /needs you/i })

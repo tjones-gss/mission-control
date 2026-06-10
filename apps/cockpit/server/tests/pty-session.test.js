@@ -220,6 +220,37 @@ describe('getQueryStatus()', () => {
       toolName: expect.any(String),
     })
   })
+
+  // Risk-typed approvals: the classification that already rides the SSE
+  // tool_approval_request event is now STORED on the approval and surfaced in
+  // the polled status, so the session list / triage UI can render real risk
+  // instead of fabricating one.
+  it('stores the Bash risk classification on the approval and surfaces it in pendingApprovals', async () => {
+    const sid = uniqueSession()
+    await bootSession(sid)
+
+    capturedOnData(
+      'Claude wants to run Bash\nCommand: rm -rf dist\nDo you want to allow this? [Y/n]',
+    )
+
+    const status = getQueryStatus(sid)
+    expect(status.pendingApprovals).toHaveLength(1)
+    expect(status.pendingApprovals[0]).toMatchObject({
+      toolName: 'Bash',
+      riskLevel: 'DESTRUCTIVE',
+      riskDescription: expect.any(String),
+    })
+  })
+
+  it('non-Bash approvals carry riskLevel null (never fabricated)', async () => {
+    const sid = uniqueSession()
+    await bootSession(sid)
+
+    capturedOnData('Claude wants to use Write\nDo you want to allow this? [Y/n]')
+
+    const status = getQueryStatus(sid)
+    expect(status.pendingApprovals[0].riskLevel).toBeNull()
+  })
 })
 
 // ─── startQuery ───────────────────────────────────────────────────────────────
@@ -447,6 +478,12 @@ describe('resolveApproval()', () => {
     const clearSpy = vi.spyOn(globalThis, 'clearTimeout')
     resolveApproval(sid, APPROVAL_UUID, 'allow')
     expect(clearSpy).toHaveBeenCalled()
+  })
+
+  it('returns the resolved approval object (truthy) so callers can audit its risk', () => {
+    const result = resolveApproval(sid, APPROVAL_UUID, 'allow')
+    expect(result).toBeTruthy()
+    expect(result).toMatchObject({ approvalId: APPROVAL_UUID, resolved: true })
   })
 
   it('returns false for unknown approvalId', () => {

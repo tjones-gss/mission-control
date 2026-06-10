@@ -10,6 +10,26 @@ the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
 
 <!-- New entries land here. ONLY S7 (E-release-eng) flips the heading below. -->
 
+### Risk-typed approvals — real risk on the session summary
+
+**Added**
+
+- **Session summaries carry live approval risk** (`GET /api/sessions` +
+  `GET /api/sessions/:id`): `riskLevel` is the WORST pending tool-approval
+  classification (`SAFE_READONLY | UNKNOWN | REQUIRES_REVIEW | CODE_EXECUTION |
+  DESTRUCTIVE`, from the existing `commandClassifier`), with
+  `riskDescription` + `pendingApprovalCount`; an unresolved approval forces
+  `needsInput` true (a blocked tool call IS "waiting on you"). The
+  classification is now STORED on the approval (it previously rode only the
+  SSE event) so the polled status, the session list, and the audit log all
+  surface the same value — null when not classified, never fabricated.
+- **TriageView risk badges** — the "Needs you" card renders
+  Destructive / Runs code / Needs review badges and danger styling from the
+  REAL `riskLevel`, closing the seam documented at the slice-1 landing.
+- **Tool-approval audit events carry `payload.riskLevel`** —
+  `resolveApproval` returns the resolved approval so the decision's risk
+  classification rides the v9 audit record.
+
 ### Audit log v2 — control-state capture (runtime governance)
 
 **Changed**
