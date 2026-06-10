@@ -269,4 +269,56 @@ describe('watcher', () => {
       ts: expect.any(Number),
     })
   })
+
+  // Phase 4 (AFK gate notifier): a file appearing/changing under
+  // <project>/.harness/approvals/pending/ is an approval-gate transition. The
+  // watcher emits a DISTINCT harness_approval_pending event (in addition to the
+  // existing harness_update refetch signal) so the notifier can react without
+  // false-positives from unrelated .harness writes.
+  describe('harness approval-pending events', () => {
+    const PROJECT = path.join('C:', 'work', 'proj')
+    const PENDING_FILE = path.join(PROJECT, '.harness', 'approvals', 'pending', 'req-1.json')
+
+    it('emits harness_approval_pending AND harness_update on add of a pending approval file', () => {
+      startWatcher()
+      handlers.add(PENDING_FILE)
+      expect(emit).toHaveBeenCalledWith('harness_update', {
+        projectPath: PROJECT,
+        ts: expect.any(Number),
+      })
+      expect(emit).toHaveBeenCalledWith('harness_approval_pending', {
+        projectPath: PROJECT,
+        filePath: path.join('approvals', 'pending', 'req-1.json'),
+        ts: expect.any(Number),
+      })
+    })
+
+    it('emits harness_approval_pending on change of a pending approval file', () => {
+      startWatcher()
+      handlers.change(PENDING_FILE)
+      expect(emit).toHaveBeenCalledWith('harness_approval_pending', {
+        projectPath: PROJECT,
+        filePath: path.join('approvals', 'pending', 'req-1.json'),
+        ts: expect.any(Number),
+      })
+    })
+
+    it('does NOT emit harness_approval_pending on unlink (resolved/decided, not pending)', () => {
+      startWatcher()
+      handlers.unlink(PENDING_FILE)
+      expect(emit).toHaveBeenCalledWith('harness_update', {
+        projectPath: PROJECT,
+        ts: expect.any(Number),
+      })
+      expect(emit).not.toHaveBeenCalledWith('harness_approval_pending', expect.anything())
+    })
+
+    it('does NOT emit harness_approval_pending for unrelated .harness writes', () => {
+      startWatcher()
+      handlers.change(path.join(PROJECT, '.harness', 'status.json'))
+      handlers.change(path.join(PROJECT, '.harness', 'approvals', 'decided', 'req-1.json'))
+      expect(emit).toHaveBeenCalledWith('harness_update', expect.anything())
+      expect(emit).not.toHaveBeenCalledWith('harness_approval_pending', expect.anything())
+    })
+  })
 })

@@ -129,6 +129,7 @@ JSON schemas in `schemas/`. `index.js` exports schema objects and `SCHEMA_VERSIO
 | `OVERSIGHT_CORS_ORIGIN` | — | Explicit CORS origin |
 | `OVERSIGHT_RATE_LIMIT` | `2000` | Req/15min; `0` disables (used in e2e) |
 | `OTEL_ENABLED` | — | Enable OTel tracing |
+| `OVERSIGHT_WEBHOOK_URL` | — | AFK gate notifier: POST approval-pending events to this webhook (notify-only, no inbound path; unset = no-op) |
 | `OVERSIGHT_BUDGET_MAX` | `0` | Max USD budget (0 = unlimited) |
 | `OVERSIGHT_FLEET_ACK_TIMEOUT_MS` | `15000` | Fleet session-ack timeout |
 

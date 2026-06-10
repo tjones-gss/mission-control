@@ -30,13 +30,21 @@ function parseConductorPath(filePath) {
 
 // Parse a path that lives under <projectPath>/.harness/... so the emitted SSE
 // event carries the project the client should refetch. Returns null if the path
-// doesn't sit under a .harness directory.
+// doesn't sit under a .harness directory. rel is the path INSIDE .harness/.
 function parseHarnessPath(filePath) {
   const idx = filePath.indexOf(HARNESS_SEP)
   if (idx === -1) return null
   const projectPath = filePath.slice(0, idx)
   if (!projectPath) return null
-  return { projectPath }
+  return { projectPath, rel: filePath.slice(idx + HARNESS_SEP.length) }
+}
+
+// A pending approval is a FILE inside .harness/approvals/pending/ — the harness
+// writes one request file per gate and the approve CLI moves/decides it. Depth
+// check (>= 3 segments) so the pending/ dir itself appearing doesn't match.
+function isPendingApprovalRel(rel) {
+  const parts = rel.split(/[\\/]/)
+  return parts.length >= 3 && parts[0] === 'approvals' && parts[1] === 'pending'
 }
 
 // A session transcript is a DIRECT child of a project dir:
@@ -142,19 +150,30 @@ export function startWatcher() {
     return true
   }
 
-  function emitHarness(filePath) {
+  function emitHarness(filePath, fsEvent) {
     const parsed = parseHarnessPath(filePath)
     if (!parsed) return false
     emit('harness_update', {
       projectPath: parsed.projectPath,
       ts: Date.now(),
     })
+    // Phase 4 (AFK gate notifier): a file appearing/changing under
+    // approvals/pending/ is an approval-gate OPENING — emit a distinct event so
+    // lib/notify.js can react without false-positives from other .harness
+    // writes. An unlink means the request was decided/removed, not pending.
+    if (fsEvent !== 'unlink' && isPendingApprovalRel(parsed.rel)) {
+      emit('harness_approval_pending', {
+        projectPath: parsed.projectPath,
+        filePath: parsed.rel,
+        ts: Date.now(),
+      })
+    }
     return true
   }
 
   watcher.on('change', (filePath) => {
     if (emitConductor(filePath)) return
-    if (emitHarness(filePath)) return
+    if (emitHarness(filePath, 'change')) return
 
     const rel = path.relative(CLAUDE_DIR, filePath)
 
@@ -191,7 +210,7 @@ export function startWatcher() {
 
   watcher.on('add', (filePath) => {
     if (emitConductor(filePath)) return
-    if (emitHarness(filePath)) return
+    if (emitHarness(filePath, 'add')) return
 
     const rel = path.relative(CLAUDE_DIR, filePath)
     if (isSessionTranscript(rel)) {
@@ -213,7 +232,7 @@ export function startWatcher() {
 
   watcher.on('unlink', (filePath) => {
     if (emitConductor(filePath)) return
-    if (emitHarness(filePath)) return
+    if (emitHarness(filePath, 'unlink')) return
 
     const rel = path.relative(CLAUDE_DIR, filePath)
     if (isSessionTranscript(rel)) {

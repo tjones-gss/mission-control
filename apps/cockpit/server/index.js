@@ -29,6 +29,7 @@ import { router as searchRouter } from './routes/search.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
 import { rebuildAll } from './lib/db/session-index.js'
 import { initOtel, tracingMiddleware } from './lib/otel.js'
+import { initNotify } from './lib/notify.js'
 import { mountOpenApi } from './lib/openapi.js'
 import { startWatcher } from './watcher.js'
 import { logger } from './lib/logger.js'
@@ -54,6 +55,12 @@ export function buildApp() {
   // pass-through when disabled) wraps every route.
   initOtel()
   app.use(tracingMiddleware)
+
+  // AFK gate notifier (Phase 4) — env-gated (OVERSIGHT_WEBHOOK_URL) and OFF by
+  // default, same contract as OTel above: unset = total no-op. When set it
+  // subscribes to the internal SSE pub/sub and POSTs approval-pending events to
+  // the webhook. Notify-only — there is NO inbound path.
+  initNotify()
 
   // Middleware stack (order matters)
   // DNS-rebinding guard runs FIRST — before CORS, routes, and everything else —
