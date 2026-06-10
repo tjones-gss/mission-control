@@ -556,25 +556,51 @@ class TestAuditEventSchemaContract(unittest.TestCase):
                 f"'{vendor}'",
             )
 
-    def test_audit_event_surface_landed_at_v8(self):
-        """The audit-event record type lands at sidecar surface version 8.
+    def test_audit_event_surface_at_v9_control_state(self):
+        """The audit-event controlState tightening lands at sidecar version 9.
 
-        Adding a consumable record type is a schema-surface change, so the
-        single-source sidecar must read 8 and the golden sample must stamp 8.
+        v9 requires 'approval' events to carry controlState (gateType +
+        decisionMaker) — a tightened required set is a breaking surface
+        change, so the single-source sidecar must read 9 and the golden
+        sample must stamp 9.
         """
         sidecar = json.loads(
             VERSION_SIDECAR_PATH.read_text(encoding="utf-8")
         )
         self.assertEqual(
             sidecar["schemaVersion"],
-            8,
-            "audit-event surface lands at schemaVersion 8 (sidecar is single "
-            "source) — bump packages/contracts/schema-version.json 7 -> 8",
+            9,
+            "audit-event controlState tightening lands at schemaVersion 9 "
+            "(sidecar is single source) — bump "
+            "packages/contracts/schema-version.json 8 -> 9",
         )
         self.assertEqual(
             self.sample["schemaVersion"],
-            8,
-            "the golden audit-event sample must stamp the v8 surface",
+            9,
+            "the golden audit-event sample must stamp the v9 surface",
+        )
+
+    def test_approval_without_control_state_rejected(self):
+        """v9 parity: an 'approval' event MUST carry controlState with
+        gateType + decisionMaker — enforcement and audit are the same act,
+        so an approval can never be recorded without its control context."""
+        approval = dict(self.sample)
+        approval["eventType"] = "approval"
+        approval["decision"] = "approved"
+        approval.pop("controlState", None)
+        self.assertTrue(
+            list(self.validator.iter_errors(approval)),
+            "schema must reject an approval event without controlState",
+        )
+        approval["controlState"] = {"decisionMaker": "human"}
+        self.assertTrue(
+            list(self.validator.iter_errors(approval)),
+            "schema must reject an approval whose controlState lacks gateType",
+        )
+        approval["controlState"] = {"gateType": "hard", "decisionMaker": "human"}
+        self.assertFalse(
+            list(self.validator.iter_errors(approval)),
+            "an approval with gateType + decisionMaker must validate",
         )
 
 

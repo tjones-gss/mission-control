@@ -590,6 +590,14 @@ router.post('/new', async (req, res) => {
     eventType: 'spawn',
     source: 'cockpit',
     sessionId: null,
+    // v9 controlState: the policies this agent was LAUNCHED under. The operator
+    // initiated the spawn (decisionMaker human); permissionMode is recorded only
+    // when the request carried one explicitly — never fabricated.
+    controlState: {
+      decisionMaker: 'human',
+      permissionMode: (options && options.permissionMode) || null,
+      policiesInForce: worktree === true ? ['worktree-isolation'] : [],
+    },
     payload: {
       kind: 'session_new',
       cwd,
@@ -842,6 +850,13 @@ router.post('/:sessionId/tool-approval', (req, res) => {
     subjectId: approvalId,
     decision: decision === 'allow' ? 'approved' : 'denied',
     outcome: 'succeeded',
+    // v9 controlState: the SDK tool approval is a HARD gate — the tool call was
+    // blocked until this human decision resolved it.
+    controlState: {
+      gateType: 'hard',
+      decisionMaker: 'human',
+      policiesInForce: ['tool-approval-gate'],
+    },
     payload: { kind: 'tool_approval' },
   })
 

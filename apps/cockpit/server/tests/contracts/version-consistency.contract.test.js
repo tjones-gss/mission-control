@@ -68,7 +68,7 @@ describe('contracts display schemaVersion matches the sidecar (single source of 
     expect(display).toBe(sidecar)
   })
 
-  it('the sidecar schemaVersion is 8 after the audit-event schema (S2)', () => {
-    expect(readJson(CONTRACTS_SIDECAR_SOURCE).schemaVersion).toBe(8)
+  it('the sidecar schemaVersion is 9 after the audit-event controlState tightening', () => {
+    expect(readJson(CONTRACTS_SIDECAR_SOURCE).schemaVersion).toBe(9)
   })
 })

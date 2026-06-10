@@ -41,6 +41,26 @@ The *build* of this unification is Phase 2 (post Phase-1 reassessment). This ADR
 build implements; the `pipeline-phase` JSON schema is specified here and wired into
 `packages/contracts` during Phase 1d (single-source `SCHEMA_VERSION`).
 
+### Amendment 2026-06-09 (Fleet positioning vs native Agent Teams)
+
+Claude Code now ships **native Agent Teams** (experimental, 2026: a team-lead session spawning
+teammates with direct messaging, plan approval/rejection, and graceful shutdown). This absorbs the
+*spawning-and-coordination primitive* that Fleet implements by hand with `claude -p` children —
+the same first-party absorption ADR-0005 predicted for the viewer, now reaching orchestration.
+
+**Refinement, not reversal (Status stays Accepted):** Fleet's identity is the **governance layer
+around fan-out** — gate evidence, adversarial verify, budget latches, deterministic escalation
+through the harness single-writer, and the audit trail — *not* the spawning mechanics. Therefore:
+
+- **Do not invest in Fleet's spawning/coordination mechanics beyond maintenance.** That half is
+  being commoditized; runway spent there is the ADR-0005 terminal path.
+- **When native Agent Teams exit experimental**, `strategy: fleet` SHOULD gain a dispatch mode that
+  uses the native team as its execution substrate while the harness retains gates, verify, budget,
+  and escalation. The native team is a *substrate*, not a fourth engine — the **no new orchestration
+  engine** rule is unchanged, and all outcomes still write back via the harness CLI single-writer.
+- The spine is unaffected: pipelines, gates, and the phase contract remain the canonical model
+  regardless of what executes a phase.
+
 ## Options Considered
 
 ### A. Pipeline as spine (chosen)

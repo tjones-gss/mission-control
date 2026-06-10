@@ -207,6 +207,22 @@ function normalizeVerify(policy) {
   return null
 }
 
+// v9 audit controlState: the guardrails ACTUALLY in force for this run/child, as
+// short stable identifiers. Lists only what is set — an empty list means "none
+// known", never a fabricated default. Children always run worktree-isolated.
+function fleetPoliciesInForce(state, child) {
+  const out = []
+  const budget = budgetOf(state.policy)
+  if (budget) out.push(`budget-cap:${budget}`)
+  const perChild = perChildOf(state.policy)
+  if (perChild) out.push(`per-child-cap:${perChild}`)
+  const verify = normalizeVerify(state.policy)
+  if (verify) out.push(`adversarial-verify:${verify.minApprovals}x${verify.maxRounds}`)
+  if (child && child.quarantine) out.push('quarantine:read-only')
+  out.push('worktree-isolation')
+  return out
+}
+
 // Validate the start request. Returns { ok:true, plan } or { ok:false, status, error }.
 // Ordering mirrors harness.js: validate body -> cap -> whitelist -> git-repo
 // check. Nothing is spawned until this passes (fail closed, all-or-nothing).
@@ -662,6 +678,12 @@ function spawnChild(state, idx, lockKey) {
     sessionId: child.sessionId || null,
     subjectId: child.branch,
     correlationId: state.id,
+    // v9 controlState: child spawns are automated steps inside the human-started
+    // run; the policies listed are the rails the child launches under.
+    controlState: {
+      decisionMaker: 'auto',
+      policiesInForce: fleetPoliciesInForce(state, child),
+    },
     payload: { kind: 'fleet_child', idx: child.idx, cwd: child.cwd, worktree: true },
   })
 
@@ -1142,6 +1164,11 @@ async function onAllChildrenSettled(state) {
     subjectId: state.id,
     correlationId: state.id,
     outcome: state.synthesis.status === 'done' ? 'succeeded' : 'failed',
+    // v9 controlState: synthesis runs automatically once children settle.
+    controlState: {
+      decisionMaker: 'auto',
+      policiesInForce: fleetPoliciesInForce(state),
+    },
     payload: {
       kind: 'fleet_synthesis',
       runStatus: state.status,
@@ -1625,6 +1652,13 @@ export async function decideFleetEscalation(id, body = {}) {
       correlationId: id,
       decision: decision === 'allow' ? 'approved' : 'denied',
       outcome: 'succeeded',
+      // v9 controlState: a tool escalation is a HARD gate — the child's tool
+      // call was blocked until this human decision resolved it.
+      controlState: {
+        gateType: 'hard',
+        decisionMaker: 'human',
+        policiesInForce: fleetPoliciesInForce(state, child),
+      },
       payload: { kind: 'fleet_escalation_tool', childIdx },
     })
     return { ok: true, status: 200, source, decision, childIdx }
@@ -1664,6 +1698,14 @@ export async function decideFleetEscalation(id, body = {}) {
     correlationId: id,
     decision: decision === 'allow' ? 'approved' : 'denied',
     outcome: 'succeeded',
+    // v9 controlState: a danger-zone escalation is a HARD gate the rails held
+    // closed until this human decision; the rails' danger-zone policy is the
+    // gate's owner, so it leads the in-force list.
+    controlState: {
+      gateType: 'hard',
+      decisionMaker: 'human',
+      policiesInForce: ['danger-zone-approval', ...fleetPoliciesInForce(state, child)],
+    },
     payload: { kind: 'fleet_escalation_harness', childIdx, cwd: child.cwd },
   })
   return {

@@ -78,7 +78,7 @@ import {
 function isValid(event) {
   const ajv = new Ajv2020({ allErrors: true, strict: false })
   addFormats(ajv)
-  const full = { schemaVersion: 8, ts: new Date().toISOString(), seq: 1, ...event }
+  const full = { schemaVersion: 9, ts: new Date().toISOString(), seq: 1, ...event }
   return ajv.compile(schema)(full)
 }
 
@@ -129,6 +129,11 @@ describe('fleet audit wiring: spawn + merge(synthesis)', () => {
     }
     expect(spawns[0].payload.kind).toBe('fleet_child')
     expect(merges[0].payload.kind).toBe('fleet_synthesis')
+    // v9: automated steps carry decisionMaker 'auto' + the rails the child
+    // launched under (children are always worktree-isolated).
+    expect(spawns[0].controlState.decisionMaker).toBe('auto')
+    expect(spawns[0].controlState.policiesInForce).toContain('worktree-isolation')
+    expect(merges[0].controlState.decisionMaker).toBe('auto')
   })
 })
 
@@ -158,6 +163,9 @@ describe('fleet audit wiring: approval (escalation decide)', () => {
     expect(approvals[0].source).toBe('cockpit')
     expect(approvals[0].subjectId).toBe('a-1')
     expect(approvals[0].decision).toBe('approved')
+    // v9: an escalation decision is a HARD gate decided by a human.
+    expect(approvals[0].controlState.gateType).toBe('hard')
+    expect(approvals[0].controlState.decisionMaker).toBe('human')
     expect(isValid(approvals[0])).toBe(true)
   })
 
@@ -176,6 +184,10 @@ describe('fleet audit wiring: approval (escalation decide)', () => {
     expect(approvals[0].source).toBe('harness')
     expect(approvals[0].subjectId).toBe('req-7')
     expect(approvals[0].decision).toBe('denied')
+    // v9: the rails' danger-zone policy owns this hard gate.
+    expect(approvals[0].controlState.gateType).toBe('hard')
+    expect(approvals[0].controlState.decisionMaker).toBe('human')
+    expect(approvals[0].controlState.policiesInForce).toContain('danger-zone-approval')
     expect(isValid(approvals[0])).toBe(true)
   })
 

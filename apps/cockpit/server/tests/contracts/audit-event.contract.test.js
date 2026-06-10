@@ -67,10 +67,10 @@ describe('audit-event contract: the golden sample validates against the shared s
     expect(validate(bad)).toBe(false)
   })
 
-  it("the golden sample's schemaVersion matches the package SCHEMA_VERSION (8)", () => {
-    // The audit-event surface lands at sidecar v8; the sample stamps the same.
+  it("the golden sample's schemaVersion matches the package SCHEMA_VERSION (9)", () => {
+    // v9: the controlState runtime-governance object lands (required on approvals).
     expect(sample.schemaVersion).toBe(SCHEMA_VERSION)
-    expect(SCHEMA_VERSION).toBe(8)
+    expect(SCHEMA_VERSION).toBe(9)
   })
 
   it('the schema uses vendor-NEUTRAL language (no claude/anthropic/cursor/codex)', () => {
@@ -78,5 +78,66 @@ describe('audit-event contract: the golden sample validates against the shared s
     for (const vendor of ['claude', 'anthropic', 'cursor', 'codex']) {
       expect(blob).not.toContain(vendor)
     }
+  })
+})
+
+// v9: controlState is the runtime-governance record — which guardrails were in
+// force, whether the gate blocked execution, and who decided. An 'approval' event
+// MUST carry it (with gateType + decisionMaker): enforcement and audit are the
+// same act, so an approval can never be recorded without its control context.
+describe('audit-event contract v9: controlState (runtime governance)', () => {
+  it('documents the canonical gateType and decisionMaker enums', () => {
+    const cs = schema.properties.controlState.properties
+    expect(cs.gateType.enum).toEqual(expect.arrayContaining(['hard', 'soft', 'policy']))
+    expect(cs.decisionMaker.enum).toEqual(expect.arrayContaining(['human', 'auto']))
+  })
+
+  it('REJECTS an approval event without controlState', () => {
+    const validate = compile(schema)
+    const bad = { ...sample }
+    delete bad.controlState
+    expect(validate(bad)).toBe(false)
+  })
+
+  it('REJECTS an approval whose controlState lacks gateType or decisionMaker', () => {
+    const validate = compile(schema)
+    expect(validate({ ...sample, controlState: { decisionMaker: 'human' } })).toBe(false)
+    expect(validate({ ...sample, controlState: { gateType: 'hard' } })).toBe(false)
+  })
+
+  it('REJECTS an unknown gateType / decisionMaker value', () => {
+    const validate = compile(schema)
+    expect(
+      validate({ ...sample, controlState: { gateType: 'vibes', decisionMaker: 'human' } }),
+    ).toBe(false)
+    expect(
+      validate({ ...sample, controlState: { gateType: 'hard', decisionMaker: 'committee' } }),
+    ).toBe(false)
+  })
+
+  it('ACCEPTS a spawn event without controlState (conditional applies to approvals only)', () => {
+    const validate = compile(schema)
+    const spawn = {
+      schemaVersion: sample.schemaVersion,
+      ts: sample.ts,
+      eventType: 'spawn',
+      source: 'cockpit',
+    }
+    expect(validate(spawn)).toBe(true)
+  })
+
+  it('ACCEPTS a spawn event WITH an informational controlState (policies the agent launched under)', () => {
+    const validate = compile(schema)
+    const spawn = {
+      schemaVersion: sample.schemaVersion,
+      ts: sample.ts,
+      eventType: 'spawn',
+      source: 'cockpit',
+      controlState: {
+        decisionMaker: 'auto',
+        policiesInForce: ['budget-cap:20', 'worktree-isolation'],
+      },
+    }
+    expect(validate(spawn)).toBe(true)
   })
 })

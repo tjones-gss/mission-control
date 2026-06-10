@@ -7,7 +7,7 @@
 
 # Mission Control Contract Specification
 
-**Contract surface version (schemaVersion): 8**  
+**Contract surface version (schemaVersion): 9**  
 **Approval document version (approvalSchemaVersion): 2**
 
 This is the versioned, **vendor-neutral** specification of the data shapes that cross the boundary between the oversight dashboard (the window) and the opt-in control-plane rails. The dashboard does not import the rails as a library — it shells out to the control-plane CLI (`harness status --json`) and reads/writes the approval, fleet, pipeline and audit documents described below. These schemas are the single source of truth; this document is generated from them so it can never silently drift.
@@ -190,7 +190,7 @@ The canonical phase-contract object (ADR-0006). A pipeline is ordered phases; ea
 - **Extensibility:** permissive (`additionalProperties: true` — extra fields allowed)
 - **Required:** `schemaVersion`, `ts`, `eventType`, `source`
 
-One record in the append-only audit log: a durable, after-the-fact account of a consequential action the oversight dashboard orchestrated — an agent spawn, a human approval decision, or a branch merge. The cockpit is the SOLE writer (one append-only JSONL log via the existing atomic-write helper, ADR-0004 local-JSON, no DB); it records both the events it performs directly and the rails-mediated ones it drives via the control-plane CLI shell-out. KNOWN LIMITATION: actions taken against the rails CLI directly (outside the dashboard) are not captured by this log yet — there is no second writer this phase. Permissive (additionalProperties:true) so emitters can attach event-specific detail under `payload` without a schema bump.
+One record in the append-only audit log: a durable account of a consequential action the oversight dashboard orchestrated — an agent spawn, a human approval decision, or a branch merge. The cockpit is the SOLE writer (one append-only JSONL log via the existing atomic-write helper, ADR-0004 local-JSON, no DB); it records both the events it performs directly and the rails-mediated ones it drives via the control-plane CLI shell-out. v9 adds `controlState` — the runtime-governance record of WHICH guardrails were in force, whether the gate was blocking, and who decided — REQUIRED on 'approval' events (see the conditional below) so an approval can never be recorded without its control context. KNOWN LIMITATION: actions taken against the rails CLI directly (outside the dashboard) are not captured by this log yet — there is no second writer this phase. Permissive (additionalProperties:true) so emitters can attach event-specific detail under `payload` without a schema bump.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -205,4 +205,5 @@ One record in the append-only audit log: a durable, after-the-fact account of a 
 | `outcome` | string \| null | no | The result of the action once known (e.g. succeeded / failed / skipped). Null while pending or not applicable. |
 | `source` | enum("cockpit" \| "harness") | yes | Which control surface the event flowed through: 'cockpit' for an action the dashboard performed directly, 'harness' for a rails-mediated action the dashboard drove via the control-plane CLI shell-out. |
 | `correlationId` | string \| null | no | An id that ties related events together across surfaces (e.g. a request that triggers a spawn then an approval then a merge), so a multi-step flow can be reconstructed. Null when standalone. |
+| `controlState` | object \| null | no | The control state in force WHEN the event occurred — the runtime-governance record that makes the log auditable as enforcement, not just observation: which guardrails were active, whether the gate blocked execution, and who decided. Required (with gateType + decisionMaker) on 'approval' events via the conditional below; optional but encouraged elsewhere (e.g. a spawn records the policies the agent was launched under). Fields the emitter does not know are omitted or null — NEVER fabricated. |
 | `payload` | object | no | Event-specific detail. Permissive on purpose: emitters attach the extra fields a given eventType needs (e.g. cost, branch name, gate id) without requiring a schema-surface bump for each. |

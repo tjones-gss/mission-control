@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 8,
+  "schemaVersion": 9,
   "ts": "2026-06-08T14:01:02.000Z",
   "eventType": "spawn",
   "actor": "orchestrator",
@@ -10,6 +10,10 @@
   "outcome": "succeeded",
   "source": "cockpit",
   "correlationId": "corr-7f3a9c",
+  "controlState": {
+    "decisionMaker": "auto",
+    "policiesInForce": ["budget-cap:20", "adversarial-verify:1x1", "worktree-isolation"]
+  },
   "payload": {
     "worktree": true,
     "branch": "fleet/implement-oauth/c0"

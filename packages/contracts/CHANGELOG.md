@@ -17,6 +17,20 @@ schema.
 
 ## `schemaVersion` (contract surface as a whole)
 
+### [9]
+
+- **Breaking — runtime governance (audit v2).** `audit-event` gains
+  `controlState` — the record of which guardrails were in force when the event
+  occurred (`policiesInForce`), whether the gate blocked execution
+  (`gateType: hard | soft | policy`), who decided (`decisionMaker: human |
+  auto`), and the `permissionMode` / `model` snapshot when knowable. An
+  `approval` event now REQUIRES `controlState` with `gateType` +
+  `decisionMaker` (schema `allOf` conditional) — enforcement and audit are the
+  same act, so an approval can never be recorded without its control context.
+  Tightened required set ⇒ breaking ⇒ sidecar bump. Optional elsewhere
+  (spawns record the policies the agent launched under); unknown fields stay
+  null/omitted — never fabricated.
+
 ### [8]
 
 - **Additive — Phase 4 (D-audit-otel).** Added the standalone `audit-event`

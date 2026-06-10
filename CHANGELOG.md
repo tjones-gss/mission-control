@@ -10,13 +10,36 @@ the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
 
 <!-- New entries land here. ONLY S7 (E-release-eng) flips the heading below. -->
 
+### Audit log v2 — control-state capture (runtime governance)
+
+**Changed**
+
+- **`audit-event` schema v9 (BREAKING on the contracts axis, sidecar 8 → 9):**
+  every audit record can now carry `controlState` — which guardrails were in
+  force (`policiesInForce`), whether the gate blocked execution
+  (`gateType: hard | soft | policy`), who decided (`decisionMaker: human |
+  auto`), and the `permissionMode`/`model` snapshot when knowable. An
+  `approval` event REQUIRES it (schema conditional + the writer's fail-closed
+  check, both derived from the same schema so they cannot drift) — an approval
+  is never recorded without its control context. All seven emit sites
+  (front-door spawn, tool approval, trust grant, fleet child spawn / synthesis
+  / tool + harness escalations) now record their real control state; unknown
+  fields stay null — never fabricated.
+
+**Decisions**
+
+- **ADR-0006 amendment:** native Agent Teams absorb the fan-out primitive;
+  Fleet's identity is the governance layer (gates / verify / budget /
+  escalation / audit). `strategy: fleet` gains a native-team dispatch substrate
+  when teams exit experimental; no new orchestration engine.
+
 ### UI/UX redesign — slice 1 (Calm-console themes + "Needs you" triage)
 
 First slices of the Oversight redesign (a Claude Design handoff), ruled
 **ship-narrow-slice / advances-rails** by a council (reports
 `council-mission-control-20260608.*`, `council-redesign-20260608.*`, gitignored).
-TDD-first; client suite **567** green, lint + `vite build` pass. A redesign track on
-top of the 0.4.0 / L3 ladder — **not yet committed or tagged**.
+TDD-first; client suite **567** green, lint + `vite build` pass. A redesign track
+on top of the 0.4.0 / L3 ladder, merged after the `v0.4.0` tag.
 
 **Added**
 
@@ -50,11 +73,7 @@ top of the 0.4.0 / L3 ladder — **not yet committed or tagged**.
 - Any broad **multi-component reskin** — the token layer is meant to cascade instead
   (next step: remap `tailwind.config.js` colors to `--mc-*`).
 
-## [0.4.0] - 2026-06-08
-
-> The `0.4.0 - 2026-06-08` date is a placeholder until a human cuts the tag.
-> The release is cut by tagging `v0.4.0` (see `RELEASING.md`); update this date
-> to the actual cut date at that time.
+## [0.4.0] - 2026-06-09
 
 ### Phase 4 — Standard (L3)
 
