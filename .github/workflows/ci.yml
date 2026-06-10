@@ -58,6 +58,8 @@ jobs:
         # and test_fleet_dispatch (fleet-as-strategy). They MUST be listed here or
         # CI's green signal would not cover the new spine. Phase 3 added
         # test_hook_parity (pure-Node hooks behave identically to the shell hooks).
+        # The policy plane added test_mcp_server (the rails as a READ-ONLY MCP
+        # surface — protocol, tools, and the no-self-approval guarantee).
         run: >-
           python -m unittest
           tests.test_cli
@@ -71,6 +73,7 @@ jobs:
           tests.test_fleet_dispatch
           tests.test_hook_parity
           tests.test_install_adapter
+          tests.test_mcp_server
       - name: Pure-Node hook unit tests
         # The authoritative behavioral suite for the .mjs hooks (zero-dep node:test).
         # Runs everywhere node is present, independent of jq/bash.

@@ -20,6 +20,8 @@ Usage:
                                  Decide a pending danger-zone approval; writes the
                                    .harness/approvals/decided/<id>.json decision file
   harness dashboard [--open]     Render runs/dashboard/index.html from harness state files
+  harness mcp                    Serve the rails as a READ-ONLY MCP server over stdio
+                                   (harness_status / get_policy_context / get_pending_approvals)
 
 Options:
   -C <path>     Run as if in <path> instead of the cwd
@@ -76,6 +78,7 @@ from harness_core.missions import (
     select_next_mission,
 )
 from harness_core.pipelines import validate_phase
+from harness_core.status import status_payload
 from harness_core.yaml_utils import find_harness_root, get, save_yaml
 
 def _run_cursor_adapter_install(root: Path, *, hooks_only: bool = True) -> int:
@@ -136,16 +139,9 @@ def cmd_status(args, root: Path) -> int:
     plans = load_yaml(root / ".harness/plan-index.yml")
 
     if args.json:
-        out = {
-            "project": project.get("project", {}),
-            "stack": project.get("stack", {}),
-            "pipeline": pipeline.get("pipeline", {}),
-            "missions": missions.get("missions", {}),
-            "plans": plans.get("plans", {}),
-            "readiness_overall": get(readiness, "readiness", "overall", default={}),
-            "next": project.get("next", {}),
-        }
-        print(json.dumps(out, indent=2, default=str))
+        # Single source: the same composition the MCP server's harness_status
+        # tool emits (harness_core/status.py) — one payload, no drift.
+        print(json.dumps(status_payload(root), indent=2, default=str))
         return 0
 
     name = get(project, "project", "name", default="(unset)")
@@ -1560,6 +1556,18 @@ def _approvals_dir(root: Path, kind: str) -> Path:
     return root / ".harness" / "approvals" / kind
 
 
+def cmd_mcp(args, root: Path) -> int:
+    """Serve the rails as a READ-ONLY MCP server over stdio (blocks until EOF).
+
+    Any MCP-compatible agent (Claude Code, Cursor, Copilot, ...) can consult
+    the rails — status, policy context, pending approvals — without the
+    cockpit. Deliberately exposes NO decide/approve tool: agent self-approval
+    is the hole the rails exist to close (see harness_core/mcp_server.py).
+    """
+    from harness_core.mcp_server import serve
+    return serve(root)
+
+
 def cmd_approve(args, root: Path) -> int:
     """Decide a pending danger-zone approval (allow|deny).
 
@@ -2546,6 +2554,12 @@ def main():
         "--approver", default=None, help="Approver name (default: cockpit-fleet)"
     )
 
+    sub.add_parser(
+        "mcp",
+        help="Serve the rails as a READ-ONLY MCP server over stdio "
+             "(harness_status / get_policy_context / get_pending_approvals)",
+    )
+
     p_dashboard = sub.add_parser(
         "dashboard",
         help="Generate a local HTML dashboard at runs/dashboard/index.html",
@@ -2587,6 +2601,7 @@ def main():
         "mission": cmd_mission,
         "approve": cmd_approve,
         "dashboard": cmd_dashboard,
+        "mcp": cmd_mcp,
     }
     if args.cmd == "install":
         if args.install_target == "cursor":

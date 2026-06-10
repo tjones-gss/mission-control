@@ -10,6 +10,23 @@ the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
 
 <!-- New entries land here. ONLY S7 (E-release-eng) flips the heading below. -->
 
+### Harness MCP server — the rails as a vendor-neutral MCP surface
+
+**Added**
+
+- **`harness mcp`** serves the rails as a **READ-ONLY** MCP server over stdio
+  (newline-delimited JSON-RPC 2.0, stdlib-only — no new dependency). Any
+  MCP-compatible agent (Claude Code, Cursor, Copilot, …) can consult the
+  rails without the cockpit: `harness_status` (the SAME composition as
+  `harness status --json`, single-sourced in `harness_core/status.py` so the
+  two can never drift), `get_policy_context` (danger-zone operations +
+  quality gates + current pipeline phase/gate — consult BEFORE acting), and
+  `get_pending_approvals` (what the agent is blocked on). **Deliberately no
+  approve/decide tool** — agent self-approval is the hole the rails exist to
+  close; a test asserts the surface stays read-only. This is the ADR-0005
+  cross-vendor strategy made concrete: cross-vendor reach lives in the rails
+  + the contract, with MCP as the consumption path.
+
 ### Risk-typed approvals — real risk on the session summary
 
 **Added**
