@@ -7,11 +7,11 @@ different cadences.
 
 ## The three independent version axes
 
-| Axis | Where it lives | What it answers | Owner of the bump |
-|---|---|---|---|
-| **Package SEMVER** | the 5 `package.json` + 2 `pyproject.toml` `[project].version` fields, moving **LOCKSTEP** | "which release of the *product* is this?" | release engineering (this doc) |
-| **Contracts `SCHEMA_VERSION`** | `packages/contracts/schema-version.json` (sidecar) `schemaVersion` | "which revision of the emitted `harness status --json` **contract surface** is this?" | the contract change that adds/breaks a schema |
-| **`APPROVAL_SCHEMA_VERSION`** | the same sidecar `approvalSchemaVersion` | "which revision of the **per-document** approval files (`.harness/approvals/**`) is this?" | the approval-format change |
+| Axis                           | Where it lives                                                                            | What it answers                                                                            | Owner of the bump                             |
+| ------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| **Package SEMVER**             | the 5 `package.json` + 2 `pyproject.toml` `[project].version` fields, moving **LOCKSTEP** | "which release of the _product_ is this?"                                                  | release engineering (this doc)                |
+| **Contracts `SCHEMA_VERSION`** | `packages/contracts/schema-version.json` (sidecar) `schemaVersion`                        | "which revision of the emitted `harness status --json` **contract surface** is this?"      | the contract change that adds/breaks a schema |
+| **`APPROVAL_SCHEMA_VERSION`**  | the same sidecar `approvalSchemaVersion`                                                  | "which revision of the **per-document** approval files (`.harness/approvals/**`) is this?" | the approval-format change                    |
 
 These are deliberately **decoupled**. A release can ship with the contract surface
 unchanged (semver moves, `SCHEMA_VERSION` does not), and the contract surface can
@@ -23,7 +23,7 @@ keys off them independently.
 
 - **Package SEMVER:** `0.4.0` (the first tagged version off the historical `0.1.0`;
   Phases 0–3 were pre-tag development on the `0.1.0` line).
-- **Contracts `SCHEMA_VERSION`:** `8` (the `audit-event` schema landed in Phase 4).
+- **Contracts `SCHEMA_VERSION`:** `9` (breaking: `audit-event.controlState` added in PR #10 — approval events require it; see `packages/contracts/CHANGELOG.md`).
 - **`APPROVAL_SCHEMA_VERSION`:** `2`.
 
 The contracts `package.json` also carries a **display** `schemaVersion` field that
@@ -53,7 +53,7 @@ there.
 
 A release is **human-cut** — the proof artifact (a real git tag → GitHub release
 with the SBOM + OpenAPI spec attached) is created by a maintainer, not by a merge.
-The repository keeps everything *ready* to tag; the tag is the deliberate act.
+The repository keeps everything _ready_ to tag; the tag is the deliberate act.
 
 1. **Land all release content on `main`** (each change TDD-first, through the
    pre-commit gate). The `[Unreleased]` block of `CHANGELOG.md` accumulates entries
