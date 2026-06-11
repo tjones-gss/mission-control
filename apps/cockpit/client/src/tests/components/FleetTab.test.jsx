@@ -73,11 +73,21 @@ const HARNESS_ESCALATION = {
   requestedAt: null,
 }
 
+// Fleet-ready projects served by the stubbed GET /api/harness — these feed the
+// launcher's cwd picker (the same set the server validates child cwds against).
+const HARNESS_PROJECTS = [
+  { projectPath: 'C:/proj/a', projectLabel: 'a', available: true },
+  { projectPath: 'C:/proj/b', projectLabel: 'b', available: true },
+]
+
 // Stub the full fleet contract: list, detail, escalations. Returns the captured
 // request log so a test can assert what was POSTed.
-function stubFleet({ runs = [], run = null, escalations = [], templates = [] } = {}) {
+function stubFleet({ runs = [], run = null, escalations = [], templates = [], projects } = {}) {
   const captured = []
   server.use(
+    http.get('/api/harness', () =>
+      HttpResponse.json({ projects: projects === undefined ? HARNESS_PROJECTS : projects }),
+    ),
     http.get('/api/fleet', () => HttpResponse.json({ runs })),
     // Templates MUST be registered before '/api/fleet/:id' so 'templates' is not
     // matched as a run id — mirrors the server-side route-ordering gotcha.
@@ -136,7 +146,10 @@ describe('FleetTab', () => {
       within(dialog).getByPlaceholderText(/what should the fleet accomplish/i),
       'Add OAuth across services',
     )
-    await userEvent.type(within(dialog).getByLabelText(/child 0 working directory/i), 'C:/proj/a')
+    await userEvent.selectOptions(
+      within(dialog).getByLabelText(/child 0 working directory/i),
+      'C:/proj/a',
+    )
     await userEvent.type(within(dialog).getByLabelText(/child 0 prompt/i), 'Add OAuth to A')
 
     await userEvent.click(within(dialog).getByRole('button', { name: /launch fleet/i }))
@@ -147,6 +160,39 @@ describe('FleetTab', () => {
       expect(post.body.goal).toBe('Add OAuth across services')
       expect(post.body.children).toEqual([{ cwd: 'C:/proj/a', prompt: 'Add OAuth to A' }])
     })
+  })
+
+  it('offers only fleet-ready projects in the working-directory picker', async () => {
+    stubFleet({ runs: [] })
+    render(<FleetTab fleetVersion={0} />)
+    await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getAllByRole('button', { name: /new fleet run/i })[0])
+    const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
+
+    const picker = within(dialog).getByLabelText(/child 0 working directory/i)
+    await waitFor(() => {
+      const values = Array.from(picker.querySelectorAll('option')).map((o) => o.value)
+      expect(values).toEqual(['', 'C:/proj/a', 'C:/proj/b'])
+    })
+  })
+
+  it('explains the fleet-ready requirements when no project qualifies', async () => {
+    stubFleet({ runs: [], projects: [] })
+    render(<FleetTab fleetVersion={0} />)
+    await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getAllByRole('button', { name: /new fleet run/i })[0])
+    const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
+
+    const notice = within(dialog).getByTestId('fleet-no-roots')
+    expect(notice).toHaveTextContent(/no fleet-ready projects/i)
+    // The three requirements are stated: git repo, harness rails, opened in Claude Code.
+    expect(notice).toHaveTextContent(/git/i)
+    expect(notice).toHaveTextContent(/\.harness\/project-state\.yml/i)
+    expect(notice).toHaveTextContent(/opened it in claude code/i)
+    // And alternatives are suggested for projects without rails.
+    expect(notice).toHaveTextContent(/agent teams/i)
   })
 
   it('shows child cards with branch, cost and status for a running run', async () => {
@@ -368,7 +414,10 @@ describe('FleetTab', () => {
       within(dialog).getByPlaceholderText(/what should the fleet accomplish/i),
       'Ship the thing',
     )
-    await userEvent.type(within(dialog).getByLabelText(/child 0 working directory/i), 'C:/proj/a')
+    await userEvent.selectOptions(
+      within(dialog).getByLabelText(/child 0 working directory/i),
+      'C:/proj/a',
+    )
     await userEvent.type(within(dialog).getByLabelText(/child 0 prompt/i), 'Do it')
     // Set a budget cap, flip verify on, and quarantine the single child.
     await userEvent.type(within(dialog).getByLabelText(/budget usd/i), '12.5')

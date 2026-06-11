@@ -17,6 +17,14 @@ describe('detectModelFamily()', () => {
     expect(detectModelFamily('claude-opus-4-6')).toBe('opus')
   })
 
+  it('detects fable from claude-fable-5', () => {
+    expect(detectModelFamily('claude-fable-5')).toBe('fable')
+  })
+
+  it('detects fable from claude-mythos-5 (same model tier)', () => {
+    expect(detectModelFamily('claude-mythos-5')).toBe('fable')
+  })
+
   it('returns null for unknown model', () => {
     expect(detectModelFamily('gpt-4o')).toBeNull()
   })
@@ -40,10 +48,29 @@ describe('calculateCost()', () => {
 
   it('calculates correct cost for haiku', () => {
     const usage = { input: 500_000, output: 50_000, cacheRead: 0, cacheWrite: 0 }
-    const result = calculateCost(usage, 'claude-3-haiku')
-    expect(result.breakdown.input).toBeCloseTo(0.4) // 500k * $0.80/M
-    expect(result.breakdown.output).toBeCloseTo(0.2) // 50k * $4.00/M
-    expect(result.totalCost).toBeCloseTo(0.6)
+    const result = calculateCost(usage, 'claude-haiku-4-5')
+    expect(result.breakdown.input).toBeCloseTo(0.5) // 500k * $1.00/M
+    expect(result.breakdown.output).toBeCloseTo(0.25) // 50k * $5.00/M
+    expect(result.totalCost).toBeCloseTo(0.75)
+  })
+
+  it('calculates correct cost for opus at current (4.5+) list prices', () => {
+    const usage = { input: 1_000_000, output: 100_000, cacheRead: 0, cacheWrite: 0 }
+    const result = calculateCost(usage, 'claude-opus-4-8')
+    expect(result.breakdown.input).toBeCloseTo(5.0) // 1M * $5/M
+    expect(result.breakdown.output).toBeCloseTo(2.5) // 100k * $25/M
+    expect(result.totalCost).toBeCloseTo(7.5)
+  })
+
+  it('calculates correct cost for fable (Fleet budget enforcement depends on this)', () => {
+    const usage = { input: 1_000_000, output: 100_000, cacheRead: 500_000, cacheWrite: 200_000 }
+    const result = calculateCost(usage, 'claude-fable-5')
+    expect(result.family).toBe('fable')
+    expect(result.breakdown.input).toBeCloseTo(10.0) // 1M * $10/M
+    expect(result.breakdown.output).toBeCloseTo(5.0) // 100k * $50/M
+    expect(result.breakdown.cacheRead).toBeCloseTo(0.5) // 500k * $1.00/M (0.1x input)
+    expect(result.breakdown.cacheWrite).toBeCloseTo(2.5) // 200k * $12.50/M (1.25x input)
+    expect(result.totalCost).toBeCloseTo(18.0)
   })
 
   it('returns null for unknown model', () => {

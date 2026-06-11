@@ -147,14 +147,14 @@ describe('estimateContextUsage()', () => {
 
 describe('MODEL_PRICING', () => {
   it('has contextWindow for all model families', () => {
-    for (const family of ['haiku', 'sonnet', 'opus']) {
+    for (const family of ['haiku', 'sonnet', 'opus', 'fable']) {
       expect(MODEL_PRICING[family]).toHaveProperty('contextWindow')
       expect(MODEL_PRICING[family].contextWindow).toBeGreaterThan(0)
     }
   })
 
   it('has maxOutput for all model families', () => {
-    for (const family of ['haiku', 'sonnet', 'opus']) {
+    for (const family of ['haiku', 'sonnet', 'opus', 'fable']) {
       expect(MODEL_PRICING[family]).toHaveProperty('maxOutput')
       expect(MODEL_PRICING[family].maxOutput).toBeGreaterThan(0)
     }
@@ -162,6 +162,11 @@ describe('MODEL_PRICING', () => {
 
   it('opus has 1M context window', () => {
     expect(MODEL_PRICING.opus.contextWindow).toBe(1_000_000)
+  })
+
+  it('fable has 1M context window and 128K max output', () => {
+    expect(MODEL_PRICING.fable.contextWindow).toBe(1_000_000)
+    expect(MODEL_PRICING.fable.maxOutput).toBe(128_000)
   })
 
   it('sonnet has 200K context window', () => {
@@ -172,15 +177,15 @@ describe('MODEL_PRICING', () => {
     expect(MODEL_PRICING.haiku.contextWindow).toBe(200_000)
   })
 
-  it('opus has 32K max output', () => {
-    expect(MODEL_PRICING.opus.maxOutput).toBe(32_000)
+  it('opus has 128K max output', () => {
+    expect(MODEL_PRICING.opus.maxOutput).toBe(128_000)
   })
 
-  it('sonnet has 16K max output', () => {
-    expect(MODEL_PRICING.sonnet.maxOutput).toBe(16_000)
+  it('sonnet has 64K max output', () => {
+    expect(MODEL_PRICING.sonnet.maxOutput).toBe(64_000)
   })
 
-  it('haiku has 8192 max output', () => {
-    expect(MODEL_PRICING.haiku.maxOutput).toBe(8_192)
+  it('haiku has 64K max output', () => {
+    expect(MODEL_PRICING.haiku.maxOutput).toBe(64_000)
   })
 })

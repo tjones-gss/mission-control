@@ -1,12 +1,14 @@
-// Model pricing in dollars per million tokens (from claw-code usage.rs)
+// Model pricing in dollars per million tokens. Current list prices as of
+// 2026-06 (Haiku 4.5, Sonnet 4.6, Opus 4.5+, Fable/Mythos 5). Keep in sync
+// with apps/cockpit/server/utils/cost.js (same table, both sides of the wire).
 export const MODEL_PRICING = {
   haiku: {
-    input: 0.8,
-    output: 4.0,
-    cacheCreate: 1.0,
-    cacheRead: 0.08,
+    input: 1.0,
+    output: 5.0,
+    cacheCreate: 1.25,
+    cacheRead: 0.1,
     contextWindow: 200_000,
-    maxOutput: 8_192,
+    maxOutput: 64_000,
   },
   sonnet: {
     input: 3.0,
@@ -14,21 +16,31 @@ export const MODEL_PRICING = {
     cacheCreate: 3.75,
     cacheRead: 0.3,
     contextWindow: 200_000,
-    maxOutput: 16_000,
+    maxOutput: 64_000,
   },
   opus: {
-    input: 15.0,
-    output: 75.0,
-    cacheCreate: 18.75,
-    cacheRead: 1.5,
+    input: 5.0,
+    output: 25.0,
+    cacheCreate: 6.25,
+    cacheRead: 0.5,
     contextWindow: 1_000_000,
-    maxOutput: 32_000,
+    maxOutput: 128_000,
+  },
+  // Fable 5 / Mythos 5 share pricing and limits — only the model ID differs.
+  fable: {
+    input: 10.0,
+    output: 50.0,
+    cacheCreate: 12.5,
+    cacheRead: 1.0,
+    contextWindow: 1_000_000,
+    maxOutput: 128_000,
   },
 }
 
 export function detectModelFamily(modelString) {
   if (!modelString) return null
   const lower = modelString.toLowerCase()
+  if (lower.includes('fable') || lower.includes('mythos')) return 'fable'
   if (lower.includes('haiku')) return 'haiku'
   if (lower.includes('sonnet')) return 'sonnet'
   if (lower.includes('opus')) return 'opus'
