@@ -30,6 +30,75 @@
   transform: translateX(0);
 }
 
+.mesh-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 16px;
+  color: var(--mc-fg-2);
+  font-size: 13px;
+}
+
+.mesh-panel-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--mc-fg);
+  word-break: break-word;
+}
+
+.mesh-chip {
+  align-self: flex-start;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 11px;
+  text-transform: capitalize;
+  background: transparent;
+}
+
+.mesh-panel-stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.mesh-panel-stats dt {
+  color: var(--mc-fg-4);
+}
+
+.mesh-panel-stats dd {
+  margin: 0;
+  text-align: right;
+  color: var(--mc-fg-2);
+}
+
+.mesh-divider {
+  border: none;
+  border-top: 1px solid var(--mc-border);
+  margin: 4px 0;
+  width: 100%;
+}
+
+.mesh-btn {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--mc-border-2);
+  background: transparent;
+  color: var(--mc-fg-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mesh-btn:hover {
+  background: var(--mc-bg);
+}
+
+.mesh-btn-primary {
+  border-color: var(--mc-accent);
+  color: var(--mc-accent);
+}
+
 .mesh-label {
   font-size: 10px;
   fill: var(--mc-fg-3);

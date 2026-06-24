@@ -66,12 +66,26 @@ const EDGE_OPACITY = { running: 0.5, idle: 0.25, done: 0.1, error: 0.25 }
 
 const MAX_PACKETS = 12
 
-function MeshNode({ node }) {
+// Status → chip/label colour for the detail panel and node accents (spec §3.8).
+const STATUS_COLOR = {
+  running: 'var(--mc-ok)',
+  error: 'var(--mc-danger)',
+  idle: 'var(--mc-fg-4)',
+  done: 'var(--mc-fg-5)',
+}
+
+function MeshNode({ node, onSelect }) {
   const isDispatch = node.id === DISPATCH_ID
   const style = isDispatch ? DISPATCH_STYLE : NODE_STYLE[statusOf(node)] ?? NODE_STYLE.idle
   const { color, radius, opacity, stroke, pulse } = style
   const label = isDispatch ? 'Dispatch' : nameOf(node)
   const cost = isDispatch ? 0 : costOf(node)
+
+  // The hub is a destination, not a session — clicking it opens nothing.
+  const handleSelect = (e) => {
+    e.stopPropagation()
+    if (!isDispatch) onSelect(node)
+  }
 
   // Diamond for the hub, circle for everything else.
   const shape = isDispatch ? (
@@ -99,6 +113,10 @@ function MeshNode({ node }) {
       tabIndex={0}
       opacity={opacity}
       style={{ cursor: 'pointer' }}
+      onClick={handleSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') handleSelect(e)
+      }}
     >
       {pulse && (
         <circle
@@ -166,6 +184,15 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
   const edges = nodes.filter((n) => n.id !== DISPATCH_ID)
   const runningNodes = nodes.filter((n) => statusOf(n) === 'running')
 
+  // Escape closes the detail panel (spec §3.8).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') setSelected(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
   // Animated packets flow from running sessions toward Dispatch, giving a live
   // "traffic" read without any extra API data (spec §3.7). Capped at 12 to keep
   // the RAF loop cheap. Re-registers when the layout changes.
@@ -208,6 +235,7 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
         aria-label="Agent topology mesh"
         viewBox={`0 0 ${dims.w} ${dims.h}`}
         preserveAspectRatio="xMidYMid meet"
+        onClick={() => setSelected(null)}
       >
         {hub &&
           edges.map((node) => (
@@ -233,10 +261,49 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
           />
         ))}
         {nodes.map((node) => (
-          <MeshNode key={node.id} node={node} />
+          <MeshNode key={node.id} node={node} onSelect={setSelected} />
         ))}
       </svg>
-      <div data-panel className={`mesh-panel${selected ? ' open' : ''}`} />
+      <div data-panel className={`mesh-panel${selected ? ' open' : ''}`}>
+        {selected && (
+          <div className="mesh-panel-body">
+            <div className="mesh-panel-name">{nameOf(selected)}</div>
+            <span
+              className="mesh-chip"
+              style={{
+                color: STATUS_COLOR[statusOf(selected)] ?? 'var(--mc-fg-4)',
+                borderColor: STATUS_COLOR[statusOf(selected)] ?? 'var(--mc-fg-4)',
+              }}
+            >
+              {statusOf(selected)}
+            </span>
+            <dl className="mesh-panel-stats">
+              <dt>Cost</dt>
+              <dd>${costOf(selected).toFixed(2)}</dd>
+              <dt>Tool calls</dt>
+              <dd>{toolsOf(selected)}</dd>
+            </dl>
+            <hr className="mesh-divider" />
+            <button
+              type="button"
+              className="mesh-btn mesh-btn-primary"
+              onClick={() => {
+                onSelectSession?.(selected.id)
+                setSelected(null)
+              }}
+            >
+              Open in Triage
+            </button>
+            <button
+              type="button"
+              className="mesh-btn"
+              onClick={() => setSelected(null)}
+            >
+              ✕ Close
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
