@@ -11,7 +11,13 @@ const NODE_STYLE = {
   done: { color: 'var(--mc-fg-5)', radius: 13, opacity: 0.25, stroke: 1.5, pulse: false },
   error: { color: 'var(--mc-danger)', radius: 16, opacity: 1.0, stroke: 1.5, pulse: false },
 }
-const DISPATCH_STYLE = { color: 'var(--mc-accent)', radius: 26, opacity: 1.0, stroke: 2, pulse: true }
+const DISPATCH_STYLE = {
+  color: 'var(--mc-accent)',
+  radius: 26,
+  opacity: 1.0,
+  stroke: 2,
+  pulse: true,
+}
 
 const fillFor = (color) => `color-mix(in srgb, ${color} 15%, transparent)`
 
@@ -35,10 +41,7 @@ function layoutNodes(sessions, W, H) {
   const placed = [{ id: DISPATCH_ID, x: cx, y: cy, tier: 0 }]
 
   ;['running', 'idle', 'done'].forEach((tier) => {
-    const nodes = [
-      ...(tiers[tier] ?? []),
-      ...(tier === 'done' ? (tiers.error ?? []) : []),
-    ]
+    const nodes = [...(tiers[tier] ?? []), ...(tier === 'done' ? (tiers.error ?? []) : [])]
     const r = radii[tier]
     nodes.forEach((s, i) => {
       const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2
@@ -76,7 +79,7 @@ const STATUS_COLOR = {
 
 function MeshNode({ node, onSelect }) {
   const isDispatch = node.id === DISPATCH_ID
-  const style = isDispatch ? DISPATCH_STYLE : NODE_STYLE[statusOf(node)] ?? NODE_STYLE.idle
+  const style = isDispatch ? DISPATCH_STYLE : (NODE_STYLE[statusOf(node)] ?? NODE_STYLE.idle)
   const { color, radius, opacity, stroke, pulse } = style
   const label = isDispatch ? 'Dispatch' : nameOf(node)
   const cost = isDispatch ? 0 : costOf(node)
@@ -129,21 +132,11 @@ function MeshNode({ node, onSelect }) {
         />
       )}
       {shape}
-      <text
-        className="mesh-label"
-        x={node.x}
-        y={node.y + radius + 13}
-        textAnchor="middle"
-      >
+      <text className="mesh-label" x={node.x} y={node.y + radius + 13} textAnchor="middle">
         {truncate(label)}
       </text>
       {cost > 0 && (
-        <text
-          className="mesh-cost"
-          x={node.x}
-          y={node.y + radius + 25}
-          textAnchor="middle"
-        >
+        <text className="mesh-cost" x={node.x} y={node.y + radius + 25} textAnchor="middle">
           ${cost.toFixed(2)}
         </text>
       )}
@@ -177,12 +170,24 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
   const nodes = useMemo(
     () => layoutNodes(sessions, dims.w, dims.h),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionsVersion, sessions, dims.w, dims.h]
+    [sessionsVersion, sessions, dims.w, dims.h],
   )
 
   const hub = nodes.find((n) => n.id === DISPATCH_ID)
   const edges = nodes.filter((n) => n.id !== DISPATCH_ID)
   const runningNodes = nodes.filter((n) => statusOf(n) === 'running')
+
+  const counts = useMemo(() => {
+    const c = { running: 0, idle: 0, done: 0, total: 0 }
+    sessions.forEach((s) => {
+      const st = statusOf(s)
+      if (st === 'running') c.running += 1
+      else if (st === 'done' || st === 'error') c.done += 1
+      else c.idle += 1
+      c.total += costOf(s)
+    })
+    return c
+  }, [sessions])
 
   // Escape closes the detail panel (spec §3.8).
   useEffect(() => {
@@ -294,15 +299,29 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
             >
               Open in Triage
             </button>
-            <button
-              type="button"
-              className="mesh-btn"
-              onClick={() => setSelected(null)}
-            >
+            <button type="button" className="mesh-btn" onClick={() => setSelected(null)}>
               ✕ Close
             </button>
           </div>
         )}
+      </div>
+      <div className="mesh-statusbar">
+        <span className="mesh-stat">
+          <span className="mesh-dot" style={{ background: 'var(--mc-ok)' }} />
+          {counts.running} running
+        </span>
+        <span className="mesh-sep">·</span>
+        <span className="mesh-stat">
+          <span className="mesh-dot" style={{ background: 'var(--mc-fg-4)' }} />
+          {counts.idle} idle
+        </span>
+        <span className="mesh-sep">·</span>
+        <span className="mesh-stat">
+          <span className="mesh-dot" style={{ background: 'var(--mc-fg-5)' }} />
+          {counts.done} done
+        </span>
+        <span className="mesh-sep">·</span>
+        <span className="mesh-stat">total ${counts.total.toFixed(2)}</span>
       </div>
     </div>
   )

@@ -30,6 +30,41 @@
   transform: translateX(0);
 }
 
+.mesh-statusbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  font-size: 11px;
+  color: var(--mc-fg-5);
+  background: var(--mc-bg);
+  border-top: 1px solid var(--mc-border);
+  z-index: 11;
+}
+
+.mesh-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mesh-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.mesh-sep {
+  color: var(--mc-fg-5);
+  opacity: 0.6;
+}
+
 .mesh-panel-body {
   display: flex;
   flex-direction: column;
