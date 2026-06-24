@@ -18,6 +18,7 @@ import {
   Boxes,
   Gauge,
   SlidersHorizontal,
+  Network,
 } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
@@ -36,6 +37,7 @@ import { HistoryTab } from './components/HistoryTab/HistoryTab.jsx'
 import { RunsTab } from './components/RunsTab/RunsTab.jsx'
 import { FleetTab } from './components/FleetTab/FleetTab.jsx'
 import { TriageView } from './components/TriageView/TriageView.jsx'
+import { MeshView } from './components/MeshView/index.js'
 import { FeatureBrief } from './components/FeatureBrief/FeatureBrief.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
@@ -58,6 +60,7 @@ import { useTheme } from './hooks/useTheme.js'
 // who flips Advanced on keeps it on across reloads.
 const CORE_TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
+  { id: 'mesh', label: 'Mesh', icon: Network },
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
   { id: 'runs', label: 'Runs', icon: Gauge },
   { id: 'fleet', label: 'Fleet', icon: Boxes },
@@ -687,6 +690,19 @@ export default function App() {
                 />
               )}
             </>
+          )}
+          {activeTab === 'mesh' && (
+            <ErrorBoundary>
+              <MeshView
+                sessions={sessions}
+                sessionsVersion={sessionsVersion}
+                onSelectSession={(id) => {
+                  setActiveTab('agents')
+                  setSelectedSessionId(id)
+                  setAgentView('detail')
+                }}
+              />
+            </ErrorBoundary>
           )}
           {activeTab === 'tasks' && (
             <TaskBoard

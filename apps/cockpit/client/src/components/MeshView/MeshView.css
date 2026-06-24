@@ -1,0 +1,31 @@
+.mesh-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
+  overflow: hidden;
+  background: var(--mc-bg);
+}
+
+.mesh-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mesh-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 28px; /* sit above the status bar */
+  width: 300px;
+  transform: translateX(100%);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--mc-surface);
+  border-left: 1px solid var(--mc-border);
+  z-index: 10;
+}
+
+.mesh-panel.open {
+  transform: translateX(0);
+}
