@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
+import { projectLabel } from '../../utils/session.js'
 import './MeshView.css'
 
 const DISPATCH_ID = '__dispatch'
@@ -21,11 +22,16 @@ const DISPATCH_STYLE = {
 
 const fillFor = (color) => `color-mix(in srgb, ${color} 15%, transparent)`
 
-// Defensive readers (spec §3.3) — the live shape varies, so always fall back.
-const nameOf = (s) => s.projectLabel ?? s.name ?? 'Session'
-const statusOf = (s) => s.status ?? 'idle'
-const costOf = (s) => s.totalCost ?? s.cost ?? 0
-const toolsOf = (s) => s.toolCount ?? 0
+// Defensive readers (spec §3.3) — bridge the spec/test shape (id, projectLabel,
+// status, totalCost, toolCount) and the live /api/sessions shape (sessionId,
+// cwd/slug/displayName, isActive, estimatedCost, toolUseCounts) so the view works
+// with both. Always fall back; never assume a field exists.
+const idOf = (s) => s.id ?? s.sessionId
+const nameOf = (s) => s.projectLabel ?? s.name ?? s.displayName ?? projectLabel(s)
+const statusOf = (s) => s.status ?? (s.isActive ? 'running' : 'idle')
+const costOf = (s) => s.totalCost ?? s.cost ?? s.estimatedCost?.totalCost ?? 0
+const toolsOf = (s) =>
+  s.toolCount ?? (s.toolUseCounts ? Object.values(s.toolUseCounts).reduce((a, b) => a + b, 0) : 0)
 
 // Deterministic 3-tier radial layout (spec §3.4). Computed once per
 // [sessionsVersion, W, H] change — no force-directed simulation.
@@ -47,6 +53,7 @@ function layoutNodes(sessions, W, H) {
       const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2
       placed.push({
         ...s,
+        id: idOf(s), // live sessions key on sessionId; guarantee a stable id
         x: cx + r * Math.cos(angle),
         y: cy + r * Math.sin(angle),
         tier: ['running', 'idle', 'done'].indexOf(tier) + 1,
@@ -148,6 +155,9 @@ function MeshNode({ node, onSelect }) {
 // Pure client view: consumes the already-fetched `sessions` array via props and
 // re-layouts when `sessionsVersion` changes. No new API surface (spec §3.2, §5).
 export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
+  // useApi yields `null` before /api/sessions resolves; the default param only
+  // covers `undefined`, so normalise here to keep layout/counts crash-safe.
+  const safeSessions = Array.isArray(sessions) ? sessions : []
   const [selected, setSelected] = useState(null)
   const containerRef = useRef(null)
   // jsdom (and first paint) reports 0×0; fall back to sane defaults so the
@@ -168,9 +178,9 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
   }, [])
 
   const nodes = useMemo(
-    () => layoutNodes(sessions, dims.w, dims.h),
+    () => layoutNodes(safeSessions, dims.w, dims.h),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionsVersion, sessions, dims.w, dims.h],
+    [sessionsVersion, safeSessions, dims.w, dims.h],
   )
 
   const hub = nodes.find((n) => n.id === DISPATCH_ID)
@@ -179,7 +189,7 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
 
   const counts = useMemo(() => {
     const c = { running: 0, idle: 0, done: 0, total: 0 }
-    sessions.forEach((s) => {
+    safeSessions.forEach((s) => {
       const st = statusOf(s)
       if (st === 'running') c.running += 1
       else if (st === 'done' || st === 'error') c.done += 1
@@ -187,7 +197,8 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
       c.total += costOf(s)
     })
     return c
-  }, [sessions])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeSessions])
 
   // Escape closes the detail panel (spec §3.8).
   useEffect(() => {
