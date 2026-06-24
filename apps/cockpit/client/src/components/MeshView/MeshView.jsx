@@ -59,6 +59,13 @@ function truncate(label, max = 16) {
   return label.slice(0, max - 1) + '…'
 }
 
+const lerp = (a, b, t) => a + (b - a) * t
+
+// Edge opacity by source-node status (spec §3.6).
+const EDGE_OPACITY = { running: 0.5, idle: 0.25, done: 0.1, error: 0.25 }
+
+const MAX_PACKETS = 12
+
 function MeshNode({ node }) {
   const isDispatch = node.id === DISPATCH_ID
   const style = isDispatch ? DISPATCH_STYLE : NODE_STYLE[statusOf(node)] ?? NODE_STYLE.idle
@@ -155,6 +162,44 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
     [sessionsVersion, sessions, dims.w, dims.h]
   )
 
+  const hub = nodes.find((n) => n.id === DISPATCH_ID)
+  const edges = nodes.filter((n) => n.id !== DISPATCH_ID)
+  const runningNodes = nodes.filter((n) => statusOf(n) === 'running')
+
+  // Animated packets flow from running sessions toward Dispatch, giving a live
+  // "traffic" read without any extra API data (spec §3.7). Capped at 12 to keep
+  // the RAF loop cheap. Re-registers when the layout changes.
+  const [packets, setPackets] = useState([])
+  useEffect(() => {
+    if (typeof requestAnimationFrame === 'undefined') return
+    let raf
+    const step = () => {
+      setPackets((prev) => {
+        const next = prev.map((p) => ({ ...p, t: p.t + p.speed })).filter((p) => p.t < 1)
+        if (next.length < MAX_PACKETS && Math.random() < 0.04 && runningNodes.length && hub) {
+          const src = runningNodes[Math.floor(Math.random() * runningNodes.length)]
+          next.push({
+            id: Math.random().toString(36).slice(2),
+            fromX: src.x,
+            fromY: src.y,
+            toX: hub.x,
+            toY: hub.y,
+            t: 0,
+            speed: 0.006 + Math.random() * 0.004,
+            col: 'var(--mc-ok)',
+          })
+        }
+        // Nothing on screen and nothing spawned: keep the same reference so React
+        // bails out of the re-render instead of churning 60fps on an idle mesh.
+        if (next.length === 0 && prev.length === 0) return prev
+        return next
+      })
+      raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [nodes]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="mesh-root" ref={containerRef}>
       <svg
@@ -164,6 +209,29 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
         viewBox={`0 0 ${dims.w} ${dims.h}`}
         preserveAspectRatio="xMidYMid meet"
       >
+        {hub &&
+          edges.map((node) => (
+            <line
+              key={`edge-${node.id}`}
+              x1={node.x}
+              y1={node.y}
+              x2={hub.x}
+              y2={hub.y}
+              stroke="var(--mc-border-2)"
+              strokeWidth={statusOf(node) === 'running' ? 1.5 : 1}
+              opacity={EDGE_OPACITY[statusOf(node)] ?? 0.25}
+            />
+          ))}
+        {packets.map((p) => (
+          <circle
+            key={p.id}
+            cx={lerp(p.fromX, p.toX, p.t)}
+            cy={lerp(p.fromY, p.toY, p.t)}
+            r={2.5}
+            fill={p.col}
+            opacity={0.8}
+          />
+        ))}
         {nodes.map((node) => (
           <MeshNode key={node.id} node={node} />
         ))}
