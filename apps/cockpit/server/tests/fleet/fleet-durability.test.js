@@ -302,6 +302,40 @@ describe('reconcileFleetRuns (boot reconciler / reaper)', () => {
       expect(getFleetRun(`nt-${status}`).status).toBe('orphaned')
     }
   })
+
+  // L1-E: the kill-and-restart contract end to end. A run wedged at 'running' on
+  // disk (the previous process died mid-flight) is reaped to 'orphaned', AND a
+  // fresh run started afterward MUST succeed — the orphaned run must never wedge
+  // the line by holding an in-flight lock that survives the "restart".
+  it('reaps a mid-run wedge to orphaned AND a fresh run after reconcile still starts', async () => {
+    const { getKnownHarnessRoots } = await import('../../parsers/harness.js')
+    getKnownHarnessRoots.mockReturnValue([A])
+    gitPaths.add(A)
+    // Children stay running so the fresh run early-acks as 'running' (not settled).
+    runClaudeCancellable.mockReturnValue({ promise: new Promise(() => {}), cancel: vi.fn() })
+    awaitNewSession.mockResolvedValue('sess-fresh')
+
+    // A run interrupted mid-flight, exactly as the dead process left it on disk.
+    seedRun({
+      id: 'wedged-midrun',
+      goal: 'interrupted',
+      status: 'running',
+      createdAt: 't',
+      updatedAt: 't',
+      children: [{ idx: 0, cwd: A, status: 'running', childKind: 'worker', pid: 999999 }],
+      synthesis: { status: 'pending' },
+    })
+
+    // The boot reconciler runs on restart.
+    await reconcileFleetRuns()
+    expect(getFleetRun('wedged-midrun').status).toBe('orphaned')
+
+    // A fresh run (the POST /api/fleet/run path) must NOT be blocked by it.
+    const fresh = await startFleetRun({ goal: 'brand new', children: [{ cwd: A, prompt: 'go' }] })
+    expect(fresh.ok).toBe(true)
+    expect(fresh.runStatus).toBe('running')
+    expect(getFleetRun(fresh.id).status).toBe('running')
+  })
 })
 
 // ── Global hard kill-switch ────────────────────────────────────────────────────
