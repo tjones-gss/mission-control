@@ -3,6 +3,7 @@
 _See STATE.md for the per-loop self-assessment evidence._
 
 ## DoD Status
+
 - [x] L0-a: parser_degraded emitted (honest parsers)
 - [x] L0-b: hooks/config distinguish failed vs empty
 - [x] L1-a: no Windows shell injection
@@ -13,33 +14,39 @@ _See STATE.md for the per-loop self-assessment evidence._
 - [x] L1-f: known-bad diff actually rejected
 - [x] L1-g: gates HALT dependent phases + check evidence
 - [x] L2-a: empty ~/.claude shows Welcome + first-agent CTA
-- [x] L2-b: one-click rails adoption (pure-Node fallback)  — routes/rails.js + lib/rails-installer.js (verified)
-- [x] L2-c: CI coverage + e2e gates block merge  — ci.yml: server+client --coverage gates, e2e job, parity, lint (verified)
-- [x] L3-a: cross-vendor oversight label dropped  — no multi-vendor reader text found in client
+- [x] L2-b: one-click rails adoption (pure-Node fallback) — routes/rails.js + lib/rails-installer.js (verified)
+- [x] L2-c: CI coverage + e2e gates block merge — ci.yml: server+client --coverage gates, e2e job, parity, lint (verified)
+- [x] L3-a: cross-vendor oversight label dropped — no multi-vendor reader text found in client
 - [x] L3-b: harness status as versioned vendor-neutral spec
-- [x] L3-c: observability: OpenAPI + OTel + audit log  — mountOpenApi (/api/docs), lib/otel.js, audit-log wired (sessions/trust/fleet)
-- [~] L3-d: release engineering: semver, CHANGELOG, SBOM  — CI has SBOM smoke + OpenAPI export; v0.1.0 tag not yet applied
+- [x] L3-c: observability: OpenAPI + OTel + audit log — mountOpenApi (/api/docs), lib/otel.js, audit-log wired (sessions/trust/fleet)
+- [~] L3-d: release engineering: semver, CHANGELOG, SBOM — CI has SBOM smoke + OpenAPI export; v0.1.0 tag not yet applied
 
 ## Visual + Orchestration Phases
+
 - [x] V1: MeshView topology tab (complete — commit 8e4795c)
 - [x] V2: Pipeline canvas (drag-drop agent pipelines in Runs/Pipeline mode)
 - [x] V3: Hook instrumentation (real tool calls → live MeshView packets, opt-in)
 
 ## Intelligence Phases
+
 - [x] I1: Session anomaly detection + alert system (stall/budget/loop/approval → SSE + toast + jsonl)
 - [x] I2: Cross-session pattern intelligence (pattern index + /api/patterns + ⌘K group + IntelView section)
 - [x] I3: Knowledge graph (nodes + edges in SQLite; /api/graph; GraphPanel in InspectPanel)
 
 ## Self-Improvement Phase
+
 - [x] S1: Oversight monitors its own build sessions (meta tag + Building-Oversight banner + tighter thresholds + Steer build + build-log)
 
 ## Next phase for the following loop
+
 **Release wrap-up (§9 stopping conditions).** All L0–L3, V1–V3, I1–I3, and S1 phases
 are implemented and green. Remaining to fully satisfy §9: L3-d release tag `v0.1.0`
 (CI already has SBOM smoke + OpenAPI export; the tag itself is not applied) and
 `FULL_BUILD_SUMMARY.md`. These are release-engineering steps, not feature work.
 
 ## Loop log
+
+- 2026-06-25: L1 close (TRUSTWORTHY proven end-to-end). Audited all 7 L1 criteria against the suite: A/B/C/G were already proven (claude-cli.test.js shell-injection + shell:false, pty-session.test.js trust-gated skip-perms, fleet-runner.test.js "spawns NO claude session for a harness decision", test_loop_halt.py p3-never-runs-after-gate-fail). Closed the rest TDD-first, one commit each: L1-F `0efd839` — new server/fleet/verifier.js (deterministic LLM-free gate, rejects added `shell: true`; +6 tests); L1-E `0f425cf` — durability test that a fresh fleet run still starts after a wedged run is reaped to `orphaned` (+1 test); L1-D `4474e26` — new harness_core/contract_parity.py (importable, reads the single sidecar, assert_parity reds-not-skips on drift; +6 tests). Also `12fbba4` — root-caused the long-standing real-binary cli-args timeout: the CLI takes 5.6s to boot on this Win11 box but the it() used vitest's 5s default vs its own 30s spawn budget; raised the per-test timeout to 35s (assertions unchanged). Server now 1361/0 (97 files), client 703/0 (67 files), lint clean. Python from harness root 178/6/1 — the 6 are pre-existing test_hook_parity.py Windows `.sh`-under-Git-Bash path failures, unrelated to L1.
 - 2026-06-24: self-assessment; baseline server 1256/1 (env timeout), client 642/0; started V2.
 - 2026-06-24: V2 complete. New: routes/pipelines.js (+11 tests), PipelineCanvas/ (NodeTypes+component, +15 tests), RunsTab Pipeline mode (+1 test), runs.pipeline brief. Server 1267/1 (same env timeout), client 658/0. Lint clean. Commit 3c23283.
 - 2026-06-24: V3 complete. New: lib/hook-receiver.js (receive+consume+watch, +9 tests), packages/hook-server/ (hook-emitter+index+README, +6 tests), MeshView real tool_call packets (+4 tests), useSSE tool_call event, App wiring, index.js boot watcher. DEVIATION: file-drop transport + hook script instead of MCP/WebSocket (no new deps, no inbound path, ADR-0004-consistent). Server 1282/1 (same env timeout), client 662/0. Lint clean.
