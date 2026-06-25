@@ -107,6 +107,7 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [hits, setHits] = useState([])
+  const [patterns, setPatterns] = useState([])
   const [status, setStatus] = useState('idle') // idle | loading | done | error
   const [errorHint, setErrorHint] = useState(null)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -118,6 +119,7 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
       setQuery('')
       setTypeFilter('all')
       setHits([])
+      setPatterns([])
       setStatus('idle')
       setErrorHint(null)
       setActiveIndex(0)
@@ -169,6 +171,37 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
     }
   }, [open, query, typeFilter])
 
+  // Phase I2 — cross-session patterns matching the query. Separate, debounced
+  // fetch (a pattern match is not a message hit); failures degrade silently to
+  // no patterns so search is never blocked.
+  useEffect(() => {
+    if (!open) return undefined
+    if (!query.trim()) {
+      setPatterns([])
+      return undefined
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/patterns?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          setPatterns([])
+          return
+        }
+        const data = await res.json()
+        setPatterns(data.results || [])
+      } catch (err) {
+        if (err.name !== 'AbortError') setPatterns([])
+      }
+    }, DEBOUNCE_MS)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [open, query])
+
   const sessionMatches = useMemo(() => matchSessions(sessions, query), [sessions, query])
 
   // Flat selectable list: sessions group first, then message hits.
@@ -180,8 +213,12 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
         sessionId: h.sessionId,
         docType: h.docType,
       })),
+      ...patterns.map((p) => ({
+        key: `p-${p.id}`,
+        sessionId: p.example_session_ids?.[0],
+      })),
     ],
-    [sessionMatches, hits],
+    [sessionMatches, hits, patterns],
   )
 
   // New query/filter → selection snaps back to the top result.
@@ -194,8 +231,9 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
   const select = (item) => {
     if (!item) return
     // Memory docs are knowledge files, not sessions — there is nothing to
-    // navigate to (their sessionId is the synthetic 'memory:<path>' key).
-    if (item.docType !== 'memory') onNavigate(item.sessionId)
+    // navigate to (their sessionId is the synthetic 'memory:<path>' key). A
+    // pattern with no example session likewise has nothing to open.
+    if (item.docType !== 'memory' && item.sessionId) onNavigate(item.sessionId)
     onClose()
   }
 
@@ -213,7 +251,11 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
   }
 
   const showEmpty =
-    status === 'done' && query.trim() && sessionMatches.length === 0 && hits.length === 0
+    status === 'done' &&
+    query.trim() &&
+    sessionMatches.length === 0 &&
+    hits.length === 0 &&
+    patterns.length === 0
 
   return (
     <Dialog
@@ -327,6 +369,30 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
                 </div>
                 <div className="break-all font-mono text-xs leading-relaxed text-[var(--mc-fg-3)]">
                   {renderSnippet(h.snippet)}
+                </div>
+              </PaletteRow>
+            ))}
+          </>
+        )}
+
+        {patterns.length > 0 && (
+          <>
+            <GroupHeading>Patterns</GroupHeading>
+            {patterns.map((p, i) => (
+              <PaletteRow
+                key={`p-${p.id}`}
+                active={activeIndex === sessionMatches.length + hits.length + i}
+                onSelect={() => select(items[sessionMatches.length + hits.length + i])}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-xs font-semibold text-[var(--mc-fg)]">
+                    {p.trigger}
+                  </span>
+                  <span className="truncate text-xs text-[var(--mc-fg-3)]">{p.response}</span>
+                  <span className="flex-1" />
+                  <span className="shrink-0 text-xs text-[var(--mc-fg-4)]">
+                    {p.count} session{p.count === 1 ? '' : 's'}
+                  </span>
                 </div>
               </PaletteRow>
             ))}

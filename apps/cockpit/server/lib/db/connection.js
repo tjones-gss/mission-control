@@ -21,7 +21,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Bump on any schema change — the cache is thrown away and rebuilt, so no
 // migration ceremony is ever needed. v2: messages + messages_fts (Phase 2).
 // v3: usage_daily token rollups (Phase 5). v4: intelligence results (Phase 6).
-export const DB_SCHEMA_VERSION = 4
+// v5: session_patterns — cross-session pattern intelligence (Phase I2).
+export const DB_SCHEMA_VERSION = 5
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS meta (
@@ -103,6 +104,24 @@ const SCHEMA_SQL = `
     subagent_count INTEGER,
     result_json    TEXT NOT NULL
   );
+
+  -- Phase I2: per-session pattern occurrences (lib/db/pattern-index.js),
+  -- populated inside the same upsertSession transaction. The spec's aggregate
+  -- "patterns" view (count + example session ids) is derived at QUERY time by a
+  -- GROUP BY over this base table — keeping the per-session reindex idempotent
+  -- (DELETE WHERE session_id, then re-insert) so a file change never
+  -- double-counts and deleting cockpit.db always rebuilds cleanly. sig is the
+  -- stable identity (kind:trigger); last_seen is the session's ms mtime.
+  CREATE TABLE IF NOT EXISTS session_patterns (
+    session_id TEXT NOT NULL,
+    sig        TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    trigger    TEXT NOT NULL,
+    response   TEXT NOT NULL,
+    last_seen  REAL NOT NULL,
+    PRIMARY KEY (session_id, sig)
+  );
+  CREATE INDEX IF NOT EXISTS idx_session_patterns_sig ON session_patterns(sig);
 `
 
 let db = null

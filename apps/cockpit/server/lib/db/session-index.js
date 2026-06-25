@@ -15,6 +15,7 @@ import os from 'node:os'
 import { getDb, withTransaction } from './connection.js'
 import { reindexSessionMessages } from './message-index.js'
 import { reindexSessionUsage } from './usage-index.js'
+import { reindexSessionPatterns } from './pattern-index.js'
 import { parseSessionRecord, computeSessionTimeFields } from '../../parsers/sessions.js'
 
 const DEFAULT_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
@@ -104,6 +105,7 @@ export function upsertSession(filePath) {
       )
       reindexSessionMessages(tx, summary.sessionId, summary.cwd ?? null, records ?? [])
       reindexSessionUsage(tx, summary.sessionId, records ?? [])
+      reindexSessionPatterns(tx, summary.sessionId, records ?? [], summary.lastModified)
     })
     return true
   } catch {
@@ -119,6 +121,7 @@ export function removeSession(sessionId) {
     return withTransaction((tx) => {
       tx.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId)
       tx.prepare('DELETE FROM usage_daily WHERE session_id = ?').run(sessionId)
+      tx.prepare('DELETE FROM session_patterns WHERE session_id = ?').run(sessionId)
       const result = tx.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId)
       return result.changes > 0
     })

@@ -3,6 +3,34 @@ import { useApi } from '../hooks/useApi.js'
 
 const STORAGE_KEY = 'intel_enabled'
 
+// Phase I2 — deterministic cross-session patterns this session participates in.
+// Free (no LLM), so it renders independently of the costly Intel opt-in gate.
+// Hidden entirely when the session has no recognised patterns.
+function PatternsSection({ sessionId, active }) {
+  const url = active && sessionId ? `/api/patterns?session=${encodeURIComponent(sessionId)}` : null
+  const { data } = useApi(url, [sessionId, active])
+  const patterns = Array.isArray(data?.results) ? data.results : []
+  if (patterns.length === 0) return null
+  return (
+    <div className="space-y-1" data-testid="intel-patterns">
+      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+        PATTERNS IN THIS SESSION
+      </div>
+      <div className="space-y-0.5">
+        {patterns.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 text-xs text-gray-300 leading-relaxed">
+            <span className="font-semibold">{p.trigger}</span>
+            <span className="truncate text-gray-500">{p.response}</span>
+            <span className="ml-auto shrink-0 text-gray-600">
+              {p.count} session{p.count === 1 ? '' : 's'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function IntelView({ sessionId, intelligenceVersion, active }) {
   const [enabled, setEnabled] = useState(() => localStorage.getItem(STORAGE_KEY) === 'true')
 
@@ -57,6 +85,8 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
             Enable Intel analysis
           </button>
         </div>
+        {/* Patterns are free — surface them even while the paid Intel is off. */}
+        <PatternsSection sessionId={sessionId} active={active} />
       </div>
     )
   }
@@ -198,6 +228,8 @@ export function IntelView({ sessionId, intelligenceVersion, active }) {
       {data && !data.goal && !data.progress && !data.subagents && (
         <div className="text-xs text-gray-700">No intelligence data available.</div>
       )}
+
+      <PatternsSection sessionId={sessionId} active={active} />
     </div>
   )
 }

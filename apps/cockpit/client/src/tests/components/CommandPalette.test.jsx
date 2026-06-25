@@ -79,6 +79,29 @@ function mockSearch(results = MESSAGE_HITS) {
   return calls
 }
 
+const PATTERNS = [
+  {
+    id: 'command:git',
+    kind: 'command',
+    trigger: 'git',
+    response: 'runs `git`',
+    count: 4,
+    last_seen: Date.now(),
+    example_session_ids: ['sess-pat'],
+  },
+]
+
+function mockPatterns(results = PATTERNS) {
+  const calls = []
+  server.use(
+    http.get('/api/patterns', ({ request }) => {
+      calls.push(new URL(request.url))
+      return HttpResponse.json({ query: 'git', count: results.length, results })
+    }),
+  )
+  return calls
+}
+
 beforeEach(() => {
   localStorage.clear()
 })
@@ -235,6 +258,36 @@ describe('CommandPalette — type filter', () => {
 
     fireEvent.click(screen.getByText(/pipeline by pinning node/).closest('[role="option"]'))
     expect(onNavigate).toHaveBeenCalledWith('sess-1')
+  })
+})
+
+describe('CommandPalette — patterns (Phase I2)', () => {
+  it('renders a Patterns group from /api/patterns and shows the cross-session count', async () => {
+    mockSearch([])
+    mockPatterns()
+    render(<CommandPalette open sessions={[]} onNavigate={() => {}} onClose={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'git' } })
+    await waitFor(() =>
+      expect(screen.getByText('Patterns', { selector: 'div' })).toBeInTheDocument(),
+    )
+    expect(screen.getByText('git')).toBeInTheDocument()
+    expect(screen.getByText(/4 sessions/)).toBeInTheDocument()
+  })
+
+  it('clicking a pattern navigates to its example session and closes', async () => {
+    mockSearch([])
+    mockPatterns()
+    const onNavigate = vi.fn()
+    const onClose = vi.fn()
+    render(<CommandPalette open sessions={[]} onNavigate={onNavigate} onClose={onClose} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'git' } })
+    await waitFor(() => expect(screen.getByText(/4 sessions/)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText(/4 sessions/).closest('[role="option"]'))
+    expect(onNavigate).toHaveBeenCalledWith('sess-pat')
+    expect(onClose).toHaveBeenCalled()
   })
 })
 

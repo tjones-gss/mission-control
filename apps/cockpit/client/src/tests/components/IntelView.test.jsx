@@ -81,4 +81,45 @@ describe('IntelView', () => {
     expect(localStorage.getItem('intel_enabled')).toBe('false')
     expect(screen.getByText('Enable Intel analysis')).toBeInTheDocument()
   })
+
+  // Phase I2 — patterns are free (no LLM), so they render in IntelView
+  // regardless of whether the paid Intel analysis is enabled.
+  const PATTERNS_RESPONSE = {
+    data: {
+      results: [
+        {
+          id: 'command:git',
+          kind: 'command',
+          trigger: 'git',
+          response: 'runs `git`',
+          count: 3,
+          last_seen: 0,
+          example_session_ids: ['test-123'],
+        },
+      ],
+    },
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }
+  const byUrl = (intel) => (url) =>
+    typeof url === 'string' && url.includes('/api/patterns') ? PATTERNS_RESPONSE : intel
+
+  it('renders "Patterns in this session" with the per-session patterns when intel is enabled', () => {
+    localStorage.setItem('intel_enabled', 'true')
+    useApi.mockImplementation(
+      byUrl({ data: INTEL_DATA, loading: false, error: null, refetch: vi.fn() }),
+    )
+    render(<IntelView {...defaultProps} />)
+    expect(screen.getByText('PATTERNS IN THIS SESSION')).toBeInTheDocument()
+    expect(screen.getByText('git')).toBeInTheDocument()
+  })
+
+  it('shows patterns even when the paid Intel analysis is disabled', () => {
+    localStorage.setItem('intel_enabled', 'false')
+    useApi.mockImplementation(byUrl({ data: null, loading: false, error: null, refetch: vi.fn() }))
+    render(<IntelView {...defaultProps} />)
+    expect(screen.getByText('Enable Intel analysis')).toBeInTheDocument()
+    expect(screen.getByTestId('intel-patterns')).toBeInTheDocument()
+  })
 })

@@ -27,6 +27,7 @@ import { router as trustRouter } from './routes/trust.js'
 import { router as fleetRouter } from './routes/fleet.js'
 import { router as pipelinesRouter } from './routes/pipelines.js'
 import { router as searchRouter } from './routes/search.js'
+import { router as patternsRouter } from './routes/patterns.js'
 import { router as statsRouter } from './routes/stats.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
 import { rebuildAll } from './lib/db/session-index.js'
@@ -104,6 +105,7 @@ export function buildApp() {
   app.use('/api/fleet', fleetRouter)
   app.use('/api/pipelines', pipelinesRouter)
   app.use('/api/search', searchRouter)
+  app.use('/api/patterns', patternsRouter)
   app.use('/api/stats', statsRouter)
 
   // OpenAPI docs surface (Phase 4 / C-openapi). Mounted AFTER express.json + the

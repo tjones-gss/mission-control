@@ -85,6 +85,9 @@ export const handlers = [
   ),
   http.get('/api/sessions', () => HttpResponse.json([])),
   http.get('/api/tasks', () => HttpResponse.json([])),
+  // Phase I2 — pattern index. Benign empty fallback so the palette's patterns
+  // fetch and IntelView's per-session fetch never fall through to the network.
+  http.get('/api/patterns', () => HttpResponse.json({ query: '', count: 0, results: [] })),
   http.get('/api/sessions/:sessionId/messages', () =>
     HttpResponse.json({ sessionId: 'test', messages: [] }),
   ),
