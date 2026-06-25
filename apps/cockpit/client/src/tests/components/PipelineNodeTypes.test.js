@@ -29,7 +29,7 @@ describe('makeNode', () => {
     expect(a.type).toBe('agent')
     expect(a.x).toBe(10)
     expect(a.y).toBe(20)
-    expect(a.config).toEqual({ goal: '' })
+    expect(a.config).toEqual({ goal: '', cwd: '' })
     expect(a.id).not.toBe(b.id)
   })
 
@@ -39,33 +39,63 @@ describe('makeNode', () => {
 })
 
 describe('serializeToFleetSpec', () => {
-  const agentA = makeNode('agent', 0, 0)
-  agentA.config.goal = 'write the parser'
-  const agentB = makeNode('agent', 0, 0)
-  agentB.config.goal = 'write the tests'
+  function agent(goal, cwd) {
+    const n = makeNode('agent', 0, 0)
+    n.config.goal = goal
+    if (cwd !== undefined) n.config.cwd = cwd
+    return n
+  }
 
-  it('maps agent nodes to children count and folds their goals into the goal text', () => {
-    const spec = serializeToFleetSpec([agentA, agentB], [], 'Build parser')
-    expect(spec.children).toBe(2)
+  it('maps each agent node to a child {cwd, prompt} and folds goals into the goal text', () => {
+    const spec = serializeToFleetSpec(
+      [agent('write the parser', '/repo/a'), agent('write the tests', '/repo/b')],
+      [],
+      'Build parser',
+    )
+    expect(spec.children).toEqual([
+      { cwd: '/repo/a', prompt: 'write the parser' },
+      { cwd: '/repo/b', prompt: 'write the tests' },
+    ])
     expect(spec.goal).toContain('Build parser')
     expect(spec.goal).toContain('write the parser')
     expect(spec.goal).toContain('write the tests')
   })
 
+  it('produces the shape /api/fleet validates: children is a non-empty array, each with a string cwd and a non-empty prompt', () => {
+    const spec = serializeToFleetSpec([agent('do work', '/repo/x')], [], 'Job')
+    expect(Array.isArray(spec.children)).toBe(true)
+    expect(spec.children.length).toBeGreaterThan(0)
+    for (const child of spec.children) {
+      expect(typeof child.cwd).toBe('string')
+      expect(typeof child.prompt).toBe('string')
+      expect(child.prompt.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  it('falls back to the pipeline name as the prompt when an agent has no goal', () => {
+    const spec = serializeToFleetSpec([agent('', '/repo/x')], [], 'Fallback name')
+    expect(spec.children[0].prompt).toBe('Fallback name')
+  })
+
+  it('sends an empty cwd (server rejects it) when an agent node has no working dir', () => {
+    const spec = serializeToFleetSpec([agent('do work')], [], 'No cwd')
+    expect(spec.children[0].cwd).toBe('')
+  })
+
   it('sets policy.requireApproval true when a Human node is present', () => {
     const human = makeNode('human', 0, 0)
-    const spec = serializeToFleetSpec([agentA, human], [], 'Gated build')
+    const spec = serializeToFleetSpec([agent('x', '/repo/a'), human], [], 'Gated build')
     expect(spec.policy.requireApproval).toBe(true)
   })
 
   it('sets policy.requireApproval false when no Human node is present', () => {
-    const spec = serializeToFleetSpec([agentA], [], 'Ungated')
+    const spec = serializeToFleetSpec([agent('x', '/repo/a')], [], 'Ungated')
     expect(spec.policy.requireApproval).toBe(false)
   })
 
-  it('defaults children to 1 when there are no agent nodes', () => {
+  it('produces an empty children array when there are no agent nodes', () => {
     const trigger = makeNode('trigger', 0, 0)
     const spec = serializeToFleetSpec([trigger], [], 'Just a trigger')
-    expect(spec.children).toBe(1)
+    expect(spec.children).toEqual([])
   })
 })

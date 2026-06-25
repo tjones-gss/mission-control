@@ -316,13 +316,23 @@ export function PipelineCanvas({
               </button>
             </div>
             {selected.type === 'agent' && (
-              <label className="pc-field">
-                Goal
-                <textarea
-                  value={selected.config.goal || ''}
-                  onChange={(e) => updateConfig(selected.id, 'goal', e.target.value)}
-                />
-              </label>
+              <>
+                <label className="pc-field">
+                  Goal
+                  <textarea
+                    value={selected.config.goal || ''}
+                    onChange={(e) => updateConfig(selected.id, 'goal', e.target.value)}
+                  />
+                </label>
+                <label className="pc-field">
+                  Working dir
+                  <input
+                    value={selected.config.cwd || ''}
+                    placeholder="Project root (a known harness root)"
+                    onChange={(e) => updateConfig(selected.id, 'cwd', e.target.value)}
+                  />
+                </label>
+              </>
             )}
             {selected.type === 'skill' && (
               <label className="pc-field">

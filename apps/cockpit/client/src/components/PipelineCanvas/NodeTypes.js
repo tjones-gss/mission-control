@@ -12,7 +12,7 @@
 // node badge — kept ascii so no font dependency), and defaultConfig.
 export const NODE_TYPES = [
   { id: 'trigger', label: 'Trigger', glyph: '⏱', defaultConfig: { kind: 'manual' } },
-  { id: 'agent', label: 'Agent', glyph: '◆', defaultConfig: { goal: '' } },
+  { id: 'agent', label: 'Agent', glyph: '◆', defaultConfig: { goal: '', cwd: '' } },
   { id: 'skill', label: 'Skill', glyph: '✦', defaultConfig: { skill: '' } },
   { id: 'condition', label: 'Condition', glyph: '?', defaultConfig: { expr: '' } },
   { id: 'fanout', label: 'Fan-out', glyph: '⋔', defaultConfig: {} },
@@ -46,8 +46,12 @@ export function makeNode(type, x, y) {
 
 // Serialize the canvas to the existing POST /api/fleet body shape:
 //   { goal, children, policy }
-// - children: number of agent nodes (min 1; fleet-runner enforces the hard cap).
-// - goal: pipeline name + each agent node's goal, so spawned children inherit the
+// - children: one entry per agent node, each { cwd, prompt } — the exact shape
+//   startFleetRun/validateFleetRequest expects (fleet-runner enforces the hard
+//   cap and the cwd whitelist/git-repo preconditions). An agent node with no
+//   cwd is sent with an empty cwd so the server rejects it with a clear
+//   "child N is missing cwd" message rather than failing silently.
+// - goal: pipeline name + each agent node's goal, so the run carries the
 //   pipeline intent even though Fleet itself is a flat fan-out.
 // - policy.requireApproval: true iff a Human (oversight gate) node is present.
 export function serializeToFleetSpec(nodes, edges, name) {
@@ -60,9 +64,14 @@ export function serializeToFleetSpec(nodes, edges, name) {
     lines.push(`${i + 1}. ${goal}`)
   })
 
+  const children = agents.map((a) => ({
+    cwd: ((a.config && a.config.cwd) || '').trim(),
+    prompt: ((a.config && a.config.goal) || '').trim() || name,
+  }))
+
   return {
     goal: lines.join('\n'),
-    children: Math.max(1, agents.length),
+    children,
     policy: { requireApproval: hasHuman },
   }
 }
