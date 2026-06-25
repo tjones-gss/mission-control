@@ -14,11 +14,11 @@ _See STATE.md for the per-loop self-assessment evidence._
 - [x] L1-g: gates HALT dependent phases + check evidence
 - [x] L2-a: empty ~/.claude shows Welcome + first-agent CTA
 - [x] L2-b: one-click rails adoption (pure-Node fallback)  — routes/rails.js + lib/rails-installer.js (verified)
-- [ ] L2-c: CI coverage + e2e gates block merge  — parity gated; coverage/e2e unconfirmed
-- [ ] L3-a: cross-vendor oversight label dropped  — docs check pending
+- [x] L2-c: CI coverage + e2e gates block merge  — ci.yml: server+client --coverage gates, e2e job, parity, lint (verified)
+- [x] L3-a: cross-vendor oversight label dropped  — no multi-vendor reader text found in client
 - [x] L3-b: harness status as versioned vendor-neutral spec
-- [ ] L3-c: observability: OpenAPI + OTel + audit log  — OTel+audit present; /api/docs NOT mounted
-- [ ] L3-d: release engineering: semver, CHANGELOG, SBOM  — unconfirmed
+- [x] L3-c: observability: OpenAPI + OTel + audit log  — mountOpenApi (/api/docs), lib/otel.js, audit-log wired (sessions/trust/fleet)
+- [~] L3-d: release engineering: semver, CHANGELOG, SBOM  — CI has SBOM smoke + OpenAPI export; v0.1.0 tag not yet applied
 
 ## Visual + Orchestration Phases
 - [x] V1: MeshView topology tab (complete — commit 8e4795c)
@@ -31,7 +31,14 @@ _See STATE.md for the per-loop self-assessment evidence._
 - [ ] I3: Knowledge graph (decisions + outcomes)
 
 ## Self-Improvement Phase
-- [ ] S1: Oversight monitors its own build sessions
+- [ ] S1: Oversight monitors its own build sessions  ← after I1
+
+## Next phase for the following loop
+**I1 — Session Anomaly Detection.** Per §8, I1 is next (L0–L3 + V1–V3 all green).
+New files per spec: `server/intelligence/anomaly-detector.js` (+test),
+`client/src/components/AnomalyToast.jsx` (+test); plus an `anomaly` SSE event,
+`server/data/anomalies.jsonl` append-only log, and App wiring (useSSE `anomaly`
+event + toast render). I1 must complete before I2/I3/S1.
 
 ## Loop log
 - 2026-06-24: self-assessment; baseline server 1256/1 (env timeout), client 642/0; started V2.
