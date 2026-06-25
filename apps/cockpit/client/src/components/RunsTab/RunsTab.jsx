@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Gauge, Workflow } from 'lucide-react'
+import { Gauge, Workflow, Network } from 'lucide-react'
 import { ErrorBoundary } from '../ErrorBoundary.jsx'
 import { FeatureBrief } from '../FeatureBrief/FeatureBrief.jsx'
 import { MissionControlTab } from '../MissionControlTab/MissionControlTab.jsx'
 import { ConductorTab } from '../ConductorTab/ConductorTab.jsx'
+import { PipelineCanvas } from '../PipelineCanvas/index.js'
 
 // Unified "drive a structured run" surface. Hosts the two existing surfaces
 // behind a mode switch instead of two separate top-level tabs:
@@ -16,6 +17,7 @@ import { ConductorTab } from '../ConductorTab/ConductorTab.jsx'
 const MODES = [
   { id: 'missions', label: 'Missions', icon: Gauge },
   { id: 'conductor', label: 'Conductor', icon: Workflow },
+  { id: 'pipeline', label: 'Pipeline', icon: Network },
 ]
 
 export function RunsTab({ harnessVersion, conductorVersion, sessions }) {
@@ -42,7 +44,7 @@ export function RunsTab({ harnessVersion, conductorVersion, sessions }) {
           )
         })}
       </div>
-      <FeatureBrief surfaceId={mode === 'conductor' ? 'runs.conductor' : 'runs.missions'} />
+      <FeatureBrief surfaceId={`runs.${mode}`} />
       <div className="flex-1 overflow-hidden flex flex-col">
         {mode === 'missions' && (
           <ErrorBoundary>
@@ -52,6 +54,11 @@ export function RunsTab({ harnessVersion, conductorVersion, sessions }) {
         {mode === 'conductor' && (
           <ErrorBoundary>
             <ConductorTab conductorVersion={conductorVersion} sessions={sessions} />
+          </ErrorBoundary>
+        )}
+        {mode === 'pipeline' && (
+          <ErrorBoundary>
+            <PipelineCanvas />
           </ErrorBoundary>
         )}
       </div>

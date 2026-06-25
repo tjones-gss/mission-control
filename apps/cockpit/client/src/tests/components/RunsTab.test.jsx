@@ -47,4 +47,17 @@ describe('RunsTab — mode switch', () => {
     await userEvent.click(screen.getByRole('button', { name: /missions/i }))
     await waitFor(() => expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument())
   })
+
+  it('switches to the Pipeline canvas mode (a mode inside Runs, not a sibling tab)', async () => {
+    setup()
+    server.use(http.get('/api/pipelines', () => HttpResponse.json({ pipelines: [] })))
+    render(<RunsTab harnessVersion={0} conductorVersion={0} sessions={[]} />)
+    await waitFor(() => expect(screen.getByText(/no governed projects found/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /pipeline/i }))
+
+    await waitFor(() => expect(screen.getByTestId('pipeline-empty-prompt')).toBeInTheDocument())
+    // Missions surface should be unmounted now
+    expect(screen.queryByText(/no governed projects found/i)).not.toBeInTheDocument()
+  })
 })

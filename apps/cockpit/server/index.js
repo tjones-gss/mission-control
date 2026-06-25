@@ -25,6 +25,7 @@ import { router as harnessRouter } from './routes/harness.js'
 import { router as railsRouter } from './routes/rails.js'
 import { router as trustRouter } from './routes/trust.js'
 import { router as fleetRouter } from './routes/fleet.js'
+import { router as pipelinesRouter } from './routes/pipelines.js'
 import { router as searchRouter } from './routes/search.js'
 import { router as statsRouter } from './routes/stats.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
@@ -99,6 +100,7 @@ export function buildApp() {
   app.use('/api/rails', railsRouter)
   app.use('/api/trust', trustRouter)
   app.use('/api/fleet', fleetRouter)
+  app.use('/api/pipelines', pipelinesRouter)
   app.use('/api/search', searchRouter)
   app.use('/api/stats', statsRouter)
 

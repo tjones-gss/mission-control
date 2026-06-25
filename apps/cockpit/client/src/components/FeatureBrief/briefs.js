@@ -27,6 +27,11 @@ export const BRIEFS = {
     summary: 'Run harness-governed missions on-rails.',
     body: 'Harness-governed missions that graduate draft → ready → build. The cockpit never edits mission-index.yml directly — the harness CLI owns that. Use it: compile a roadmap into draft missions, mark one ready, then execute.',
   },
+  'runs.pipeline': {
+    title: 'Runs · Pipeline',
+    summary: 'Compose a pipeline on a canvas, then launch it as a Fleet run.',
+    body: 'Drag node types (trigger, agent, skill, condition, fan-out, merge, human gate) onto the canvas and wire them up. Save persists the canvas to server/data/pipelines; Run Pipeline serialises it to a Fleet batch and submits it through the existing fleet runner — no new execution path. Use it: drop an Agent node, set its goal, then Run.',
+  },
   fleet: {
     title: 'Fleet',
     summary: 'Fan one goal across N child agents, each in its own git worktree.',

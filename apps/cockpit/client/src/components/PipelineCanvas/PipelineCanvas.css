@@ -1,0 +1,256 @@
+/* Pipeline canvas — all colours are --mc-* tokens (no hardcoded hex). */
+
+.pc-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--mc-bg);
+  color: var(--mc-fg);
+}
+
+.pc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--mc-border);
+  flex-shrink: 0;
+}
+
+.pc-name,
+.pc-load {
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  color: var(--mc-fg);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.pc-name {
+  min-width: 180px;
+}
+
+.pc-spacer {
+  flex: 1;
+}
+
+.pc-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.pc-status-ok {
+  color: var(--mc-ok);
+  background: var(--mc-ok-soft);
+}
+.pc-status-err {
+  color: var(--mc-danger);
+  background: var(--mc-danger-soft);
+}
+.pc-status-busy {
+  color: var(--mc-info);
+  background: var(--mc-info-soft);
+}
+
+.pc-btn {
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  color: var(--mc-fg);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pc-btn:hover {
+  background: var(--mc-surface-2);
+}
+.pc-btn-primary {
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+  color: var(--mc-on-accent);
+}
+.pc-btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pc-btn-danger {
+  color: var(--mc-danger);
+  border-color: var(--mc-danger-soft);
+}
+
+.pc-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pc-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 132px;
+  padding: 10px;
+  border-right: 1px solid var(--mc-border);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.pc-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  color: var(--mc-fg-2);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.pc-palette-item:hover {
+  background: var(--mc-surface-2);
+  color: var(--mc-fg);
+  border-color: var(--mc-accent-line);
+}
+.pc-glyph {
+  color: var(--mc-accent);
+  font-size: 13px;
+}
+
+.pc-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.pc-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  display: block;
+  background: radial-gradient(circle, var(--mc-border) 1px, transparent 1px) 0 0 / 24px 24px;
+}
+
+.pc-edge {
+  stroke: var(--mc-accent-line);
+  stroke-width: 2;
+}
+
+.pc-node {
+  cursor: grab;
+}
+.pc-node-box {
+  fill: var(--mc-surface);
+  stroke: var(--mc-border-2);
+  stroke-width: 1.5;
+}
+.pc-node-selected .pc-node-box {
+  stroke: var(--mc-accent);
+  stroke-width: 2;
+}
+.pc-node-glyph {
+  fill: var(--mc-accent);
+  font-size: 14px;
+}
+.pc-node-label {
+  fill: var(--mc-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pc-node-sub {
+  fill: var(--mc-fg-4);
+  font-size: 10px;
+}
+.pc-handle {
+  fill: var(--mc-accent);
+  cursor: crosshair;
+}
+
+/* Runtime status overlays */
+.pc-node-active .pc-node-box {
+  stroke: var(--mc-accent);
+  animation: pc-pulse 1.2s ease-in-out infinite;
+}
+.pc-node-done .pc-node-box {
+  stroke: var(--mc-ok);
+  fill: var(--mc-ok-soft);
+}
+.pc-node-failed .pc-node-box {
+  stroke: var(--mc-danger);
+  fill: var(--mc-danger-soft);
+}
+@keyframes pc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pc-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  padding: 24px;
+}
+.pc-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--mc-fg-2);
+  margin: 0 0 6px;
+}
+.pc-empty-sub {
+  font-size: 12px;
+  color: var(--mc-fg-4);
+  max-width: 420px;
+  margin: 0;
+}
+
+.pc-inspector {
+  width: 220px;
+  padding: 12px;
+  border-left: 1px solid var(--mc-border);
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.pc-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mc-fg);
+  margin-bottom: 10px;
+}
+.pc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--mc-fg-3);
+}
+.pc-field textarea,
+.pc-field input {
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  color: var(--mc-fg);
+  border-radius: 6px;
+  padding: 6px;
+  font-size: 12px;
+  resize: vertical;
+  min-height: 28px;
+}

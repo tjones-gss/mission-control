@@ -85,6 +85,7 @@ const EXPECTED_IDS = [
   'tasks',
   'runs.conductor',
   'runs.missions',
+  'runs.pipeline',
   'fleet',
   'history',
   'workflows',
