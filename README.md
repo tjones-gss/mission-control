@@ -3,7 +3,7 @@
 A live cockpit for the coding agents you're already running. If you have several
 Claude Code agents going at once and want to see and steer them from one place,
 this is for you. (Oversight reads Claude Code's own `~/.claude` — the cross-vendor
-reach lives in the opt-in *rails* adapters, not the viewer.)
+reach lives in the opt-in _rails_ adapters, not the viewer.)
 
 Mission Control unifies two pieces: **Oversight** (the window — a live, multi-project
 mission view) and the **adaptive agentic engineering harness** (the rails — opt-in
@@ -47,11 +47,11 @@ philosophy instead of presenting everything at once.
   the number of independent couplings to undocumented on-disk formats. Timeline stays
   paired with Conversation since it's the one you reach for live.
 - **Workflows are runnable from the UI.** A workflow (an ordered list of
-  skill/agent/instruction/command steps) can be authored *and* launched as a Claude
+  skill/agent/instruction/command steps) can be authored _and_ launched as a Claude
   session directly from the Workflows panel — not just exported to a skill.
 - **Fleet is the higher-level orchestrator.** It turns a single goal into N
   autonomous child sessions, each spawned in its own git worktree/branch (`--worktree`)
-  and running under the harness rails. Children run unattended and only *escalate*
+  and running under the harness rails. Children run unattended and only _escalate_
   on a danger-zone or tool-approval prompt — Fleet never auto-approves; the human
   decision is routed through the existing approval write paths. When every child
   settles, a synthesis pass merges the per-branch results into one report. Fleet
@@ -60,14 +60,52 @@ philosophy instead of presenting everything at once.
   **adversarial verification** (a fresh, authorship-blind reviewer child checks each
   worker's diff against the goal, with bounded re-dispatch on reject); **quarantine**
   (a best-effort read-only stance for a child); and **save/replay templates** for
-  repeatable fleet configs. Because Fleet spawns *several* autonomous agents at once,
+  repeatable fleet configs. Because Fleet spawns _several_ autonomous agents at once,
   the honest framing below matters more than ever: the rails — and quarantine — are
   best-effort accident-prevention, **not** a sandbox. The real control is OS-level
   sandboxing, and Fleet enforces hard ceilings on how many children it will ever spawn.
 - **Missions graduate draft → ready → build.** The roadmap compiler slices a
-  plain-language roadmap into bounded, sequenced mission *drafts*; you mark a draft
+  plain-language roadmap into bounded, sequenced mission _drafts_; you mark a draft
   **ready** from the UI (the harness CLI owns the `mission-index.yml` write), then
   execute (build) it as an on-rails implementer session.
+
+## What's inside
+
+The current build ships these capabilities on top of the Core/Advanced surface
+above (all wired into the read-only cockpit — nothing here adds a new top-level
+tab):
+
+- **MeshView** — a live radial mesh of your running sessions: each session is a
+  node orbiting a central Dispatch hub, with animated packets showing activity.
+  It reads the live `/api/sessions` shape directly (null-safe, nested cost,
+  `sessionId` keying).
+- **Pipeline Canvas** — a drag-drop SVG composer for agent pipelines, living as a
+  _mode inside Runs_ (never a sibling tab). It places and connects seven node
+  types and persists the canvas to `/api/pipelines`; **Run Pipeline** serializes
+  each agent node into one Fleet child (`{ cwd, prompt }`) and submits the
+  existing `/api/fleet` batch shape, so every Fleet cap, cwd whitelist, and
+  approval gate still applies — no new runner.
+- **Hook Bridge** — an opt-in `packages/hook-server` script that records each real
+  Claude Code tool call to a local file-drop directory; the cockpit watches that
+  directory and streams the calls into MeshView as live packets. The transport is
+  a local file drop, not an inbound network socket, so it adds no new attack
+  surface.
+- **Anomaly Detection** — deterministic (no-LLM) detection of stalled sessions,
+  budget overruns, tool-call loops, and approval timeouts, surfaced as dismissible
+  toasts and appended to a JSONL log. Meta-build sessions run under tighter
+  thresholds.
+- **Pattern Intelligence** — a cross-session pattern index (a derived SQLite
+  table) that surfaces recurring command/workflow patterns across sessions,
+  integrated into the ⌘K palette and an Intel view. Degrades to 503-with-hint
+  when the read-cache is unavailable.
+- **Knowledge Graph** — a derived SQLite graph linking sessions, files, and
+  decisions, explorable from a GraphPanel inside the session Inspect panel. Like
+  the rest of `cockpit.db`, it is pure derived data — safe to delete and rebuild.
+- **Self-Awareness (S1)** — deterministic detection of "meta" sessions (those
+  whose working directory is the Mission Control repo itself), shown as a banner
+  in the Triage view with a one-tap **steer** action. The steer routes through the
+  existing `/api/sessions/:id/message` write path — it never auto-approves or
+  bypasses a human decision.
 
 ## Who this is for
 
@@ -170,7 +208,7 @@ sandboxing.
   (localhost-first, architect-for-team), [0005 moat & surface
   strategy](docs/adr/0005-moat-and-surface-strategy.md),
   [0006 canonical orchestration model](docs/adr/0006-canonical-orchestration-model.md)
-  (the harness pipeline is the spine; Fleet is a phase *strategy*; a Workflow is
+  (the harness pipeline is the spine; Fleet is a phase _strategy_; a Workflow is
   a degenerate single-phase pipeline), [0007 core vs experimental
   scope](docs/adr/0007-core-vs-experimental-scope.md), and
   [0008 SQLite derived read-cache](docs/adr/0008-sqlite-derived-read-cache.md)
