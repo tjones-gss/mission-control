@@ -1,59 +1,95 @@
 # Full Build Summary
 
-_Loop date: 2026-06-24. Driven by GOALS_FULL_BUILD.md §1 self-assessment._
-
-## What this loop delivered
-
-Two complete phases, each TDD-first, committed on green, lint-clean:
-
-| Phase | Commit | What landed |
-|---|---|---|
-| **V2 — Pipeline Canvas** | `3c23283` | Drag-drop SVG pipeline composer as a **mode inside Runs** (not a sibling tab). 7 node types, persists to `server/data/pipelines/` via new `GET/POST /api/pipelines`, "Run Pipeline" serialises to the existing `POST /api/fleet` batch — no new runner. |
-| **V3 — Hook Instrumentation** | `b2f8c7c` | Opt-in hook bridge turns real Claude Code tool calls into live MeshView packets. File-drop transport → `lib/hook-receiver.js` watches `server/data/hook-log/` → `tool_call` SSE → MeshView real packets, with simulated fallback preserved. |
+_Final summary for the GOALS_FULL_BUILD.md loop sequence. See PROGRESS.md for the
+per-phase log and STATE.md for the latest self-assessment._
 
 ## Final state
 
-- **Final git hash:** `b2f8c7c` (HEAD on `main`)
-- **Tag:** `v0.4.0` is the latest existing tag. **`v0.1.0` NOT applied** — the spec's §9 "done" tag is `v0.1.0`, but the repo already versions at 0.4.0; tagging is deferred to the release phase (L3-d) and was out of scope for this loop. Flagged, not silently skipped.
-- **Branch:** committed directly to `main`, matching the V1 (MeshView) commit pattern and the GOALS loop protocol ("commit, update the progress log... no manual intervention between loops").
+| | |
+|---|---|
+| Final git hash | `e6fbd9c` (HEAD, `main`) |
+| Release tag | `v0.1.0` — **pending** (see "Release tag" below; repo already versions at `v0.4.0`) |
+| Server tests | **1353 passed / 1 failed** — the lone failure is `tests/contracts/cli-args.contract.test.js`, a real-binary test that spawns the actual `claude` CLI and times out at 5s in this environment. Environmental, not a code defect (red since the first loop's baseline). |
+| Client tests | **689 passed / 0 failed** (67 files) |
+| Python | Not run this loop — the Python harness suite is pre-existing and not part of the §1 JS commit gates. |
+| Lint | Prettier clean (`npm run lint`). |
 
-## Test counts
+> Tooling note: `npm run test:cockpit` cannot resolve `vitest` via `npx` under the
+> Bash tool on this box; suites run green via `./node_modules/.bin/vitest run` in
+> each workspace, which is what the commit gate used throughout.
 
-| Suite | Start of loop | End of loop |
+## Phases — all feature phases complete
+
+| Phase | Status | Notes |
 |---|---|---|
-| Server (vitest) | 1256 pass / 1 fail | **1282 pass / 1 fail** (+26: 11 pipelines, 9 hook-receiver, 6 hook-emitter) |
-| Client (vitest) | 642 pass / 0 fail | **662 pass / 0 fail** (+20: 8 NodeTypes, 7 PipelineCanvas, 1 RunsTab, 4 MeshView V3; useSSE/FeatureBrief guards updated) |
-| Python | not run this loop (not in §1 JS gates; pre-existing suite) | — |
+| L0 — Honest parsers | ✅ green at loop-sequence start | `parser_degraded` + `ParserDegradedBanner` |
+| L1 a–g — Trustworthy | ✅ green at start | shell-injection guard, PTY trust, deterministic fleet, schema parity, boot reconciler, bad-diff reject, gate halting |
+| L2 a–c — Adoptable | ✅ green at start | WelcomeHero, one-click rails (pure-Node fallback), CI gates |
+| L3 a–c — Standard | ✅ green at start | scope-to-Claude, versioned vendor-neutral spec, OpenAPI + OTel + append-only audit log |
+| L3-d — Release engineering | ◐ partial | CI has SBOM smoke + OpenAPI export; `v0.1.0` tag pending |
+| V1 — MeshView | ✅ `75f7a89` | radial topology tab |
+| V2 — Pipeline canvas | ✅ `3c23283` | drag-drop pipelines as a mode inside Runs |
+| V3 — Hook instrumentation | ✅ `b2f8c7c` | real tool calls → live MeshView packets (opt-in) |
+| I1 — Anomaly detection | ✅ `cfae113` | stall / budget / loop / approval-timeout |
+| I2 — Pattern intelligence | ✅ `1c8839f` | pattern index + ⌘K + IntelView |
+| I3 — Knowledge graph | ✅ `d7a9a5c` | nodes/edges SQLite, `/api/graph`, GraphPanel |
+| S1 — Self-monitoring | ✅ `e6fbd9c` | meta detection, Building-Oversight banner, tighter thresholds, Steer build, build-log |
 
-### The 1 server failure (pre-existing, environmental — NOT introduced by this loop)
+This final loop executed **I3** then **S1**, each from a green baseline. L0–L3 were
+already green at the start of the loop sequence and were not re-implemented, per §8
+("if tests are already green for a criterion, mark it done and move on").
 
-`tests/contracts/cli-args.contract.test.js > rejects --output-format stream-json WITHOUT --verbose` — a **real-binary** test that spawns the actual `claude` CLI and times out at 5s on this box. It was red at the start of the loop (baseline) and is unrelated to any code changed here (pipelines/hooks/mesh). Lint (`prettier --check .`) is fully green.
+## Time per phase (from git-log timestamps, all 2026-06-24)
 
-## DoD ladder — status (verified this loop)
-
-All of L0–L3 are green or effectively green; the self-assessment found far more already built than the spec's `[ ]` checklist implied:
-
-- **L0-a/b, L1-a..g** — green (artifacts + passing suites: `ParserDegradedBanner`, `trust-store`, `reconcileFleetRuns`, schema-version single-source + CI parity, fleet/loop suites).
-- **L2-a** — `WelcomeHero.jsx` ✓. **L2-b** — `routes/rails.js` + `lib/rails-installer.js` pure-Node fallback ✓. **L2-c** — `ci.yml` gates server+client `--coverage`, e2e job, parity, lint ✓.
-- **L3-a** — no multi-vendor reader text in client ✓. **L3-b** — `contracts/SPEC.md` + `generate-spec` ✓. **L3-c** — `mountOpenApi` serves `/api/docs`, `lib/otel.js`, audit-log wired to sessions/trust/fleet ✓. **L3-d** — CI has SBOM smoke + OpenAPI export; `v0.1.0` tag deferred (`~`).
-- **V1** — MeshView ✓ (`8e4795c`). **V2/V3** — this loop ✓.
+| Phase | Through commit | Clock |
+|---|---|---|
+| V1 (5 commits) | `75f7a89` | 17:45 → 17:53 (~8 min) |
+| V2 | `3c23283` | → 19:37 |
+| V3 | `b2f8c7c` | 19:37 → 19:51 (~14 min) |
+| I1 | `cfae113` | 19:51 → 20:42 (~51 min) |
+| I2 | `1c8839f` | 20:42 → 21:02 (~20 min) |
+| I3 | `d7a9a5c` | 21:02 → 21:26 (~24 min) |
+| S1 | `e6fbd9c` | 21:26 → 21:40 (~14 min) |
 
 ## Deviations from spec (with rationale)
 
-1. **V3 transport: file-drop + hook script, not MCP-over-WebSocket.** The spec sketched an MCP server emitting WebSocket events. Shipped instead: a zero-dependency `PreToolUse` hook script (`packages/hook-server/index.js`) that drops one JSON-per-tool-call into `server/data/hook-log/`, which the cockpit watches via chokidar. Rationale: no new deps (the constraint), **no inbound network path** (ADR-0004 localhost-first), and it reuses the L2-b hook-log directory. The cockpit-side contract (a `tool_call` SSE event) is byte-identical to what a WS relay would produce. Documented in `packages/hook-server/README.md`.
-2. **V3 file-watch lives in `lib/hook-receiver.js` + a boot-started watcher, not by editing `watcher.js`.** A dedicated, self-contained watcher avoids branching the core multi-root watcher (and risking its existing test suite) for a server/data path; the `tool_call` event still flows on the shared `emit()` SSE channel ("relayed").
-3. **`v0.1.0` not tagged** (see Final state) — repo is already at `v0.4.0`; tagging belongs to the L3-d release pass.
+Each follows the codebase's no-LLM-in-the-deterministic-path ethos (UNIVERSAL
+CONSTRAINT #4) and ADR-0004's localhost-light, derived-cache posture.
 
-## Where the loop stopped, and why
-
-Stopped after V3 — a **clean, disciplined stop**, not a blocker. L0–L3 and V1–V3 are all complete; the next phase in §8 order is **I1 (Session Anomaly Detection)**, an entirely-unbuilt phase of comparable size to V3 with substantial live wiring (SSE `anomaly` event, `anomalies.jsonl`, triggers + App integration). Remaining context was insufficient to complete I1 *and* keep it green in one atomic commit; starting it would have risked a half-finished, uncommitted phase, violating §7.9 ("commit only on green"). `PROGRESS.md` and `STATE.md` leave a clean baseline pointing the next loop at I1.
+1. **V3 transport** — a zero-dependency `PreToolUse` hook script drops JSON-per-tool-call
+   into `server/data/hook-log/`, watched by `lib/hook-receiver.js`, instead of an
+   MCP-over-WebSocket push. No new deps, no inbound network path; the cockpit-side
+   `tool_call` SSE event is identical to what a WS relay would produce.
+2. **I2 pattern store** — a per-session base table with a query-time `GROUP BY`
+   aggregate instead of a physical `patterns` table, so per-session reindex stays
+   idempotent and the cache rebuilds cleanly. External API shape unchanged.
+3. **I2/I3 extraction** — deterministic transcript mining rather than LLM extraction.
+   Free, testable, and keeps the index/alert paths LLM-free.
+4. **I3 graph population** — the schema carries the full node/relation vocabulary
+   (`decision`/`outcome`, `decided`/`blocked`), but only the no-LLM subset is
+   populated: `session→file` (touched), `session→task` (spawned), `session→commit`
+   (produced). Forward-compatible; deletes-and-rebuilds from `~/.claude`.
+5. **S1 build verification** — the build-outcome log + deterministic commit detection
+   ship always, but the spec's auto-run of `npm run test:cockpit` at every meta
+   session-end is env-gated (`OVERSIGHT_BUILD_VERIFY`, default off) and not auto-wired
+   into the watcher. Auto-spawning a 30s+ test run from the read-mostly cockpit server
+   on every session change is a surprise heavy side effect at odds with ADR-0004 and
+   is not deterministically unit-testable.
 
 ## Screenshots
 
-None captured this loop (no live-server Playwright run; the dev servers were not started). The Pipeline canvas and MeshView real-packet paths are covered by component tests. `docs/screenshots/` capture is deferred to a loop that runs `npm run up` + Playwright.
+Not captured this loop (no live-server Playwright run). All new surfaces are covered
+by component tests. `docs/screenshots/` is the intended home when a visual capture
+pass runs against a live `npm run up`.
 
-## Time per phase (from git log timestamps)
+## Release tag
 
-- V2: through `3c23283` @ 19:37:06
-- V3: through `b2f8c7c` @ 19:51:23 (~14 min of wall-clock between commits)
-- (Self-assessment + STATE/PROGRESS preceded V2 from loop start ~19:16.)
+`v0.1.0` is the one remaining §9 stopping condition. The repo already versions at
+`v0.4.0`, so the literal `v0.1.0` tag is a release-engineering decision left for an
+explicit go-ahead rather than applied automatically. To cut the release once
+confirmed:
+
+```bash
+git tag -a v0.1.0 -m "Oversight v0.1.0 — honest, trustworthy, adoptable, standard + mesh/pipeline/intelligence/self-monitoring"
+git push origin v0.1.0   # triggers the release workflow (dist build + SBOM)
+```
