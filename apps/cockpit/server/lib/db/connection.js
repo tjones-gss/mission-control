@@ -22,7 +22,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // migration ceremony is ever needed. v2: messages + messages_fts (Phase 2).
 // v3: usage_daily token rollups (Phase 5). v4: intelligence results (Phase 6).
 // v5: session_patterns — cross-session pattern intelligence (Phase I2).
-export const DB_SCHEMA_VERSION = 5
+// v6: nodes + edges — knowledge graph (Phase I3).
+export const DB_SCHEMA_VERSION = 6
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS meta (
@@ -122,6 +123,33 @@ const SCHEMA_SQL = `
     PRIMARY KEY (session_id, sig)
   );
   CREATE INDEX IF NOT EXISTS idx_session_patterns_sig ON session_patterns(sig);
+
+  -- Phase I3: the knowledge graph (lib/db/knowledge-graph.js). Nodes are shared
+  -- across sessions (a file node keyed by path links every session that touched
+  -- it), so the session→file→session path powers "everything that touched X".
+  -- meta is an opaque JSON blob. Both tables are derived: deleting cockpit.db
+  -- rebuilds them from ~/.claude. The per-session reindex (DELETE edges WHERE
+  -- src_session, then re-insert) is idempotent; src_session tags every edge with
+  -- the session that asserted it so a reindex never double-counts. Orphan nodes
+  -- left after a reindex are harmless (a node with no edges is just isolated).
+  CREATE TABLE IF NOT EXISTS nodes (
+    id    TEXT PRIMARY KEY,
+    kind  TEXT NOT NULL,
+    label TEXT NOT NULL,
+    meta  TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
+
+  CREATE TABLE IF NOT EXISTS edges (
+    src_session TEXT NOT NULL,
+    from_id     TEXT NOT NULL,
+    to_id       TEXT NOT NULL,
+    rel         TEXT NOT NULL,
+    ts          REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (src_session, from_id, to_id, rel)
+  );
+  CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id);
+  CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_id);
 `
 
 let db = null

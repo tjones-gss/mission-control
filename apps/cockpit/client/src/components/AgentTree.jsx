@@ -236,6 +236,7 @@ export function AgentTree({
             configVersion={configVersion}
             memoryVersion={memoryVersion}
             hooksVersion={hooksVersion}
+            graphVersion={sessionUpdateVersion}
           />
         </div>
       )}

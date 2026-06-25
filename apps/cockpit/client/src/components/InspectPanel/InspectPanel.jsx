@@ -3,6 +3,7 @@ import { ConfigViewer } from '../ConfigViewer.jsx'
 import { HooksPanel } from '../HooksPanel.jsx'
 import { McpDashboard } from '../McpDashboard.jsx'
 import { MemoryViewer } from '../MemoryViewer.jsx'
+import { GraphPanel } from './GraphPanel.jsx'
 
 // Folds the four read-only inspectors (Config, Hooks, MCP, Memory) into a single
 // "Inspect" surface with an inner sub-tab strip. Each child keeps its own fetch
@@ -10,13 +11,14 @@ import { MemoryViewer } from '../MemoryViewer.jsx'
 // into the matching child so config_update / hooks_update / memory_update events
 // actually retrigger a fetch. (MCP has no SSE channel yet, so mcpVersion is left
 // at its default.)
-const SECTIONS = ['config', 'hooks', 'mcp', 'memory']
+const SECTIONS = ['config', 'hooks', 'mcp', 'memory', 'graph']
 
 export function InspectPanel({
   sessionId,
   configVersion = 0,
   hooksVersion = 0,
   memoryVersion = 0,
+  graphVersion = 0,
 }) {
   const [section, setSection] = useState('config')
 
@@ -47,6 +49,7 @@ export function InspectPanel({
         {section === 'memory' && (
           <MemoryViewer sessionId={sessionId} memoryVersion={memoryVersion} />
         )}
+        {section === 'graph' && <GraphPanel sessionId={sessionId} graphVersion={graphVersion} />}
       </div>
     </div>
   )

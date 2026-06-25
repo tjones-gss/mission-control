@@ -1,0 +1,64 @@
+/* Phase I3 — knowledge graph mini-view. --mc-* tokens only (UNIVERSAL #5). */
+.graph-panel {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0.75rem;
+}
+
+.graph-panel--msg {
+  color: var(--mc-fg-3);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-align: center;
+  max-width: 28rem;
+  margin: auto;
+}
+
+.graph-svg {
+  width: 100%;
+  height: 100%;
+  max-width: 460px;
+  max-height: 460px;
+}
+
+.graph-edge {
+  stroke: var(--mc-accent-line);
+  stroke-width: 1.25;
+  opacity: 0.6;
+}
+
+.graph-node circle {
+  fill: var(--mc-fg-3);
+  stroke: var(--mc-bg);
+  stroke-width: 2;
+}
+
+.graph-node .graph-node-label {
+  fill: var(--mc-fg-2);
+  font-size: 9px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.graph-node.k-session circle {
+  fill: var(--mc-accent);
+}
+.graph-node.k-file circle {
+  fill: var(--mc-info);
+}
+.graph-node.k-commit circle {
+  fill: var(--mc-ok);
+}
+.graph-node.k-task circle {
+  fill: var(--mc-fg-4);
+}
+.graph-node.k-decision circle {
+  fill: var(--mc-danger);
+}
+.graph-node.k-outcome circle {
+  fill: var(--mc-ok-soft);
+}

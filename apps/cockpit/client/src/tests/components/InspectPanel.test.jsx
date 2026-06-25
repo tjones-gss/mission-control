@@ -20,6 +20,9 @@ vi.mock('../../components/MemoryViewer.jsx', () => ({
     <div data-testid="memory-viewer" data-session={sessionId} data-version={memoryVersion} />
   ),
 }))
+vi.mock('../../components/InspectPanel/GraphPanel.jsx', () => ({
+  GraphPanel: ({ sessionId }) => <div data-testid="graph-panel" data-session={sessionId} />,
+}))
 
 import { InspectPanel } from '../../components/InspectPanel/InspectPanel.jsx'
 
@@ -52,6 +55,14 @@ describe('InspectPanel', () => {
     render(<InspectPanel sessionId="abc" />)
     await userEvent.click(screen.getByText('mcp'))
     expect(screen.getByTestId('mcp-dashboard')).toBeInTheDocument()
+  })
+
+  it('clicking graph shows the GraphPanel threaded with sessionId', async () => {
+    render(<InspectPanel sessionId="abc" />)
+    await userEvent.click(screen.getByText('graph'))
+    const panel = screen.getByTestId('graph-panel')
+    expect(panel).toBeInTheDocument()
+    expect(panel).toHaveAttribute('data-session', 'abc')
   })
 
   it('clicking memory shows the memory viewer and threads memoryVersion + sessionId', async () => {
