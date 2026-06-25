@@ -13,6 +13,75 @@
   height: 100%;
 }
 
+/* Recency filter pill (spec §1.1) — top-left of the canvas area. */
+.mesh-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 12;
+}
+
+.mesh-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+}
+
+.mesh-toggle-btn {
+  padding: 3px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mc-fg-4);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mesh-toggle-btn.active {
+  background: var(--mc-bg);
+  color: var(--mc-fg);
+}
+
+/* Empty-state nudge shown when the filtered view has nothing to render. */
+.mesh-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 320px;
+  text-align: center;
+  color: var(--mc-fg-4);
+  font-size: 13px;
+  line-height: 1.5;
+  z-index: 5;
+}
+
+/* Label visibility by activity tier (spec §1.2): active always shown,
+   recent-idle on hover, old hidden. */
+.mesh-node--recent .mesh-label {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.mesh-node--recent:hover .mesh-label,
+.mesh-node--recent:focus .mesh-label {
+  opacity: 1;
+}
+
+.mesh-node--old .mesh-label {
+  display: none;
+}
+
+/* When the Mesh tab is active, suppress the App-level right event-log panel so
+   the mesh canvas + node-detail drawer own the full width (spec §1.3 fallback).
+   The App container carries data-tab="mesh"; the right log is the last child
+   (right sibling of <main>) of the body flex row. */
+[data-tab='mesh'] > aside:last-child {
+  display: none;
+}
+
 .mesh-panel {
   position: absolute;
   top: 0;
@@ -106,6 +175,34 @@
   margin: 0;
   text-align: right;
   color: var(--mc-fg-2);
+}
+
+.mesh-panel-tools {
+  font-size: 12px;
+}
+
+.mesh-panel-tools-head {
+  color: var(--mc-fg-4);
+  margin-bottom: 4px;
+}
+
+.mesh-panel-tools ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mesh-panel-tools li {
+  display: flex;
+  justify-content: space-between;
+  color: var(--mc-fg-2);
+}
+
+.mesh-panel-tools-count {
+  color: var(--mc-fg-4);
 }
 
 .mesh-divider {

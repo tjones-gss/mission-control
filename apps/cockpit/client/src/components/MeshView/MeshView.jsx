@@ -4,21 +4,40 @@ import './MeshView.css'
 
 const DISPATCH_ID = '__dispatch'
 
-// Per-status visual treatment (spec §3.5). Colours are --mc-* token names so the
-// view tracks the active theme; fill is the same colour mixed to 15% opacity.
+// Per-status colours (spec §3.5). Colours are --mc-* token names so the view
+// tracks the active theme; fill is the same colour mixed to 15% opacity. V2
+// note: node *radius* and *opacity* are no longer driven by status — they come
+// from the activity tier (see TIER_RADIUS/TIER_OPACITY). Status only colours.
 const NODE_STYLE = {
-  running: { color: 'var(--mc-ok)', radius: 20, opacity: 1.0, stroke: 2, pulse: true },
-  idle: { color: 'var(--mc-fg-4)', radius: 16, opacity: 0.65, stroke: 1.5, pulse: false },
-  done: { color: 'var(--mc-fg-5)', radius: 13, opacity: 0.25, stroke: 1.5, pulse: false },
-  error: { color: 'var(--mc-danger)', radius: 16, opacity: 1.0, stroke: 1.5, pulse: false },
+  running: { color: 'var(--mc-ok)', stroke: 2 },
+  idle: { color: 'var(--mc-fg-4)', stroke: 1.5 },
+  done: { color: 'var(--mc-fg-5)', stroke: 1.5 },
+  error: { color: 'var(--mc-danger)', stroke: 1.5 },
 }
-const DISPATCH_STYLE = {
-  color: 'var(--mc-accent)',
-  radius: 26,
-  opacity: 1.0,
-  stroke: 2,
-  pulse: true,
+const DISPATCH_COLOR = 'var(--mc-accent)'
+
+// V2 activity tiers (spec §1.2 / §3). A session's recency — not its status —
+// sets its visual weight: active nodes dominate, recent-idle recede, old
+// collapse to faint dots. The orchestrator hub keeps its own (larger) sizing.
+const SESSION_ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000 // 24h
+
+// Live /api/sessions carries `lastModified` (mtimeMs); the spec/test shape uses
+// lastActivityAt/updatedAt/createdAt. Read whichever exists, newest-intent first.
+const activityOf = (s) => s.lastActivityAt ?? s.updatedAt ?? s.lastModified ?? s.createdAt ?? null
+
+function sessionTier(session, now = Date.now()) {
+  if (session.isActive) return 'active'
+  const ts = activityOf(session)
+  if (ts == null) return 'old'
+  const age = now - new Date(ts).getTime()
+  if (Number.isNaN(age) || age >= SESSION_ACTIVE_WINDOW_MS) return 'old'
+  return 'recent'
 }
+
+const TIER_RADIUS = { active: 28, recent: 16, old: 6 }
+const TIER_OPACITY = { active: 1.0, recent: 0.7, old: 0.3 }
+// Innermost → outermost radial rings (spec §3). Active pulls toward centre.
+const TIER_RING = { active: 120, recent: 220, old: 320 }
 
 const fillFor = (color) => `color-mix(in srgb, ${color} 15%, transparent)`
 
@@ -32,23 +51,31 @@ const statusOf = (s) => s.status ?? (s.isActive ? 'running' : 'idle')
 const costOf = (s) => s.totalCost ?? s.cost ?? s.estimatedCost?.totalCost ?? 0
 const toolsOf = (s) =>
   s.toolCount ?? (s.toolUseCounts ? Object.values(s.toolUseCounts).reduce((a, b) => a + b, 0) : 0)
+const modelOf = (s) => s.model ?? s.modelId ?? null
+// No per-call history ships in the session summary (no backend change allowed),
+// so the drawer's "recent tool calls" surfaces the available proxy: the busiest
+// tools from toolUseCounts, capped at 5 (spec §1.3).
+const recentToolsOf = (s) =>
+  Object.entries(s.toolUseCounts ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
 
-// Deterministic 3-tier radial layout (spec §3.4). Computed once per
-// [sessionsVersion, W, H] change — no force-directed simulation.
-function layoutNodes(sessions, W, H) {
+// Deterministic 3-tier radial layout (spec §3). Computed once per
+// [sessionsVersion, filterMode, W, H] change — no force-directed simulation.
+// Tiers are by activity recency: active (inner) → recent (middle) → old (outer).
+// Empty tiers simply place nothing; rings never reserve space they don't use.
+function layoutNodes(sessions, W, H, now = Date.now()) {
   const cx = W / 2
   const cy = H / 2
-  const tiers = { running: [], idle: [], done: [], error: [] }
-  sessions.forEach((s) => (tiers[statusOf(s)] ?? tiers.idle).push(s))
+  const tiers = { active: [], recent: [], old: [] }
+  sessions.forEach((s) => tiers[sessionTier(s, now)].push(s))
 
-  const base = Math.min(W, H)
-  const radii = { running: base * 0.32, idle: base * 0.56, done: base * 0.76 }
+  const hasActive = tiers.active.length > 0
+  const placed = [{ id: DISPATCH_ID, x: cx, y: cy, hubRadius: hasActive ? 36 : 26 }]
 
-  const placed = [{ id: DISPATCH_ID, x: cx, y: cy, tier: 0 }]
-
-  ;['running', 'idle', 'done'].forEach((tier) => {
-    const nodes = [...(tiers[tier] ?? []), ...(tier === 'done' ? (tiers.error ?? []) : [])]
-    const r = radii[tier]
+  ;['active', 'recent', 'old'].forEach((tier) => {
+    const nodes = tiers[tier]
+    const r = TIER_RING[tier]
     nodes.forEach((s, i) => {
       const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2
       placed.push({
@@ -56,7 +83,7 @@ function layoutNodes(sessions, W, H) {
         id: idOf(s), // live sessions key on sessionId; guarantee a stable id
         x: cx + r * Math.cos(angle),
         y: cy + r * Math.sin(angle),
-        tier: ['running', 'idle', 'done'].indexOf(tier) + 1,
+        activityTier: tier,
       })
     })
   })
@@ -86,8 +113,15 @@ const STATUS_COLOR = {
 
 function MeshNode({ node, onSelect }) {
   const isDispatch = node.id === DISPATCH_ID
-  const style = isDispatch ? DISPATCH_STYLE : (NODE_STYLE[statusOf(node)] ?? NODE_STYLE.idle)
-  const { color, radius, opacity, stroke, pulse } = style
+  const tier = node.activityTier
+  const color = isDispatch
+    ? DISPATCH_COLOR
+    : (NODE_STYLE[statusOf(node)]?.color ?? NODE_STYLE.idle.color)
+  const stroke = isDispatch ? 2 : (NODE_STYLE[statusOf(node)]?.stroke ?? 1.5)
+  const radius = isDispatch ? (node.hubRadius ?? 26) : TIER_RADIUS[tier]
+  const opacity = isDispatch ? 1.0 : TIER_OPACITY[tier]
+  // Active nodes (and the hub) pulse to read as "live"; quieter tiers stay still.
+  const pulse = isDispatch || tier === 'active'
   const label = isDispatch ? 'Dispatch' : nameOf(node)
   const cost = isDispatch ? 0 : costOf(node)
 
@@ -119,6 +153,7 @@ function MeshNode({ node, onSelect }) {
   return (
     <g
       data-node={node.id}
+      className={`mesh-node${isDispatch ? '' : ` mesh-node--${tier}`}`}
       aria-label={label}
       tabIndex={0}
       opacity={opacity}
@@ -159,6 +194,9 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession, last
   // covers `undefined`, so normalise here to keep layout/counts crash-safe.
   const safeSessions = Array.isArray(sessions) ? sessions : []
   const [selected, setSelected] = useState(null)
+  // Recency filter (spec §1.1): default to "active" — only sessions touched in
+  // the last 24h. "all" reveals the full history. Client-side only.
+  const [filterMode, setFilterMode] = useState('active')
   const containerRef = useRef(null)
   // jsdom (and first paint) reports 0×0; fall back to sane defaults so the
   // layout always has room to place nodes.
@@ -177,15 +215,25 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession, last
     return () => ro.disconnect()
   }, [])
 
-  const nodes = useMemo(
-    () => layoutNodes(safeSessions, dims.w, dims.h),
+  // "active" mode hides old (≥24h) sessions; "all" shows everything (spec §1.1).
+  const visibleSessions = useMemo(
+    () =>
+      filterMode === 'active' ? safeSessions.filter((s) => sessionTier(s) !== 'old') : safeSessions,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionsVersion, safeSessions, dims.w, dims.h],
+    [sessionsVersion, safeSessions, filterMode],
+  )
+
+  const nodes = useMemo(
+    () => layoutNodes(visibleSessions, dims.w, dims.h),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionsVersion, visibleSessions, dims.w, dims.h],
   )
 
   const hub = nodes.find((n) => n.id === DISPATCH_ID)
   const edges = nodes.filter((n) => n.id !== DISPATCH_ID)
   const runningNodes = nodes.filter((n) => statusOf(n) === 'running')
+  // Filtered view with nothing to show → friendly nudge (spec §1.1).
+  const emptyActive = filterMode === 'active' && visibleSessions.length === 0
 
   const counts = useMemo(() => {
     const c = { running: 0, idle: 0, done: 0, total: 0 }
@@ -280,6 +328,31 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession, last
 
   return (
     <div className="mesh-root" ref={containerRef}>
+      <div className="mesh-toolbar">
+        <div className="mesh-toggle" role="group" aria-label="Session recency filter">
+          <button
+            type="button"
+            className={`mesh-toggle-btn${filterMode === 'active' ? ' active' : ''}`}
+            aria-pressed={filterMode === 'active'}
+            onClick={() => setFilterMode('active')}
+          >
+            Active
+          </button>
+          <button
+            type="button"
+            className={`mesh-toggle-btn${filterMode === 'all' ? ' active' : ''}`}
+            aria-pressed={filterMode === 'all'}
+            onClick={() => setFilterMode('all')}
+          >
+            All
+          </button>
+        </div>
+      </div>
+      {emptyActive && (
+        <div className="mesh-empty">
+          No active sessions in the last 24h — switch to All to see history
+        </div>
+      )}
       <svg
         className="mesh-canvas"
         role="img"
@@ -331,11 +404,30 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession, last
               {statusOf(selected)}
             </span>
             <dl className="mesh-panel-stats">
+              {modelOf(selected) && (
+                <>
+                  <dt>Model</dt>
+                  <dd>{modelOf(selected)}</dd>
+                </>
+              )}
               <dt>Cost</dt>
               <dd>${costOf(selected).toFixed(2)}</dd>
               <dt>Tool calls</dt>
               <dd>{toolsOf(selected)}</dd>
             </dl>
+            {recentToolsOf(selected).length > 0 && (
+              <div className="mesh-panel-tools">
+                <div className="mesh-panel-tools-head">Recent tools</div>
+                <ul>
+                  {recentToolsOf(selected).map(([tool, n]) => (
+                    <li key={tool}>
+                      <span>{tool}</span>
+                      <span className="mesh-panel-tools-count">{n}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <hr className="mesh-divider" />
             <button
               type="button"
