@@ -26,7 +26,7 @@ _See STATE.md for the per-loop self-assessment evidence._
 - [x] V3: Hook instrumentation (real tool calls → live MeshView packets, opt-in)
 
 ## Intelligence Phases
-- [ ] I1: Session anomaly detection + alert system
+- [x] I1: Session anomaly detection + alert system (stall/budget/loop/approval → SSE + toast + jsonl)
 - [ ] I2: Cross-session pattern intelligence
 - [ ] I3: Knowledge graph (decisions + outcomes)
 
@@ -34,13 +34,14 @@ _See STATE.md for the per-loop self-assessment evidence._
 - [ ] S1: Oversight monitors its own build sessions  ← after I1
 
 ## Next phase for the following loop
-**I1 — Session Anomaly Detection.** Per §8, I1 is next (L0–L3 + V1–V3 all green).
-New files per spec: `server/intelligence/anomaly-detector.js` (+test),
-`client/src/components/AnomalyToast.jsx` (+test); plus an `anomaly` SSE event,
-`server/data/anomalies.jsonl` append-only log, and App wiring (useSSE `anomaly`
-event + toast render). I1 must complete before I2/I3/S1.
+**I2 — Cross-Session Pattern Intelligence.** Per §8, I2 is next (I1 complete).
+New files per spec: `lib/db/pattern-index.js` (new SQLite `patterns` table),
+`GET /api/patterns?q=` route (+test), analyzer pattern extraction on session
+completion, `CommandPalette.jsx` "Patterns" result type, and an IntelView
+"Patterns in this session" section. Derived cache — deleting cockpit.db rebuilds.
 
 ## Loop log
 - 2026-06-24: self-assessment; baseline server 1256/1 (env timeout), client 642/0; started V2.
 - 2026-06-24: V2 complete. New: routes/pipelines.js (+11 tests), PipelineCanvas/ (NodeTypes+component, +15 tests), RunsTab Pipeline mode (+1 test), runs.pipeline brief. Server 1267/1 (same env timeout), client 658/0. Lint clean. Commit 3c23283.
 - 2026-06-24: V3 complete. New: lib/hook-receiver.js (receive+consume+watch, +9 tests), packages/hook-server/ (hook-emitter+index+README, +6 tests), MeshView real tool_call packets (+4 tests), useSSE tool_call event, App wiring, index.js boot watcher. DEVIATION: file-drop transport + hook script instead of MCP/WebSocket (no new deps, no inbound path, ADR-0004-consistent). Server 1282/1 (same env timeout), client 662/0. Lint clean.
+- 2026-06-24: I1 complete. New: intelligence/anomaly-detector.js (pure detectAnomalies + buildSnapshot + approval tracking + scanSession/sweep, +23 tests), client/components/AnomalyToast.jsx (+6 tests). Wiring: `anomaly` SSE event (useSSE + sync test), watcher per-change scan (loop/budget), index.js boot (startApprovalTracking + startAnomalySweep), App anomaly state + toast render (onOpen→session detail). Append-only server/data/anomalies.jsonl. Deterministic, no-LLM (constraint #4). Server 1305/1 (same env timeout), client 668/0. Lint clean.

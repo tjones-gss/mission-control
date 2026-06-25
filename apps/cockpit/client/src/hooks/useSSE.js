@@ -34,6 +34,7 @@ export function useSSE(onMessage) {
       'fleet_update',
       'parser_degraded',
       'tool_call',
+      'anomaly',
     ]
 
     function connect() {

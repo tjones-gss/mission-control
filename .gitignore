@@ -37,6 +37,9 @@ venv/
 apps/cockpit/server/data/fleet/
 apps/cockpit/server/data/fleet-templates/
 apps/cockpit/server/data/audit/
+# I1 anomaly detection: append-only runtime log of detected anomalies, same
+# class as the audit log above (localhost runtime data, never source).
+apps/cockpit/server/data/anomalies.jsonl
 
 # ADR-0008 SQLite derived read-cache — cockpit.db (+ WAL/SHM siblings) is a pure
 # derived cache rebuilt from ~/.claude, never source.

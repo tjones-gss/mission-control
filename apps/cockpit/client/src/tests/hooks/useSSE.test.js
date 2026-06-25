@@ -329,6 +329,7 @@ describe('useSSE', () => {
       'fleet_update',
       'parser_degraded',
       'tool_call',
+      'anomaly',
     ]
 
     expectedEvents.forEach((eventType) => {

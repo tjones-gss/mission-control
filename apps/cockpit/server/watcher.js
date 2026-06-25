@@ -3,6 +3,7 @@ import path from 'path'
 import os from 'os'
 import { emit } from './sse.js'
 import { onSessionEvent } from './intelligence/triggers.js'
+import { scanSession } from './intelligence/anomaly-detector.js'
 import { getKnownConductorRoots } from './parsers/conductor.js'
 import { getKnownHarnessRoots } from './parsers/harness.js'
 import { upsertSession, removeSession } from './lib/db/session-index.js'
@@ -195,6 +196,10 @@ export function startWatcher() {
       emit('session_update', { filePath: rel, ts: Date.now() })
       const sessionId = path.basename(filePath, '.jsonl')
       onSessionEvent(sessionId)
+      // I1: deterministic anomaly scan on the same change signal — catches the
+      // loop/budget anomalies a transcript edit can reveal (stall + approval
+      // timeout come from the periodic sweep). Fire-and-forget; never fatal.
+      scanSession(sessionId, { filePath }).catch(() => {})
     } else if (rel.startsWith('projects') && rel.includes('memory')) {
       // Phase 6: memory docs feed the knowledge index — refresh it BEFORE the
       // emit (the client refetch must read fresh rows). Safe no-op when the

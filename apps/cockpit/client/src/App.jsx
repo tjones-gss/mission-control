@@ -50,6 +50,7 @@ import { DispatchSignal } from './components/DispatchSignal.jsx'
 import { NewSessionForm } from './components/NewSessionForm.jsx'
 import { WelcomeHero } from './components/WelcomeHero.jsx'
 import { ParserDegradedBanner } from './components/ParserDegradedBanner.jsx'
+import { AnomalyToast } from './components/AnomalyToast.jsx'
 import { projectLabel } from './utils/session.js'
 import { useTheme } from './hooks/useTheme.js'
 
@@ -175,6 +176,8 @@ export default function App() {
   // turns it into a live packet; null until a hook bridge is installed (then the
   // mesh falls back to simulated packets).
   const [lastToolCall, setLastToolCall] = useState(null)
+  const [anomalies, setAnomalies] = useState([])
+  const anomalySeqRef = useRef(0)
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
   const [intelligenceVersion, setIntelligenceVersion] = useState(0)
@@ -255,6 +258,11 @@ export default function App() {
         }
         if (evt.type === 'tool_call') {
           setLastToolCall(evt.data)
+        }
+        if (evt.type === 'anomaly' && evt.data) {
+          const id = `an-${(anomalySeqRef.current += 1)}`
+          // Cap the visible stack so a noisy run can't bury the UI; oldest drop.
+          setAnomalies((prev) => [...prev.slice(-3), { id, ...evt.data }])
         }
         if (evt.type === 'intelligence_update') {
           setIntelligenceVersion((v) => v + 1)
@@ -557,6 +565,15 @@ export default function App() {
         </nav>
       </header>
       <ParserDegradedBanner degraded={degradedParsers} />
+      <AnomalyToast
+        anomalies={anomalies}
+        onOpen={(sessionId) => {
+          setActiveTab('agents')
+          setSelectedSessionId(sessionId)
+          setAgentView('detail')
+        }}
+        onDismiss={(id) => setAnomalies((prev) => prev.filter((a) => a.id !== id))}
+      />
       {showNewSession && (
         <div className="md:hidden border-b border-gray-800 bg-gray-950/95">
           <NewSessionForm

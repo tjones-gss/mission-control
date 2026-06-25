@@ -36,6 +36,7 @@ import { initNotify } from './lib/notify.js'
 import { mountOpenApi } from './lib/openapi.js'
 import { startWatcher } from './watcher.js'
 import { startHookLogWatcher } from './lib/hook-receiver.js'
+import { startAnomalySweep, startApprovalTracking } from './intelligence/anomaly-detector.js'
 import { logger } from './lib/logger.js'
 import { fileURLToPath } from 'node:url'
 import { argv } from 'node:process'
@@ -151,6 +152,13 @@ export function start() {
     // If no bridge is installed the dir stays empty and this is inert — the
     // non-hook path (simulated MeshView packets) is never affected.
     startHookLogWatcher()
+    // I1 anomaly detection: mirror the PTY approval lifecycle into the detector
+    // (for the approval-timeout anomaly) and start the periodic stall/approval
+    // sweep. Deterministic, no-LLM; the per-change loop/budget scan is wired in
+    // the watcher. budgetMax comes from OVERSIGHT_BUDGET_MAX (0 = use the rolling
+    // average baseline instead).
+    startApprovalTracking()
+    startAnomalySweep({ budgetMax: config.budgetMaxUsd })
     setHealthReady()
     registerShutdown({ server, watcher })
     // BOOT RECONCILER (item 1g) — symmetric to the lifecycle shutdown seam: on
