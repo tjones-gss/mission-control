@@ -42,6 +42,8 @@ import {
   APPROVAL_TIMEOUT_MS,
   LOOP_THRESHOLD,
   BUDGET_MULTIPLIER,
+  META_STALL_MS,
+  META_LOOP_THRESHOLD,
 } from '../../intelligence/anomaly-detector.js'
 
 const NOW = 1_700_000_000_000
@@ -83,6 +85,43 @@ describe('detectAnomalies — stall', () => {
     const snap = { ...base, lastModified: NOW - 1000 }
     const out = detectAnomalies(snap, { now: NOW })
     expect(out.find((a) => a.kind === 'stall')).toBeFalsy()
+  })
+})
+
+describe('detectAnomalies — meta (Oversight building itself) thresholds', () => {
+  const base = {
+    sessionId: 's1',
+    lastMainEndTurn: false,
+    estimatedCost: 0,
+    recentTools: [],
+    humanMessageInWindow: false,
+    pendingApprovalSince: null,
+    rollingAvgCost: null,
+  }
+
+  it('uses a tighter stall threshold for meta sessions', () => {
+    expect(META_STALL_MS).toBeLessThan(STALL_MS)
+    // Silent between the meta and normal thresholds: a stall for meta, not normal.
+    const snap = { ...base, lastModified: NOW - META_STALL_MS - 1000 }
+    expect(
+      detectAnomalies(snap, { now: NOW, meta: true }).find((a) => a.kind === 'stall'),
+    ).toBeTruthy()
+    expect(
+      detectAnomalies(snap, { now: NOW, meta: false }).find((a) => a.kind === 'stall'),
+    ).toBeFalsy()
+  })
+
+  it('uses a tighter loop threshold for meta sessions', () => {
+    expect(META_LOOP_THRESHOLD).toBeLessThan(LOOP_THRESHOLD)
+    // META_LOOP_THRESHOLD+1 identical calls: a loop for meta, not for normal.
+    const recentTools = Array(META_LOOP_THRESHOLD + 1).fill('Bash')
+    const snap = { ...base, lastMainEndTurn: true, lastModified: NOW, recentTools }
+    expect(
+      detectAnomalies(snap, { now: NOW, meta: true }).find((a) => a.kind === 'loop'),
+    ).toBeTruthy()
+    expect(
+      detectAnomalies(snap, { now: NOW, meta: false }).find((a) => a.kind === 'loop'),
+    ).toBeFalsy()
   })
 })
 

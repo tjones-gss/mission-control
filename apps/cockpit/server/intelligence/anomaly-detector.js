@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { emit, onEvent } from '../sse.js'
 import { logger } from '../lib/logger.js'
 import { parseSessionRecord, getAllSessions } from '../parsers/sessions.js'
+import { isMetaSession } from './meta-session-detector.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -27,6 +28,11 @@ export const LOOP_WINDOW = 10 // look back at the last 10 tool calls
 export const LOOP_THRESHOLD = 8 // same tool > 8 times in that window
 export const BUDGET_MULTIPLIER = 10 // cost > 10× rolling average
 export const ROLLING_WINDOW = 10 // sessions averaged for the budget baseline
+
+// Phase S1 — tighter thresholds for `meta` sessions (Oversight building itself):
+// we want to catch a wandering build agent sooner than a normal session.
+export const META_STALL_MS = 3 * 60_000 // stall after 3 min, not 5
+export const META_LOOP_THRESHOLD = 5 // loop after 5 identical calls, not 8
 
 const DEFAULT_ANOMALY_LOG_PATH = path.resolve(__dirname, '..', 'data', 'anomalies.jsonl')
 let anomalyLogPath = DEFAULT_ANOMALY_LOG_PATH
@@ -48,15 +54,18 @@ export function getAnomalyLogPath() {
 //   rollingAvgCost: number|null,      // mean cost of recent OTHER sessions
 // }
 // Returns an array of { sessionId, kind, detail, ts } (possibly empty).
-export function detectAnomalies(snapshot, { now = Date.now(), budgetMax = 0 } = {}) {
+export function detectAnomalies(snapshot, { now = Date.now(), budgetMax = 0, meta = false } = {}) {
   const out = []
   const push = (kind, detail) => out.push({ sessionId: snapshot.sessionId, kind, detail, ts: now })
+  // Meta sessions (Oversight watching its own build) get tighter thresholds.
+  const stallMs = meta ? META_STALL_MS : STALL_MS
+  const loopThreshold = meta ? META_LOOP_THRESHOLD : LOOP_THRESHOLD
 
   // 1. Stall — the agent was mid-task (its last main-thread record was NOT an
   //    end_turn, i.e. it was waiting on a tool result or hung) and has produced
   //    nothing for longer than the stall threshold. A session that ended its
   //    turn (lastMainEndTurn) is waiting for the human, which is not a stall.
-  if (!snapshot.lastMainEndTurn && now - snapshot.lastModified > STALL_MS) {
+  if (!snapshot.lastMainEndTurn && now - snapshot.lastModified > stallMs) {
     const mins = Math.round((now - snapshot.lastModified) / 60_000)
     push('stall', `No activity for ${mins}m while mid-task — the agent may be hung.`)
   }
@@ -85,7 +94,7 @@ export function detectAnomalies(snapshot, { now = Date.now(), budgetMax = 0 } = 
     const counts = {}
     for (const t of snapshot.recentTools) counts[t] = (counts[t] || 0) + 1
     for (const [tool, count] of Object.entries(counts)) {
-      if (count > LOOP_THRESHOLD) {
+      if (count > loopThreshold) {
         push(
           'loop',
           `${tool} called ${count}× in the last ${snapshot.recentTools.length} tool calls with no human input.`,
@@ -145,6 +154,7 @@ export function buildSnapshot(parsed) {
 
   return {
     sessionId: summary.sessionId,
+    cwd: summary.cwd || null,
     lastModified: summary.lastModified || 0,
     lastMainEndTurn: Boolean(parsed?.lastMainEndTurn),
     estimatedCost: summary.estimatedCost || 0,
@@ -275,7 +285,8 @@ export async function scanSession(sessionId, { filePath, now = Date.now(), budge
   snapshot.pendingApprovalSince = getPendingApprovalSince(sessionId)
   if (!(budgetMax > 0)) snapshot.rollingAvgCost = computeRollingAvgCost(sessionId)
 
-  const anomalies = detectAnomalies(snapshot, { now, budgetMax })
+  const meta = isMetaSession(snapshot.cwd)
+  const anomalies = detectAnomalies(snapshot, { now, budgetMax, meta })
   const currentKinds = new Set(anomalies.map((a) => a.kind))
   const prevKinds = activeAnomalies.get(sessionId) || new Set()
 

@@ -75,6 +75,27 @@ describe('AgentTree', () => {
     expect(screen.getByTestId('conversation-view')).toBeInTheDocument()
   })
 
+  // Phase S1 — a meta session (cwd inside the Oversight repo) gets a "Steer
+  // build" action that posts the pre-composed self-correction message.
+  it('renders Steer build for a meta session and posts the steer message', async () => {
+    let captured = null
+    server.use(
+      http.post('/api/sessions/:id/message', async ({ request }) => {
+        captured = await request.json()
+        return HttpResponse.json({ ok: true })
+      }),
+    )
+    render(<AgentTree session={{ ...SESSION, meta: true }} />)
+    await userEvent.click(screen.getByRole('button', { name: /steer build/i }))
+    await waitFor(() => expect(captured).toBeTruthy())
+    expect(captured.message).toMatch(/npm run test:cockpit/)
+  })
+
+  it('does not render Steer build for a non-meta session', () => {
+    render(<AgentTree session={{ ...SESSION, meta: false }} />)
+    expect(screen.queryByRole('button', { name: /steer build/i })).not.toBeInTheDocument()
+  })
+
   it('clicking timeline tab shows timeline view', async () => {
     render(<AgentTree session={SESSION} />)
     await userEvent.click(screen.getByText('timeline'))

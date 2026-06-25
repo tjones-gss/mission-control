@@ -7,6 +7,7 @@ import { IntelView } from './IntelView.jsx'
 import { SessionControlBar } from './SessionControlBar.jsx'
 import { PlanViewer } from './PlanViewer.jsx'
 import { InspectPanel } from './InspectPanel/InspectPanel.jsx'
+import { MetaBuildBanner, STEER_BUILD_MESSAGE } from './TriageView/MetaBuildBanner.jsx'
 import { TokenBreakdownFull } from './TokenBreakdown.jsx'
 import { CostSparkline } from './CostSparkline.jsx'
 import { formatCost } from '../utils/cost.js'
@@ -131,6 +132,21 @@ export function AgentTree({
     [sessionUpdateVersion],
   )
 
+  // Phase S1 — nudge a meta build session to self-verify (same write path as
+  // /compact). The pre-composed message lives with the banner it triggers from.
+  const handleSteerBuild = useCallback(async () => {
+    if (!session?.sessionId) return
+    try {
+      await fetch(`/api/sessions/${session.sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: STEER_BUILD_MESSAGE }),
+      })
+    } catch {
+      /* ignore */
+    }
+  }, [session?.sessionId])
+
   const handleCompact = useCallback(async () => {
     if (!session?.sessionId || compacting) return
     setCompacting(true)
@@ -188,6 +204,13 @@ export function AgentTree({
         sessionOptions={sessionOptions}
         onOptionsChange={setSessionOptions}
       />
+
+      {/* Phase S1 — Oversight watching its own build: offer a one-tap steer. */}
+      {session.meta && (
+        <div className="px-3 pt-3 shrink-0">
+          <MetaBuildBanner count={1} onSteer={handleSteerBuild} />
+        </div>
+      )}
 
       {/* Sub-tab content */}
       {subTab === 'conversation' && (

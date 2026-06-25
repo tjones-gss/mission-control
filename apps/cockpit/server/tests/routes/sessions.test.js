@@ -102,6 +102,7 @@ import express from 'express'
 import request from 'supertest'
 import fs from 'fs'
 import { getAllSessions, getSessionById } from '../../parsers/sessions.js'
+import { OVERSIGHT_REPO_ROOT } from '../../intelligence/meta-session-detector.js'
 import { getSessionMessages } from '../../parsers/messages.js'
 import { runClaude, runClaudeCancellable } from '../../claude-cli.js'
 import { awaitNewSession } from '../../lib/pending-session.js'
@@ -147,8 +148,17 @@ describe('GET /', () => {
         riskDescription: null,
         pendingApprovalCount: 0,
         needsInput: false,
+        meta: false,
       },
     ])
+  })
+
+  // Phase S1 — a session whose cwd is the Oversight repo root is `meta`: true,
+  // so the Triage banner + tighter anomaly thresholds engage.
+  it('tags a session in the Oversight repo root as meta', async () => {
+    getAllSessions.mockReturnValue([{ sessionId: 'sess-build', cwd: OVERSIGHT_REPO_ROOT }])
+    const res = await request(app).get('/')
+    expect(res.body[0].meta).toBe(true)
   })
 
   it('returns empty array when no sessions', async () => {
@@ -281,6 +291,7 @@ describe('GET /:sessionId', () => {
       riskDescription: null,
       pendingApprovalCount: 0,
       needsInput: false,
+      meta: false,
     })
   })
 })

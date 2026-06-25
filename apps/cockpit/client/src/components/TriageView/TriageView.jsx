@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Clock, Cpu, ChevronDown, ChevronRight } from 'lucide-react'
 import { QuickActions } from '../QuickActions.jsx'
+import { MetaBuildBanner } from './MetaBuildBanner.jsx'
 import { projectLabel } from '../../utils/session.js'
 import { formatCost } from '../../utils/cost.js'
 
@@ -196,10 +197,14 @@ export function TriageView({ sessions = [], selectedId, onSelect = () => {} }) {
   const needs = list.filter((s) => s.needsInput)
   const running = list.filter((s) => s.isActive && !s.needsInput)
   const calm = list.filter((s) => !s.isActive && !s.needsInput)
+  const metaCount = list.filter((s) => s.meta).length
 
   return (
     <div className="flex-1 overflow-y-auto bg-[var(--mc-bg)]">
       <div className="mx-auto max-w-5xl px-7 py-6">
+        {/* Phase S1 — Oversight is watching its own build. */}
+        {metaCount > 0 && <MetaBuildBanner count={metaCount} />}
+
         {/* Needs you */}
         <section aria-label="Needs you">
           <SectionHead count={needs.length} color="var(--mc-warn)">

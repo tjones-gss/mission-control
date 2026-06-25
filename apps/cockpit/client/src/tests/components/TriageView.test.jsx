@@ -26,6 +26,18 @@ function renderView(sessions, props = {}) {
   )
 }
 
+describe('TriageView — meta build banner (S1)', () => {
+  it('shows the "Building Oversight" banner when a meta session is present', () => {
+    renderView([makeSession('a', { meta: true, isActive: true }), makeSession('b')])
+    expect(screen.getByText(/building oversight/i)).toBeInTheDocument()
+  })
+
+  it('does not show the banner when no session is meta', () => {
+    renderView([makeSession('a', { isActive: true }), makeSession('b')])
+    expect(screen.queryByText(/building oversight/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('TriageView — grouping', () => {
   it('puts needsInput sessions under "Needs you" with a count', () => {
     renderView([

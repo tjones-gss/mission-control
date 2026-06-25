@@ -9,6 +9,7 @@ import { getAllSessions, getSessionById } from '../parsers/sessions.js'
 import { listSessions, isIndexReady } from '../lib/db/session-index.js'
 import { isDbUnavailable } from '../lib/db/connection.js'
 import { worstClassification } from '../utils/commandClassifier.js'
+import { isMetaSession } from '../intelligence/meta-session-detector.js'
 import { getConfigForSession } from '../parsers/config.js'
 import { getSessionMessages } from '../parsers/messages.js'
 import { getMemoryForSession } from '../parsers/memory.js'
@@ -289,6 +290,8 @@ function withLiveApprovalRisk(summary) {
     riskDescription: worstApproval?.riskDescription ?? null,
     pendingApprovalCount: pending.length,
     needsInput: Boolean(summary.needsInput) || pending.length > 0,
+    // Phase S1: a session in the Oversight repo is building Oversight itself.
+    meta: isMetaSession(summary.cwd),
   }
 }
 
