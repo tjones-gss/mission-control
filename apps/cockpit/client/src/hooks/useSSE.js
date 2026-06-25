@@ -33,6 +33,7 @@ export function useSSE(onMessage) {
       'harness_update',
       'fleet_update',
       'parser_degraded',
+      'tool_call',
     ]
 
     function connect() {

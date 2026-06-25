@@ -35,6 +35,7 @@ import { initOtel, tracingMiddleware } from './lib/otel.js'
 import { initNotify } from './lib/notify.js'
 import { mountOpenApi } from './lib/openapi.js'
 import { startWatcher } from './watcher.js'
+import { startHookLogWatcher } from './lib/hook-receiver.js'
 import { logger } from './lib/logger.js'
 import { fileURLToPath } from 'node:url'
 import { argv } from 'node:process'
@@ -145,6 +146,11 @@ export function start() {
   const server = app.listen(config.port, config.host, () => {
     logger.info(`Server → http://${config.host}:${config.port}`)
     const watcher = startWatcher()
+    // V3 hook instrumentation (opt-in): watch server/data/hook-log/ for tool-call
+    // events dropped by the hook bridge and relay each as a `tool_call` SSE event.
+    // If no bridge is installed the dir stays empty and this is inert — the
+    // non-hook path (simulated MeshView packets) is never affected.
+    startHookLogWatcher()
     setHealthReady()
     registerShutdown({ server, watcher })
     // BOOT RECONCILER (item 1g) — symmetric to the lifecycle shutdown seam: on

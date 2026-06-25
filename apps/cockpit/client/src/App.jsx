@@ -171,6 +171,10 @@ export default function App() {
   // Dispatch signal animation: { from: {x,y}, to: {x,y}, sessionId } or null
   const [dispatchSignal, setDispatchSignal] = useState(null)
   const [events, setEvents] = useState([])
+  // V3 hook instrumentation: the most recent real tool_call SSE event. MeshView
+  // turns it into a live packet; null until a hook bridge is installed (then the
+  // mesh falls back to simulated packets).
+  const [lastToolCall, setLastToolCall] = useState(null)
   const [sessionsVersion, setSessionsVersion] = useState(0)
   const [tasksVersion, setTasksVersion] = useState(0)
   const [intelligenceVersion, setIntelligenceVersion] = useState(0)
@@ -248,6 +252,9 @@ export default function App() {
         }
         if (evt.type === 'task_update') {
           setTasksVersion((v) => v + 1)
+        }
+        if (evt.type === 'tool_call') {
+          setLastToolCall(evt.data)
         }
         if (evt.type === 'intelligence_update') {
           setIntelligenceVersion((v) => v + 1)
@@ -696,6 +703,7 @@ export default function App() {
               <MeshView
                 sessions={sessions}
                 sessionsVersion={sessionsVersion}
+                lastToolCall={lastToolCall}
                 onSelectSession={(id) => {
                   setActiveTab('agents')
                   setSelectedSessionId(id)

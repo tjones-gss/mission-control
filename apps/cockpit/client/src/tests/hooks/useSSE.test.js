@@ -328,6 +328,7 @@ describe('useSSE', () => {
       'harness_update',
       'fleet_update',
       'parser_degraded',
+      'tool_call',
     ]
 
     expectedEvents.forEach((eventType) => {

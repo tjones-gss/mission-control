@@ -23,7 +23,7 @@ _See STATE.md for the per-loop self-assessment evidence._
 ## Visual + Orchestration Phases
 - [x] V1: MeshView topology tab (complete — commit 8e4795c)
 - [x] V2: Pipeline canvas (drag-drop agent pipelines in Runs/Pipeline mode)
-- [ ] V3: Hook instrumentation (real tool calls → live animation)  ← NEXT
+- [x] V3: Hook instrumentation (real tool calls → live MeshView packets, opt-in)
 
 ## Intelligence Phases
 - [ ] I1: Session anomaly detection + alert system
@@ -35,4 +35,5 @@ _See STATE.md for the per-loop self-assessment evidence._
 
 ## Loop log
 - 2026-06-24: self-assessment; baseline server 1256/1 (env timeout), client 642/0; started V2.
-- 2026-06-24: V2 complete. New: routes/pipelines.js (+11 tests), PipelineCanvas/ (NodeTypes+component, +15 tests), RunsTab Pipeline mode (+1 test), runs.pipeline brief. Server 1267/1 (same env timeout), client 658/0. Lint clean.
+- 2026-06-24: V2 complete. New: routes/pipelines.js (+11 tests), PipelineCanvas/ (NodeTypes+component, +15 tests), RunsTab Pipeline mode (+1 test), runs.pipeline brief. Server 1267/1 (same env timeout), client 658/0. Lint clean. Commit 3c23283.
+- 2026-06-24: V3 complete. New: lib/hook-receiver.js (receive+consume+watch, +9 tests), packages/hook-server/ (hook-emitter+index+README, +6 tests), MeshView real tool_call packets (+4 tests), useSSE tool_call event, App wiring, index.js boot watcher. DEVIATION: file-drop transport + hook script instead of MCP/WebSocket (no new deps, no inbound path, ADR-0004-consistent). Server 1282/1 (same env timeout), client 662/0. Lint clean.

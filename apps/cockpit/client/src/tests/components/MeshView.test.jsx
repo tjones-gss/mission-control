@@ -86,3 +86,66 @@ describe('MeshView', () => {
     expect(document.querySelectorAll('[data-node]').length).toBe(83)
   })
 })
+
+describe('MeshView — V3 real tool_call packets', () => {
+  const sessions = [
+    { id: 'a', projectLabel: 'alpha', status: 'running', totalCost: 1, toolCount: 2 },
+  ]
+
+  it('spawns a real packet when a tool_call arrives for a session in the mesh', () => {
+    const { rerender } = render(
+      <MeshView sessions={sessions} sessionsVersion={0} onSelectSession={() => {}} />,
+    )
+    expect(document.querySelectorAll('[data-packet-real]').length).toBe(0)
+    rerender(
+      <MeshView
+        sessions={sessions}
+        sessionsVersion={0}
+        onSelectSession={() => {}}
+        lastToolCall={{ sessionId: 'a', tool: 'Bash', ts: 123 }}
+      />,
+    )
+    expect(document.querySelectorAll('[data-packet-real]').length).toBe(1)
+  })
+
+  it('ignores a tool_call for a session not in the mesh', () => {
+    const { rerender } = render(
+      <MeshView sessions={sessions} sessionsVersion={0} onSelectSession={() => {}} />,
+    )
+    rerender(
+      <MeshView
+        sessions={sessions}
+        sessionsVersion={0}
+        onSelectSession={() => {}}
+        lastToolCall={{ sessionId: 'ghost', tool: 'Bash', ts: 9 }}
+      />,
+    )
+    expect(document.querySelectorAll('[data-packet-real]').length).toBe(0)
+  })
+
+  it('spawns a fresh packet for each new tool_call (by ts) on the same session', () => {
+    const { rerender } = render(
+      <MeshView
+        sessions={sessions}
+        sessionsVersion={0}
+        onSelectSession={() => {}}
+        lastToolCall={{ sessionId: 'a', tool: 'Bash', ts: 1 }}
+      />,
+    )
+    expect(document.querySelectorAll('[data-packet-real]').length).toBe(1)
+    rerender(
+      <MeshView
+        sessions={sessions}
+        sessionsVersion={0}
+        onSelectSession={() => {}}
+        lastToolCall={{ sessionId: 'a', tool: 'Read', ts: 2 }}
+      />,
+    )
+    expect(document.querySelectorAll('[data-packet-real]').length).toBe(2)
+  })
+
+  it('does not crash and renders the mesh when no lastToolCall is provided (simulated fallback path)', () => {
+    render(<MeshView sessions={sessions} sessionsVersion={0} onSelectSession={() => {}} />)
+    expect(screen.getByRole('img')).toBeInTheDocument()
+  })
+})

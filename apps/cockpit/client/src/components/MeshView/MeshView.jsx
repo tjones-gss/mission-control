@@ -154,7 +154,7 @@ function MeshNode({ node, onSelect }) {
 // MeshView — live SVG topology of every session orbiting a central Dispatch hub.
 // Pure client view: consumes the already-fetched `sessions` array via props and
 // re-layouts when `sessionsVersion` changes. No new API surface (spec §3.2, §5).
-export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
+export function MeshView({ sessions = [], sessionsVersion, onSelectSession, lastToolCall = null }) {
   // useApi yields `null` before /api/sessions resolves; the default param only
   // covers `undefined`, so normalise here to keep layout/counts crash-safe.
   const safeSessions = Array.isArray(sessions) ? sessions : []
@@ -213,13 +213,48 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
   // "traffic" read without any extra API data (spec §3.7). Capped at 12 to keep
   // the RAF loop cheap. Re-registers when the layout changes.
   const [packets, setPackets] = useState([])
+
+  // V3 hook instrumentation: once a real tool_call has been seen, switch off the
+  // simulated random packets so the mesh shows ONLY real traffic. Until then
+  // (no hook bridge installed) the simulated fallback runs exactly as before.
+  const realModeRef = useRef(false)
+  const lastToolTsRef = useRef(null)
+  useEffect(() => {
+    if (!lastToolCall || lastToolCall.ts === lastToolTsRef.current) return
+    lastToolTsRef.current = lastToolCall.ts
+    const src = nodes.find((n) => n.id === lastToolCall.sessionId)
+    if (!src || !hub) return // event for a session not on the mesh — ignore
+    realModeRef.current = true
+    setPackets((prev) => {
+      const next = prev.length < MAX_PACKETS ? prev.slice() : prev.slice(1)
+      next.push({
+        id: `tc-${lastToolCall.ts}-${lastToolCall.sessionId}`,
+        fromX: src.x,
+        fromY: src.y,
+        toX: hub.x,
+        toY: hub.y,
+        t: 0,
+        speed: 0.006,
+        col: 'var(--mc-accent)',
+        real: true,
+      })
+      return next
+    })
+  }, [lastToolCall, nodes, hub])
+
   useEffect(() => {
     if (typeof requestAnimationFrame === 'undefined') return
     let raf
     const step = () => {
       setPackets((prev) => {
         const next = prev.map((p) => ({ ...p, t: p.t + p.speed })).filter((p) => p.t < 1)
-        if (next.length < MAX_PACKETS && Math.random() < 0.04 && runningNodes.length && hub) {
+        if (
+          !realModeRef.current &&
+          next.length < MAX_PACKETS &&
+          Math.random() < 0.04 &&
+          runningNodes.length &&
+          hub
+        ) {
           const src = runningNodes[Math.floor(Math.random() * runningNodes.length)]
           next.push({
             id: Math.random().toString(36).slice(2),
@@ -269,6 +304,8 @@ export function MeshView({ sessions = [], sessionsVersion, onSelectSession }) {
         {packets.map((p) => (
           <circle
             key={p.id}
+            data-packet
+            {...(p.real ? { 'data-packet-real': '' } : {})}
             cx={lerp(p.fromX, p.toX, p.t)}
             cy={lerp(p.fromY, p.toY, p.t)}
             r={2.5}
