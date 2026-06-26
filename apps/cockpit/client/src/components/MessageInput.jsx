@@ -58,7 +58,6 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
 const IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 
 export function MessageInput({
-  sessionId,
   sending,
   onSend,
   sessionOptions,

@@ -310,7 +310,6 @@ export function ConversationView({
       )}
 
       <MessageInput
-        sessionId={sessionId}
         sending={sending}
         onSend={handleSend}
         sessionOptions={sessionOptions}

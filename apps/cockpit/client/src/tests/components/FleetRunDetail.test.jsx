@@ -78,6 +78,49 @@ describe('RunDetail', () => {
     )
   })
 
+  it('renders nothing when runId is null (no fetch issued)', () => {
+    const { container } = render(<RunDetail runId={null} version={0} onOpenSession={vi.fn()} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('shows the loading placeholder before the run arrives', () => {
+    stub({ run: makeRun() })
+    render(<RunDetail runId="run-1" version={0} onOpenSession={vi.fn()} />)
+    // Synchronous first render: useApi is loading with no data yet.
+    expect(screen.getByText(/loading run/i)).toBeInTheDocument()
+  })
+
+  it('surfaces a server error from the run fetch', async () => {
+    server.use(
+      http.get('/api/fleet/:id/escalations', () => HttpResponse.json({ escalations: [] })),
+      http.get('/api/fleet/:id', () =>
+        HttpResponse.json({ error: 'run vanished' }, { status: 500 }),
+      ),
+    )
+    render(<RunDetail runId="run-1" version={0} onOpenSession={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText(/run vanished/i)).toBeInTheDocument())
+  })
+
+  it('renders without children without crashing', async () => {
+    stub({ run: makeRun({ children: [] }) })
+    render(<RunDetail runId="run-1" version={0} onOpenSession={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('Add OAuth across services')).toBeInTheDocument())
+    expect(screen.queryByTestId('fleet-child-0')).not.toBeInTheDocument()
+  })
+
+  it('renders the skipped-synthesis note with its reason', async () => {
+    stub({
+      run: makeRun({
+        status: 'succeeded',
+        synthesis: { status: 'skipped', summary: 'Only one child — nothing to merge.' },
+      }),
+    })
+    render(<RunDetail runId="run-1" version={0} onOpenSession={vi.fn()} />)
+    await waitFor(() =>
+      expect(screen.getByText(/only one child — nothing to merge/i)).toBeInTheDocument(),
+    )
+  })
+
   it('routes an escalation Allow through POST /decide', async () => {
     const captured = stub({
       run: makeRun({ children: [{ ...makeRun().children[0], status: 'escalated' }] }),
