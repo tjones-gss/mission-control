@@ -67,7 +67,7 @@ cd apps/cockpit/client && npm install
 - `sse.js` — shared SSE client registry. Imported by both `watcher.js` and `intelligence/triggers.js`. Includes an `onEvent()` internal pub/sub used by `pty-session.js`.
 - `parsers/` — one file per `~/.claude` data type (sessions, config, hooks, tasks, teams, history, workflows, skills, plans, memory, MCP, managers, conductor, harness). Each parser is stateless and synchronous; the SSE watcher calls routes which call parsers on demand.
 - `claude-cli.js` — all Claude CLI spawning flows through here. `withStreamJsonVerbose()` enforces `--verbose` when `--output-format stream-json` is used (the CLI requires it). `buildSpawn()` resolves `.cmd`/`.ps1` → explicit interpreter on Windows to prevent shell injection.
-- `pty-session.js` — PTY-based interactive sessions with live streaming. Used by the new-session form and the Dispatch drawer.
+- `pty-session.js` — PTY-based interactive sessions with live streaming. Used by the new-session form.
 - `fleet/fleet-runner.js` — Fleet meta-orchestrator. Persists run state to `server/data/fleet/`. Hard ceiling: `MAX_FLEET_CHILDREN=4`, `HARD_REFUSE_CHILDREN=8`. Uses `atomicWriteJson` for all writes. `reconcileFleetRuns()` is called at server boot to reap wedged runs.
 - `intelligence/` — async AI analysis of sessions (`analyzeSession` in `analyzer.js`, debounced trigger in `triggers.js`). `cache.js` is a thin facade over `lib/db/intelligence-store.js` — analyses + staleness snapshots persist across restarts.
 - `lib/db/` — the ADR-0008 SQLite derived read-cache (`server/data/cockpit.db`, `node:sqlite` — imported ONLY in `connection.js`). PURE derived cache: deleting the file is always safe (schema-version mismatch or corruption → delete-and-rebuild; `dbUnavailable` falls back to direct parser reads). Modules: `session-index.js` (serves `GET /api/sessions`, event-driven watcher invalidation — no TTL), `message-index.js` (FTS5 corpus + search), `usage-index.js` (daily token rollups), `memory-index.js` (memory files into the corpus), `intelligence-store.js`. Requires Node **22.13+** (`engines` field). Fleet runs deliberately stay JSON-per-run (cockpit-authoritative state, not derived).
@@ -96,7 +96,7 @@ cd apps/cockpit/client && npm install
 **`CommandPalette.jsx`** — ⌘/Ctrl+K from anywhere (via `useKeyboardShortcuts.js`); debounced `/api/search`, grouped sessions → message hits → knowledge docs with type-filter pills; Enter navigates to the session detail. `--mc-*` tokens only.
 
 **Agents tab has three modes** — `agentView` state: `triage` (default), `board`, `detail`.
-- `TriageView/` — the CORE hero view. Attention-ranked: needs-input → running → calm. Inline approve/steer via `QuickActions` (`POST /api/sessions/:id/message`). Do not demote this to a secondary view.
+- `TriageView/` — the CORE hero view. Attention-ranked: needs-input → running → calm. Inline approve/steer via `QuickActions` (`POST /api/sessions/:id/message`). Do not demote this to a secondary view. Multi-select lives here too: each card has a hover checkbox, and `SelectionBar.jsx` broadcasts one message to all checked sessions — this is where the retired Dispatch drawer's verb now lives.
 - `KanbanBoard.jsx` — Board mode.
 - `AgentTree.jsx` — Detail mode with `InspectPanel` for `~/.claude` viewers.
 

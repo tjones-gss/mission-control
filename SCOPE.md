@@ -29,7 +29,7 @@ classified**. This keeps the manifest complete without enumerating all ~52 compo
 | Overlapping orchestration UIs | Conductor vs MissionControl vs Runs (`ConductorTab.jsx`, `MissionControlTab/`, `RunsTab/`) — collapse target: **Runs is the surface, "Pipeline" the mode vocabulary** (see IA ruling below) |
 | Three "executable things" paradigms | Workflows vs Skills vs Commands (`WorkflowsPanel.jsx`, `SkillsPanel.jsx`) — collapse target: the canonical phase model (ADR-0006) |
 | Agent views (3 modes of Agents) | `TriageView.jsx` (default), `KanbanBoard.jsx` (Board), `AgentTree.jsx` (Detail) — Triage is the hero; Board/Detail retained |
-| Dispatch | `DispatchDrawer.jsx` + `DispatchSignal.jsx` — slated to **fold into the Triage multi-select** (SelectionBar); keep the verb, retire the surface |
+| Dispatch | **Folded into the Triage multi-select** (`TriageView/SelectionBar.jsx`) — the standalone `DispatchDrawer.jsx`/`DispatchSignal.jsx` surface was retired; the verb lives on the SelectionBar |
 | Metadata viewers | `MemoryViewer.jsx`, `ConfigViewer.jsx`, `HooksPanel.jsx` |
 | Large components flagged for split | `ConversationView.jsx` (~920 LOC), `FleetTab.jsx` (~1049 LOC) — split before adding to them |
 
@@ -40,27 +40,23 @@ classified**. This keeps the manifest complete without enumerating all ~52 compo
 | Conductor / MissionControl / Runs | Runs surface; "Pipeline" mode vocabulary (IA ruling ↓) | 3 / redesign |
 | Workflows / Skills / Commands | one phase-model vocabulary (ADR-0006) | 2 |
 | Kanban / AgentTree / Triage | three modes of Agents; Triage is the default | 3 / redesign |
-| DispatchDrawer / DispatchSignal | fold into the Triage multi-select (SelectionBar) | redesign |
+| DispatchDrawer / DispatchSignal | folded into the Triage multi-select (SelectionBar) — **done** | redesign |
 
-### DispatchDrawer migration path (redesign phase)
+### DispatchDrawer migration (redesign phase · **done**)
 
-`DispatchDrawer.jsx` carries a `DEPRECATED SURFACE` banner. It is **not** a quick
-fold: `TriageView` today tracks only a single `selectedId`, so the dispatch verb
-has no multi-select to live in yet. Concrete steps when the redesign lands:
+The fold shipped. `TriageView` now tracks a `selectedIds` Set alongside the
+single-select `selectedId`: each session card carries a hover checkbox, and
+checking 1+ reveals `TriageView/SelectionBar.jsx` — the one dispatch verb, a
+composer that POSTs `/api/sessions/:id/message` per selected session (the same
+call the old drawer used). Escape / × clears the selection.
 
-1. Add multi-select to `TriageView/TriageView.jsx` — per-row checkbox + a
-   `selectedIds` Set (alongside the existing single-select `selectedId`).
-2. Add a **SelectionBar** that appears when `selectedIds.size > 0`, owning the one
-   dispatch verb: a composer that POSTs `/api/sessions/:id/message` per selected
-   session (the same call the current drawer uses).
-3. Reuse the per-child dispatch-state rendering (pending/ok/failed) from
-   `DispatchDrawer.jsx`; drop the drawer chrome, the header "Dispatch" button +
-   `showDispatch` state (`App.jsx`), and `DispatchDrawerHandle`.
-4. Keep `DispatchSignal.jsx` — re-anchor the fly-to animation from the
-   SelectionBar's send button.
-
-Invariant held in the meantime: no new **top-level** Dispatch tab (guarded by
-`coreTabs.test.js`). The drawer stays as the working surface until step 2 ships.
+The standalone surface is gone: `DispatchDrawer.jsx`, `DispatchSignal.jsx`, the
+header "Dispatch" button, `DispatchDrawerHandle`, and the `showDispatch` /
+`dispatchSignal` state in `App.jsx` were all removed. The fly-to signal
+animation was retired with the drawer (not re-anchored) — kept simple per the
+goal's success criteria. The invariant still holds: no top-level Dispatch tab
+(guarded by `coreTabs.test.js`); a negative test in `App.test.jsx` asserts no
+Dispatch surface renders.
 
 ## IA ruling — the "Pipeline" vocabulary (redesign · 2026-06-09)
 

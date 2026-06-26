@@ -64,3 +64,14 @@ describe('App first-run (empty front door)', () => {
     expect(screen.queryByText(/Welcome to Mission Control/i)).not.toBeInTheDocument()
   })
 })
+
+describe('App — DispatchDrawer retired (folded into the Triage SelectionBar)', () => {
+  it('renders no standalone Dispatch surface', () => {
+    renderApp([{ sessionId: 's1', slug: 'demo', cwd: 'C:/proj', isActive: true, model: 'opus' }])
+    // The header Dispatch trigger, the bottom drawer handle, and the drawer
+    // itself are all gone — the dispatch verb now lives in TriageView's
+    // SelectionBar (see SCOPE.md "fold into the Triage multi-select").
+    expect(screen.queryAllByRole('button', { name: /dispatch/i })).toHaveLength(0)
+    expect(screen.queryByText('Dispatch Manager')).toBeNull()
+  })
+})

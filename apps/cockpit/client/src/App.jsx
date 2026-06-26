@@ -14,11 +14,11 @@ import {
   Plus,
   Users,
   History,
-  Layers,
   Boxes,
   Gauge,
   SlidersHorizontal,
   Network,
+  RadioTower,
 } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
@@ -38,6 +38,7 @@ import { RunsTab } from './components/RunsTab/RunsTab.jsx'
 import { FleetTab } from './components/FleetTab/FleetTab.jsx'
 import { TriageView } from './components/TriageView/TriageView.jsx'
 import { MeshView } from './components/MeshView/index.js'
+import { MeshTab } from './components/MeshTab/index.js'
 import { FeatureBrief } from './components/FeatureBrief/FeatureBrief.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
@@ -45,8 +46,6 @@ import { LegendModal } from './components/LegendModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
 import { ShortcutHelpOverlay } from './components/ShortcutHelpOverlay.jsx'
 import { CommandPalette } from './components/CommandPalette.jsx'
-import { DispatchDrawer, DispatchDrawerHandle } from './components/DispatchDrawer.jsx'
-import { DispatchSignal } from './components/DispatchSignal.jsx'
 import { NewSessionForm } from './components/NewSessionForm.jsx'
 import { WelcomeHero } from './components/WelcomeHero.jsx'
 import { ParserDegradedBanner } from './components/ParserDegradedBanner.jsx'
@@ -75,6 +74,10 @@ export const ADVANCED_TABS = [
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
   { id: 'teams', label: 'Teams', icon: Users },
+  // EXPERIMENTAL (ADR-0007): MeshMonitor / Meshtastic LoRa hardware integration.
+  // id is 'meshtastic' (not 'mesh') — the 'mesh' id/label belong to the existing
+  // agent-activity MeshView in CORE_TABS; this is a separate hardware-telemetry tab.
+  { id: 'meshtastic', label: 'Meshtastic', icon: RadioTower },
 ]
 
 // Combined list (core first, then advanced) for any caller that needs the full
@@ -170,10 +173,7 @@ export default function App() {
   const [showLegend, setShowLegend] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
-  const [showDispatch, setShowDispatch] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
-  // Dispatch signal animation: { from: {x,y}, to: {x,y}, sessionId } or null
-  const [dispatchSignal, setDispatchSignal] = useState(null)
   const [events, setEvents] = useState([])
   // V3 hook instrumentation: the most recent real tool_call SSE event. MeshView
   // turns it into a live packet; null until a hook bridge is installed (then the
@@ -453,7 +453,6 @@ export default function App() {
         const id = selectedSessionIdRef.current
         if (id) muteSession(id)
       },
-      toggleDispatch: () => setShowDispatch((prev) => !prev),
       commandPalette: () => setShowPalette((prev) => !prev),
     }),
     [muteSession],
@@ -544,14 +543,6 @@ export default function App() {
             <span className="hidden md:inline">Advanced</span>
           </button>
           <button
-            onClick={() => setShowDispatch(true)}
-            className="ml-2 flex items-center gap-1 px-2 py-1 rounded text-xs text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30 transition-colors"
-            title="Dispatch Manager (d)"
-          >
-            <Layers size={12} />
-            <span className="hidden md:inline">Dispatch</span>
-          </button>
-          <button
             onClick={() => setShowSettings(true)}
             className="ml-1 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
             title="Settings (,)"
@@ -592,12 +583,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Body — reserve 36px at the bottom for the DispatchDrawerHandle,
-          which is fixed at bottom-0 center. Without this clearance the
-          handle sits directly on top of the ConversationView's message
-          input + send button, intercepting clicks and making the input
-          effectively unusable. */}
-      <div className="flex-1 flex overflow-hidden pb-9 bg-gray-950 isolate" data-tab={activeTab}>
+      <div className="flex-1 flex overflow-hidden bg-gray-950 isolate" data-tab={activeTab}>
         {/* Left: Sessions list */}
         <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col relative z-10 bg-gray-950">
           <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
@@ -732,6 +718,11 @@ export default function App() {
               />
             </ErrorBoundary>
           )}
+          {activeTab === 'meshtastic' && (
+            <ErrorBoundary>
+              <MeshTab />
+            </ErrorBoundary>
+          )}
           {activeTab === 'tasks' && (
             <TaskBoard
               tasks={tasks}
@@ -828,45 +819,6 @@ export default function App() {
         open={showShortcutHelp}
         onToggle={() => setShowShortcutHelp((prev) => !prev)}
       />
-      <DispatchDrawerHandle open={showDispatch} onToggle={() => setShowDispatch((prev) => !prev)} />
-      <DispatchDrawer
-        open={showDispatch}
-        onClose={() => setShowDispatch(false)}
-        onSingleDispatchSuccess={(sessionId, fromRect) => {
-          // Compute target = where the session card lives in the sidebar
-          // (or center of the main panel if no card found). Fire the
-          // electrical-signal animation, close the drawer, and after the
-          // animation arrives at the target, jump to that session's
-          // detail view.
-          const card = document.querySelector(`[data-session-card-id="${sessionId}"]`)
-          const cardRect = card?.getBoundingClientRect()
-          const main = document.querySelector('main')?.getBoundingClientRect()
-          const to = cardRect
-            ? { x: cardRect.left + cardRect.width / 2, y: cardRect.top + cardRect.height / 2 }
-            : main
-              ? { x: main.left + main.width / 2, y: main.top + main.height / 2 }
-              : { x: window.innerWidth / 2, y: window.innerHeight / 2 }
-          const from = fromRect
-            ? { x: fromRect.left + fromRect.width / 2, y: fromRect.top + fromRect.height / 2 }
-            : { x: window.innerWidth / 2, y: window.innerHeight - 100 }
-          setShowDispatch(false)
-          setDispatchSignal({ from, to, sessionId })
-        }}
-      />
-      {dispatchSignal && (
-        <DispatchSignal
-          from={dispatchSignal.from}
-          to={dispatchSignal.to}
-          onComplete={() => {
-            // Switch to the target session's detail view, then clear the
-            // overlay so it doesn't linger as an empty SVG layer.
-            setActiveTab('agents')
-            setSelectedSessionId(dispatchSignal.sessionId)
-            setAgentView('detail')
-            setDispatchSignal(null)
-          }}
-        />
-      )}
     </div>
   )
 }
