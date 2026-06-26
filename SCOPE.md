@@ -42,6 +42,26 @@ classified**. This keeps the manifest complete without enumerating all ~52 compo
 | Kanban / AgentTree / Triage | three modes of Agents; Triage is the default | 3 / redesign |
 | DispatchDrawer / DispatchSignal | fold into the Triage multi-select (SelectionBar) | redesign |
 
+### DispatchDrawer migration path (redesign phase)
+
+`DispatchDrawer.jsx` carries a `DEPRECATED SURFACE` banner. It is **not** a quick
+fold: `TriageView` today tracks only a single `selectedId`, so the dispatch verb
+has no multi-select to live in yet. Concrete steps when the redesign lands:
+
+1. Add multi-select to `TriageView/TriageView.jsx` — per-row checkbox + a
+   `selectedIds` Set (alongside the existing single-select `selectedId`).
+2. Add a **SelectionBar** that appears when `selectedIds.size > 0`, owning the one
+   dispatch verb: a composer that POSTs `/api/sessions/:id/message` per selected
+   session (the same call the current drawer uses).
+3. Reuse the per-child dispatch-state rendering (pending/ok/failed) from
+   `DispatchDrawer.jsx`; drop the drawer chrome, the header "Dispatch" button +
+   `showDispatch` state (`App.jsx`), and `DispatchDrawerHandle`.
+4. Keep `DispatchSignal.jsx` — re-anchor the fly-to animation from the
+   SelectionBar's send button.
+
+Invariant held in the meantime: no new **top-level** Dispatch tab (guarded by
+`coreTabs.test.js`). The drawer stays as the working surface until step 2 ships.
+
 ## IA ruling — the "Pipeline" vocabulary (redesign · 2026-06-09)
 
 One word for *"a guardrailed runnable process."* **Runs is the single orchestration

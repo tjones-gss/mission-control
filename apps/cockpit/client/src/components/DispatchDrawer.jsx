@@ -1,3 +1,23 @@
+// DEPRECATED SURFACE — slated to fold into the Triage multi-select.
+// Per SCOPE.md ("Dispatch → fold into the Triage multi-select (SelectionBar);
+// keep the verb, retire the surface"), this standalone drawer is a redesign-phase
+// collapse target, NOT a permanent surface. Do not add features here.
+//
+// Migration path (redesign phase — > a quick fold because TriageView has no
+// multi-select infrastructure yet):
+//   1. Add multi-select to TriageView/TriageView.jsx — a per-row checkbox + a
+//      `selectedIds` Set in state (today it only tracks single `selectedId`).
+//   2. Add a SelectionBar that appears when selectedIds.size > 0, carrying the
+//      one dispatch verb: a message composer that POSTs to
+//      /api/sessions/:id/message for each selected session (the same call the
+//      single-dispatch path here already uses).
+//   3. Reuse the dispatch-state/result rendering (pending/ok/failed per child)
+//      from this file; drop the drawer chrome, the header "Dispatch" button
+//      (App.jsx), DispatchDrawerHandle, and the `showDispatch` state.
+//   4. Keep DispatchSignal.jsx (the fly-to animation) — re-anchor it from the
+//      SelectionBar's send button instead of the drawer.
+// Until then this drawer stays as the working surface; the guard is that no new
+// *top-level* Dispatch tab exists (see coreTabs.test.js).
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   X,
