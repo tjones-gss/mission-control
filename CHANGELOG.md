@@ -10,6 +10,8 @@ the **package semver** axis; `0.4.0` is the first tagged version off `0.1.0`.
 
 <!-- New entries land here. ONLY S7 (E-release-eng) flips the heading below. -->
 
+## [0.5.0] - 2026-06-26
+
 ### The Epicenter — ADR-0008 SQLite cache + search everything + palette + AFK notify + analytics + knowledge
 
 [ADR-0008](docs/adr/0008-sqlite-derived-read-cache.md) **Accepted** (amended:
