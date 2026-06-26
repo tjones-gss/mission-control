@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Clock, Cpu, ChevronDown, ChevronRight } from 'lucide-react'
 import { QuickActions } from '../QuickActions.jsx'
 import { MetaBuildBanner } from './MetaBuildBanner.jsx'
+import { useApi } from '../../hooks/useApi.js'
 import { projectLabel } from '../../utils/session.js'
+import { suggestReply } from '../../utils/suggestReply.js'
 import { formatCost } from '../../utils/cost.js'
 
 // The "Needs you" triage home (Oversight redesign). Instead of the equal-weight
@@ -54,6 +56,14 @@ function topTools(toolUseCounts, n = 2) {
 function AttnCard({ session, onSelect }) {
   const label = projectLabel(session)
   const danger = session.riskLevel === 'DESTRUCTIVE'
+  // Smart Triage reply: pull the tail of this blocked session's transcript and
+  // derive a one-tap context-aware suggestion. Bounded — AttnCard renders only
+  // for the (few) needs-input sessions. A failed/empty fetch yields null, so the
+  // card silently falls back to the generic QuickActions chips.
+  const { data: msgData } = useApi(`/api/sessions/${session.sessionId}/messages?limit=12`, [
+    session.sessionId,
+  ])
+  const suggestion = useMemo(() => suggestReply(msgData?.messages || []), [msgData])
   return (
     <div
       className="relative rounded-xl border bg-[var(--mc-surface)] p-4 transition-colors"
@@ -99,7 +109,11 @@ function AttnCard({ session, onSelect }) {
       <div className="mt-2 flex items-center gap-2">
         {/* Real write path: posts to /api/sessions/:id/message. onReply opens the
             full conversation to type a custom answer. */}
-        <QuickActions sessionId={session.sessionId} onReply={() => onSelect(session.sessionId)} />
+        <QuickActions
+          sessionId={session.sessionId}
+          suggestion={suggestion}
+          onReply={() => onSelect(session.sessionId)}
+        />
       </div>
     </div>
   )

@@ -82,6 +82,35 @@ describe('QuickActions', () => {
     expect(onReply).toHaveBeenCalledWith('s1')
   })
 
+  it('renders a smart suggestion chip before the default replies', () => {
+    render(<QuickActions sessionId="s1" suggestion="Approved — go ahead." />)
+    expect(screen.getByText(/Approved — go ahead\./)).toBeInTheDocument()
+    // Default replies still present alongside it.
+    expect(screen.getByText('yes')).toBeInTheDocument()
+  })
+
+  it('sends the full suggestion text when the suggestion chip is clicked', async () => {
+    let capturedBody = null
+    server.use(
+      http.post('/api/sessions/:sessionId/message', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
+      }),
+    )
+    render(<QuickActions sessionId="s1" suggestion="Approved — go ahead." />)
+    await userEvent.click(screen.getByText(/Approved — go ahead\./))
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy()
+      expect(capturedBody.message).toBe('Approved — go ahead.')
+    })
+  })
+
+  it('renders no suggestion chip when suggestion is null', () => {
+    render(<QuickActions sessionId="s1" suggestion={null} />)
+    expect(screen.queryByText(/✨/)).not.toBeInTheDocument()
+    expect(screen.getByText('yes')).toBeInTheDocument()
+  })
+
   it('clears error after 3s', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     server.use(

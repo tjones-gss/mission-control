@@ -1,4 +1,6 @@
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
+import { server } from '../mocks/server.js'
 import { TriageView } from '../../components/TriageView/TriageView.jsx'
 
 const HOUR = 3_600_000
@@ -123,6 +125,19 @@ describe('TriageView — needs-you cards', () => {
     renderView([makeSession('a', { needsInput: true })], { onSelect })
     fireEvent.click(screen.getByText('a'))
     expect(onSelect).toHaveBeenCalledWith('a')
+  })
+
+  it('surfaces a smart suggestion chip from the session transcript', async () => {
+    server.use(
+      http.get('/api/sessions/:sessionId/messages', () =>
+        HttpResponse.json({
+          sessionId: 'a',
+          messages: [{ type: 'assistant', blocks: [{ type: 'text', text: 'Should I proceed?' }] }],
+        }),
+      ),
+    )
+    renderView([makeSession('a', { needsInput: true })])
+    await waitFor(() => expect(screen.getByText(/go ahead/i)).toBeInTheDocument())
   })
 })
 
