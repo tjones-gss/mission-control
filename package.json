@@ -9,7 +9,7 @@
   "scripts": {
     "setup": "node installers/setup.mjs",
     "setup:check": "node installers/setup.mjs --check",
-    "up": "npm --prefix apps/cockpit run dev",
+    "up": "node scripts/wait-ready.js",
     "up:docker": "docker compose -f docker/docker-compose.yml up --build",
     "down:docker": "docker compose -f docker/docker-compose.yml down",
     "dev": "npm run up",

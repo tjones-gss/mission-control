@@ -17,7 +17,7 @@ export function _reset() {
   shuttingDown = false
 }
 
-export function registerShutdown({ server, watcher }) {
+export function registerShutdown({ server, watcher, exit = (code) => process.exit(code) }) {
   const shutdown = async (signal) => {
     if (shuttingDown) return
     shuttingDown = true
@@ -33,13 +33,24 @@ export function registerShutdown({ server, watcher }) {
       /* sse module may not be loaded in tests */
     }
 
-    // 3. Close file watcher
+    // 3. Close the SQLite derived-cache connection (ADR-0008). Releasing the
+    // handle flushes WAL and avoids leaving a wedged lock for the next boot —
+    // the same stale-process class the prestart guard warns about. Best-effort:
+    // the cache is rebuildable, so a close failure must never block exit.
+    try {
+      const { closeDb } = await import('./db/connection.js')
+      closeDb()
+    } catch {
+      /* db module may not be loaded (degraded mode / tests) */
+    }
+
+    // 4. Close file watcher
     if (watcher && typeof watcher.close === 'function') {
       await watcher.close()
     }
 
-    // 4. Exit
-    process.exit(0)
+    // 5. Exit
+    exit(0)
   }
 
   process.on('SIGTERM', () => shutdown('SIGTERM'))
@@ -55,4 +66,7 @@ export function registerShutdown({ server, watcher }) {
     // Log but don't crash — PTY errors on Windows can trigger unhandled rejections
     // that are non-fatal to the rest of the server.
   })
+
+  // Returned so the sequence is unit-testable without raising a real signal.
+  return shutdown
 }
