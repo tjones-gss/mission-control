@@ -141,6 +141,50 @@ describe('TriageView — needs-you cards', () => {
   })
 })
 
+describe('TriageView — multi-select + SelectionBar', () => {
+  it('renders no SelectionBar until a card is checked', () => {
+    renderView([makeSession('a', { needsInput: true })])
+    expect(screen.queryByText(/session.* selected/i)).not.toBeInTheDocument()
+  })
+
+  it('checking a card checkbox reveals the SelectionBar with the count', () => {
+    renderView([makeSession('a', { needsInput: true })])
+    fireEvent.click(screen.getByRole('checkbox', { name: /select a/i }))
+    expect(screen.getByText('1 session selected')).toBeInTheDocument()
+  })
+
+  it('checking a second card (a different section) updates the count', () => {
+    renderView([makeSession('a', { needsInput: true }), makeSession('b', { isActive: true })])
+    fireEvent.click(screen.getByRole('checkbox', { name: /select a/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /select b/i }))
+    expect(screen.getByText('2 sessions selected')).toBeInTheDocument()
+  })
+
+  it('unchecking the last selected card hides the SelectionBar', () => {
+    renderView([makeSession('a', { needsInput: true })])
+    const cb = screen.getByRole('checkbox', { name: /select a/i })
+    fireEvent.click(cb)
+    expect(screen.getByText('1 session selected')).toBeInTheDocument()
+    fireEvent.click(cb)
+    expect(screen.queryByText(/session.* selected/i)).not.toBeInTheDocument()
+  })
+
+  it('Escape clears the selection and hides the SelectionBar', () => {
+    renderView([makeSession('a', { needsInput: true })])
+    fireEvent.click(screen.getByRole('checkbox', { name: /select a/i }))
+    expect(screen.getByText('1 session selected')).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByText(/session.* selected/i)).not.toBeInTheDocument()
+  })
+
+  it('toggling the checkbox does not navigate into the session (no onSelect)', () => {
+    const onSelect = vi.fn()
+    renderView([makeSession('a', { needsInput: true })], { onSelect })
+    fireEvent.click(screen.getByRole('checkbox', { name: /select a/i }))
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+})
+
 describe('TriageView — empty + calm', () => {
   it('shows an all-clear message when nothing needs the user', () => {
     renderView([makeSession('c', { isActive: true })])
