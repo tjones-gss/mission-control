@@ -28,11 +28,11 @@ describe('OpenAPI docs surface (mounted via buildApp)', () => {
     expect(res.body.info.title).toBe('Mission Control Cockpit API')
   })
 
-  it('reports info.version equal to the server package version (0.4.0)', async () => {
+  it('reports info.version equal to the server package version (0.5.0)', async () => {
     const app = buildApp()
     const res = await request(app).get('/api/docs.json')
     expect(res.body.info.version).toBe(serverPkg.version)
-    expect(res.body.info.version).toBe('0.4.0')
+    expect(res.body.info.version).toBe('0.5.0')
   })
 
   it('exposes the CORE paths in the served spec', async () => {

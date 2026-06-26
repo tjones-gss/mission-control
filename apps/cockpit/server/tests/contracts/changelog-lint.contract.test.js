@@ -43,12 +43,12 @@ describe('CHANGELOG.md lint (Keep-a-Changelog, package semver axis)', () => {
     expect(unreleased).toHaveLength(1)
   })
 
-  it('the top released heading equals the package version (0.4.0)', () => {
+  it('the top released heading equals the package version (0.5.0)', () => {
     const all = headings(readChangelog())
     const released = all.filter((h) => h.label !== 'Unreleased')
     expect(released.length, 'no released heading found').toBeGreaterThan(0)
     expect(released[0].label).toBe(rootPackageVersion())
-    expect(released[0].label).toBe('0.4.0')
+    expect(released[0].label).toBe('0.5.0')
   })
 
   it('[Unreleased] sits above the top released heading', () => {

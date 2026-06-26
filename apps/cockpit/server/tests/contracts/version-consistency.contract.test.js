@@ -12,9 +12,9 @@ import {
   parsePyprojectVersion,
 } from '../../../../../scripts/release/version-sources.js'
 
-// SEMVER lockstep target for this phase (LOCKED: first tagged version off 0.1.0
-// is 0.4.0). All 5 package.json + 2 pyproject.toml [project] versions agree.
-const EXPECTED_VERSION = '0.4.0'
+// SEMVER lockstep target for this phase (LOCKED: current release is 0.5.0).
+// All 5 package.json + 2 pyproject.toml [project] versions agree.
+const EXPECTED_VERSION = '0.5.0'
 
 const ROOT = repoRoot()
 
@@ -55,7 +55,7 @@ describe('version single-sourcing (semver lockstep)', () => {
     expect([...versions]).toEqual([EXPECTED_VERSION])
   })
 
-  it('the agreed version is exactly 0.4.0 (LOCKED for this phase)', () => {
+  it('the agreed version is exactly 0.5.0 (LOCKED for this phase)', () => {
     expect(readJson('package.json').version).toBe(EXPECTED_VERSION)
   })
 })
