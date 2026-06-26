@@ -283,3 +283,32 @@ export function originGuard(req, res, next) {
 }
 
 export const securityMiddleware = [helmetMiddleware, limiter, apiKeyAuth]
+
+// Loopback bind addresses — the cockpit's localhost-first default (ADR-0004).
+const LOOPBACK_BIND_ADDRESSES = new Set(['127.0.0.1', '::1', 'localhost'])
+
+// Defense-in-depth startup advisory (NOT a guard — it never blocks startup).
+//
+// When the cockpit is reachable beyond pure loopback — bound to a non-loopback
+// address (e.g. 0.0.0.0 for LAN), or with extra Host values opened via
+// OVERSIGHT_ALLOWED_HOSTS — but no OVERSIGHT_API_KEY is set, its state-changing
+// routes rest on Origin pinning alone. A non-browser LAN client sends no Origin
+// and so is rejected, but the SECURITY block above is explicit that token auth
+// MUST be on before any such exposure. This returns a warning string in that
+// case (else null) for start() to log; it throws nothing and changes no state.
+export function insecureExposureWarning({ host, apiKey, allowedHosts } = {}) {
+  if (apiKey) return null
+  const bind = (host || '').trim().toLowerCase()
+  const boundBeyondLoopback = bind !== '' && !LOOPBACK_BIND_ADDRESSES.has(bind)
+  const hasExtraAllowedHosts = !!(allowedHosts && allowedHosts.trim())
+  if (!boundBeyondLoopback && !hasExtraAllowedHosts) return null
+  const reason = boundBeyondLoopback
+    ? `bound to non-loopback host "${host}"`
+    : 'OVERSIGHT_ALLOWED_HOSTS is set'
+  return (
+    `SECURITY: the cockpit is ${reason} but OVERSIGHT_API_KEY is not set. ` +
+    'State-changing endpoints are then protected only by Origin pinning, which ' +
+    'a non-browser client can bypass. Set OVERSIGHT_API_KEY before exposing the ' +
+    'cockpit beyond localhost.'
+  )
+}

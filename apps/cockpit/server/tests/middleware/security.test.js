@@ -5,6 +5,7 @@ import {
   getAllowedOrigins,
   hostCheck,
   originGuard,
+  insecureExposureWarning,
 } from '../../middleware/security.js'
 
 describe('security middleware', () => {
@@ -494,6 +495,38 @@ describe('security middleware', () => {
       process.env.OVERSIGHT_ALLOWED_ORIGINS = 'http://a.test'
       process.env.OVERSIGHT_CORS_ORIGIN = 'http://b.test'
       expect(getAllowedOrigins()).toEqual(['http://a.test'])
+    })
+  })
+
+  describe('insecureExposureWarning', () => {
+    it('is silent for the default loopback bind with no API key', () => {
+      expect(insecureExposureWarning({ host: '127.0.0.1', apiKey: null })).toBeNull()
+      expect(insecureExposureWarning({ host: 'localhost', apiKey: null })).toBeNull()
+      expect(insecureExposureWarning({ host: '::1', apiKey: null })).toBeNull()
+    })
+
+    it('warns when bound to a non-loopback host with no API key', () => {
+      const w = insecureExposureWarning({ host: '0.0.0.0', apiKey: null })
+      expect(w).toMatch(/SECURITY/)
+      expect(w).toMatch(/0\.0\.0\.0/)
+      expect(w).toMatch(/OVERSIGHT_API_KEY/)
+    })
+
+    it('warns when OVERSIGHT_ALLOWED_HOSTS is set with no API key (even on loopback)', () => {
+      const w = insecureExposureWarning({
+        host: '127.0.0.1',
+        apiKey: null,
+        allowedHosts: 'box.lan',
+      })
+      expect(w).toMatch(/SECURITY/)
+      expect(w).toMatch(/OVERSIGHT_ALLOWED_HOSTS/)
+    })
+
+    it('is silent once an API key is set, regardless of exposure', () => {
+      expect(insecureExposureWarning({ host: '0.0.0.0', apiKey: 'secret' })).toBeNull()
+      expect(
+        insecureExposureWarning({ host: '127.0.0.1', apiKey: 'secret', allowedHosts: 'box.lan' }),
+      ).toBeNull()
     })
   })
 })

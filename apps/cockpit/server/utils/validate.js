@@ -88,6 +88,41 @@ export function validateSkillName(name, res) {
   return true
 }
 
+// Slash-command names invoked against a RUNNING session (POST /:id/skill).
+// Unlike writable skill *files* (validateSkillName), these may be plugin-
+// namespaced (e.g. "superpowers:brainstorming"), so ':' is allowed here. The
+// value is still a SINGLE token — no whitespace, no newlines — so it cannot
+// inject extra lines/instructions into the session prompt that the route builds
+// as `/${skill} ${args}`. args are capped (and kept on one logical line by the
+// downstream prompt sanitizer) so an over-long or multi-line payload can't be
+// smuggled into the running agent.
+const SLASH_COMMAND_RE = /^[a-zA-Z0-9_:-]+$/
+const MAX_SKILL_ARGS_LENGTH = 2000
+
+export function validateSlashCommand(skill, skillArgs, res) {
+  if (
+    typeof skill !== 'string' ||
+    skill.length > MAX_NAME_LENGTH ||
+    !SLASH_COMMAND_RE.test(skill)
+  ) {
+    res.status(400).json({
+      error:
+        'Invalid skill name. Use letters, digits, underscores, hyphens, and colons ' +
+        `(no spaces or newlines), 1-${MAX_NAME_LENGTH} characters.`,
+    })
+    return false
+  }
+  if (skillArgs != null) {
+    if (typeof skillArgs !== 'string' || skillArgs.length > MAX_SKILL_ARGS_LENGTH) {
+      res.status(400).json({
+        error: `Invalid skill args. Must be a string of at most ${MAX_SKILL_ARGS_LENGTH} characters.`,
+      })
+      return false
+    }
+  }
+  return true
+}
+
 export function validateWorkflowName(name, res) {
   if (!WORKFLOW_NAME_RE.test(name) || !isAcceptableName(name)) {
     res.status(400).json({

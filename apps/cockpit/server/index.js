@@ -1,7 +1,13 @@
 import express from 'express'
 import cors from 'cors'
 import { config } from './lib/config.js'
-import { securityMiddleware, getCorsOrigin, hostCheck, originGuard } from './middleware/security.js'
+import {
+  securityMiddleware,
+  getCorsOrigin,
+  hostCheck,
+  originGuard,
+  insecureExposureWarning,
+} from './middleware/security.js'
 import { requestLogger } from './middleware/requestLogger.js'
 import { performanceMiddleware } from './middleware/performance.js'
 import { registerShutdown } from './lib/lifecycle.js'
@@ -142,6 +148,15 @@ export const createApp = buildApp
 // factory (e.g. in a test) never opens a socket.
 export function start() {
   const app = buildApp()
+
+  // Startup security advisory (never fatal): warn if the cockpit is reachable
+  // beyond loopback with no API key set. See middleware/security.js.
+  const exposureWarning = insecureExposureWarning({
+    host: config.host,
+    apiKey: config.apiKey,
+    allowedHosts: process.env.OVERSIGHT_ALLOWED_HOSTS,
+  })
+  if (exposureWarning) logger.warn(exposureWarning)
 
   // Prevent unhandled rejections from crashing the server (e.g., PTY spawn failures)
   process.on('unhandledRejection', (err) => {

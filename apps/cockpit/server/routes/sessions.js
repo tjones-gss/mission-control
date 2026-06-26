@@ -29,13 +29,20 @@ import {
   VALID_MODEL_SHORTCUTS,
 } from '../pty-session.js'
 import { onEvent, emit } from '../sse.js'
-import { validateSessionId } from '../utils/validate.js'
+import { validateSessionId, validateSlashCommand } from '../utils/validate.js'
 import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
 import { atomicWriteJson } from '../lib/atomic-write.js'
 import { recordAuditEventSafe } from '../lib/audit-log.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
+
+// Display names can hold any unicode (we want emoji and punctuation), but
+// long ones break the sidebar layout and balloon the CLI --name arg. 80 chars
+// is enough for any sensible session label and well below the 100-char
+// file-name cap used elsewhere. Shared by the /new spawn path and the rename
+// route so both enforce the same ceiling.
+const MAX_DISPLAY_NAME_LENGTH = 80
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Image upload config
@@ -518,6 +525,10 @@ router.post('/:sessionId/skill', async (req, res) => {
   if (!skill || typeof skill !== 'string') {
     return res.status(400).json({ error: 'skill is required' })
   }
+  // Harden the slash-command line before it is sent to the running agent: a
+  // single token (colons allowed for namespaced skills) + a length-capped args
+  // string, so neither field can inject extra instructions into the prompt.
+  if (!validateSlashCommand(skill, skillArgs, res)) return
 
   const session = getSessionById(sessionId)
   if (!session) return res.status(404).json({ error: 'Session not found' })
@@ -582,8 +593,13 @@ router.post('/new', async (req, res) => {
   // Use CLI subprocess for new session creation (stable on Windows).
   // PTY is only used for resuming existing sessions (message endpoint).
   const baseArgs = ['-p', prompt.trim(), '--output-format', 'stream-json']
-  if (name && typeof name === 'string' && name.trim()) {
-    baseArgs.push('--name', name.trim())
+  if (name != null) {
+    if (typeof name !== 'string' || name.trim().length > MAX_DISPLAY_NAME_LENGTH) {
+      return res.status(400).json({
+        error: `name too long (max ${MAX_DISPLAY_NAME_LENGTH} characters)`,
+      })
+    }
+    if (name.trim()) baseArgs.push('--name', name.trim())
   }
   if (worktree === true) {
     baseArgs.push('--worktree')
@@ -763,11 +779,6 @@ router.post('/:sessionId/fork', async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 // Name endpoint
 // ──────────────────────────────────────────────────────────────────────────────
-
-// Display names can hold any unicode (we want emoji and punctuation), but
-// long ones break the sidebar layout. 80 chars is enough for any sensible
-// session label and well below the 100-char file-name cap used elsewhere.
-const MAX_DISPLAY_NAME_LENGTH = 80
 
 router.post('/:sessionId/name', async (req, res) => {
   const { sessionId } = req.params
