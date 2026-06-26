@@ -169,7 +169,7 @@ def _server_version() -> str:
     # The harness package version travels with the lockstep semver; reading the
     # sidecar-adjacent pyproject is overkill here — a stable constant suffices
     # for serverInfo, bumped with the package.
-    return "0.4.0"
+    return "0.5.0"
 
 
 def serve(root: Path, stdin=None, stdout=None) -> int:
