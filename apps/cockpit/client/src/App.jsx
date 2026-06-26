@@ -59,7 +59,10 @@ import { useTheme } from './hooks/useTheme.js'
 // window works with zero setup; the rails/power tools are opt-in) instead of
 // presenting all eight tabs at once. The preference is persisted so a power user
 // who flips Advanced on keeps it on across reloads.
-const CORE_TABS = [
+// Exported for the tab-manifest guard test (coreTabs.test.js): Runs is the single
+// orchestration surface — Conductor / Missions / Pipeline are modes inside Runs,
+// never sibling tabs (SCOPE.md freeze rule + ADR-0006).
+export const CORE_TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
   { id: 'mesh', label: 'Mesh', icon: Network },
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
@@ -68,7 +71,7 @@ const CORE_TABS = [
   { id: 'history', label: 'History', icon: History },
 ]
 
-const ADVANCED_TABS = [
+export const ADVANCED_TABS = [
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
   { id: 'teams', label: 'Teams', icon: Users },
