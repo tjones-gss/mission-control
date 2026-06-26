@@ -1,11 +1,17 @@
 import { Router } from 'express'
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const router = Router()
 const startTime = Date.now()
 let ready = false
+
+// Server version mirrors package.json (single source of truth) so /api/health
+// never drifts from the published release — same pattern as lib/openapi.js.
+const require = createRequire(import.meta.url)
+const { version: serverVersion } = require('../package.json')
 
 export function setHealthReady() {
   ready = true
@@ -109,7 +115,14 @@ async function detectHarness() {
  */
 router.get('/', async (req, res) => {
   const harness = await detectHarness()
-  res.json({ ok: true, ts: Date.now(), harness })
+  res.json({
+    status: 'ok',
+    ok: true,
+    version: serverVersion,
+    uptime: Math.floor((Date.now() - startTime) / 1000),
+    ts: Date.now(),
+    harness,
+  })
 })
 
 /**

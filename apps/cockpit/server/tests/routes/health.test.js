@@ -17,6 +17,20 @@ describe('health routes', () => {
     expect(res.body.ts).toBeTypeOf('number')
   })
 
+  test('GET / reports status, version, and uptime in seconds', async () => {
+    const app = createApp()
+    const res = await request(app).get('/api/health')
+    expect(res.status).toBe(200)
+    expect(res.body.status).toBe('ok')
+    // version mirrors the server package.json (single source of truth)
+    expect(res.body.version).toBeTypeOf('string')
+    expect(res.body.version).toMatch(/^\d+\.\d+\.\d+/)
+    // uptime is whole seconds since process start, never negative
+    expect(res.body.uptime).toBeTypeOf('number')
+    expect(Number.isInteger(res.body.uptime)).toBe(true)
+    expect(res.body.uptime).toBeGreaterThanOrEqual(0)
+  })
+
   test('GET / includes a harness availability probe', async () => {
     // Hermetic: the harness object (and its boolean `available` field) must be
     // present whether or not python is actually installed on this machine.
