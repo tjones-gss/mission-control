@@ -34,6 +34,35 @@ function emptyChild() {
   return { cwd: '', prompt: '', workflow: '', quarantine: false }
 }
 
+const NO_FIELD_ERRORS = { goal: false, children: {} }
+
+// A confirmation is required for the larger / costlier runs: 3+ agents OR a
+// configured budget above $1. Keeps the one-tap path for the common small run.
+const CONFIRM_CHILD_THRESHOLD = 3
+const CONFIRM_BUDGET_THRESHOLD = 1
+
+// Rough per-child cost band for the pre-launch estimate. Deliberately coarse —
+// the point is to set expectations ("this is cents, not dollars"), not to be
+// exact. Adversarial verification roughly adds another worker's worth of cost.
+const EST_PER_CHILD_LOW = 0.05
+const EST_PER_CHILD_HIGH = 0.35
+
+function estimateCostRange(childCount, verify) {
+  if (childCount <= 0) return null
+  let low = childCount * EST_PER_CHILD_LOW
+  let high = childCount * EST_PER_CHILD_HIGH
+  if (verify) {
+    low *= 1.4
+    high *= 1.7
+  }
+  return { low, high }
+}
+
+function formatRange(range) {
+  if (!range) return '—'
+  return `~$${range.low.toFixed(2)}–$${range.high.toFixed(2)}`
+}
+
 export function LaunchDrawer({
   open,
   onClose,
@@ -49,6 +78,11 @@ export function LaunchDrawer({
   const [verify, setVerify] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  // Per-field validation highlighting (empty goal / child cwd / child body).
+  const [fieldErrors, setFieldErrors] = useState(NO_FIELD_ERRORS)
+  // When a launch needs confirmation, the built body is parked here and a
+  // confirmation summary replaces the footer until the user confirms or backs out.
+  const [pendingConfirm, setPendingConfirm] = useState(null)
   const goalRef = useRef(null)
   const workflowList = useMemo(() => (Array.isArray(workflows) ? workflows : []), [workflows])
   const templateList = useMemo(() => (Array.isArray(templates) ? templates : []), [templates])
@@ -57,7 +91,17 @@ export function LaunchDrawer({
   useEffect(() => {
     if (!open) return
     setError(null)
+    setFieldErrors(NO_FIELD_ERRORS)
+    setPendingConfirm(null)
   }, [open])
+
+  // Any edit to the form invalidates a parked confirmation and clears stale
+  // validation highlights — the user is actively fixing things.
+  useEffect(() => {
+    setPendingConfirm(null)
+    setFieldErrors(NO_FIELD_ERRORS)
+    setError(null)
+  }, [goal, children, budget, verify])
 
   // Load a saved template into the form. The user can still tweak any field
   // before launching — server-side the inline body overrides template defaults.
@@ -94,30 +138,37 @@ export function LaunchDrawer({
   }, [])
 
   // Build the child array + policy shared by Launch and Save-as-template. Returns
-  // null and sets an error when the form is invalid. Only a prompt OR a workflow
-  // is sent per child; quarantine rides along only when checked.
+  // null and sets inline field errors + a summary message when the form is
+  // invalid. Only a prompt OR a workflow is sent per child; quarantine rides
+  // along only when checked.
   const buildBody = useCallback(() => {
+    const errors = { goal: false, children: {} }
+    let message = null
     if (!goal.trim()) {
-      setError('A goal is required.')
-      return null
+      errors.goal = true
+      message = 'A goal is required.'
     }
-    const payload = children
-      .filter((c) => c.cwd.trim())
-      .map((c) => {
-        const base = { cwd: c.cwd.trim() }
-        if (c.workflow.trim()) base.workflow = c.workflow.trim()
-        else base.prompt = c.prompt.trim()
-        if (c.quarantine) base.quarantine = true
-        return base
+    const withCwd = children.filter((c) => c.cwd.trim())
+    if (withCwd.length === 0) {
+      // None picked: highlight every child's project picker.
+      children.forEach((_, idx) => {
+        errors.children[idx] = { cwd: true }
       })
-    if (payload.length === 0) {
-      setError('Pick a project for at least one child.')
-      return null
+      message = message || 'Pick a project for at least one child.'
     }
-    if (payload.some((c) => !c.workflow && !c.prompt)) {
-      setError('Each child needs a prompt or a workflow.')
-      return null
-    }
+    const payload = []
+    children.forEach((c, idx) => {
+      if (!c.cwd.trim()) return
+      const base = { cwd: c.cwd.trim() }
+      if (c.workflow.trim()) base.workflow = c.workflow.trim()
+      else if (c.prompt.trim()) base.prompt = c.prompt.trim()
+      else {
+        errors.children[idx] = { ...(errors.children[idx] || {}), body: true }
+        message = message || 'Each child needs a prompt or a workflow.'
+      }
+      if (c.quarantine) base.quarantine = true
+      payload.push(base)
+    })
     // policy.budgetUsd from the budget field (when a positive number) and
     // policy.verify from the toggle — both omitted when off so behaviour is
     // unchanged for runs that do not opt in.
@@ -127,47 +178,74 @@ export function LaunchDrawer({
       policy.budgetUsd = budgetNum
     }
     if (verify) policy.verify = true
+    if (message) {
+      setFieldErrors(errors)
+      setError(message)
+      return null
+    }
+    setFieldErrors(NO_FIELD_ERRORS)
+    setError(null)
     return { goal: goal.trim(), children: payload, policy }
   }, [goal, children, budget, verify])
 
-  const submit = useCallback(async () => {
+  // POST a validated body to /api/fleet. Separated from submit() so the
+  // confirmation step can launch a previously-built body directly.
+  const doLaunch = useCallback(
+    async (body) => {
+      if (submitting) return
+      setSubmitting(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/fleet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error || data.detail || `HTTP ${res.status}`)
+        }
+        // Optimistically surface the new run as 'running'.
+        onLaunched({
+          id: data.id,
+          goal: body.goal,
+          status: data.status || 'running',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          childCount: body.children.length,
+          settledCount: 0,
+          synthesis: 'pending',
+        })
+        setGoal('')
+        setChildren([emptyChild()])
+        setBudget('')
+        setVerify(false)
+        setPendingConfirm(null)
+        onClose()
+      } catch (e) {
+        setError(e.message || 'Could not launch fleet.')
+      } finally {
+        setSubmitting(false)
+      }
+    },
+    [submitting, onLaunched, onClose],
+  )
+
+  // Validate, then either launch directly or park for confirmation when the run
+  // is large (3+ agents) or has a budget over $1.
+  const submit = useCallback(() => {
     if (submitting) return
     const body = buildBody()
     if (!body) return
-    setSubmitting(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/fleet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || data.ok === false) {
-        throw new Error(data.error || data.detail || `HTTP ${res.status}`)
-      }
-      // Optimistically surface the new run as 'running'.
-      onLaunched({
-        id: data.id,
-        goal: body.goal,
-        status: data.status || 'running',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        childCount: body.children.length,
-        settledCount: 0,
-        synthesis: 'pending',
-      })
-      setGoal('')
-      setChildren([emptyChild()])
-      setBudget('')
-      setVerify(false)
-      onClose()
-    } catch (e) {
-      setError(e.message || 'Could not launch fleet.')
-    } finally {
-      setSubmitting(false)
+    const needsConfirm =
+      body.children.length >= CONFIRM_CHILD_THRESHOLD ||
+      (body.policy.budgetUsd ?? 0) > CONFIRM_BUDGET_THRESHOLD
+    if (needsConfirm) {
+      setPendingConfirm(body)
+      return
     }
-  }, [submitting, buildBody, onLaunched, onClose])
+    doLaunch(body)
+  }, [submitting, buildBody, doLaunch])
 
   // Save the current form as a reusable template (POST /api/fleet/templates via
   // onSaveTemplate). Prompts for a name; does not launch. The template carries
@@ -197,6 +275,11 @@ export function LaunchDrawer({
     (cwd) => (cwd && !rootList.includes(cwd) ? [cwd, ...rootList] : rootList),
     [rootList],
   )
+
+  // Pre-launch cost estimate — based on the children that have a project picked
+  // (falling back to the row count) and whether verification is on.
+  const estChildCount = children.filter((c) => c.cwd.trim()).length || children.length
+  const estimate = estimateCostRange(estChildCount, verify)
 
   if (!open) return null
 
@@ -264,8 +347,13 @@ export function LaunchDrawer({
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               rows={2}
+              aria-invalid={fieldErrors.goal || undefined}
               placeholder="What should the fleet accomplish? (e.g. Add OAuth across all services)"
-              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none"
+              className={`w-full bg-gray-900 border rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none resize-none ${
+                fieldErrors.goal
+                  ? 'border-red-500 focus:border-red-500'
+                  : 'border-gray-700 focus:border-indigo-500'
+              }`}
             />
           </div>
 
@@ -363,7 +451,12 @@ export function LaunchDrawer({
                     value={child.cwd}
                     onChange={(e) => updateChild(idx, { cwd: e.target.value })}
                     aria-label={`child ${idx} working directory`}
-                    className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-indigo-500 font-mono"
+                    aria-invalid={fieldErrors.children[idx]?.cwd || undefined}
+                    className={`flex-1 min-w-0 bg-gray-900 border rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none font-mono ${
+                      fieldErrors.children[idx]?.cwd
+                        ? 'border-red-500 focus:border-red-500'
+                        : 'border-gray-700 focus:border-indigo-500'
+                    }`}
                   >
                     <option value="">— pick a fleet-ready project —</option>
                     {optionsFor(child.cwd).map((r) => (
@@ -392,7 +485,12 @@ export function LaunchDrawer({
                     rows={2}
                     placeholder="Prompt for this child…"
                     aria-label={`child ${idx} prompt`}
-                    className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 resize-none disabled:opacity-40"
+                    aria-invalid={fieldErrors.children[idx]?.body || undefined}
+                    className={`flex-1 min-w-0 bg-gray-900 border rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none resize-none disabled:opacity-40 ${
+                      fieldErrors.children[idx]?.body
+                        ? 'border-red-500 focus:border-red-500'
+                        : 'border-gray-700 focus:border-indigo-500'
+                    }`}
                   />
                   <div className="flex flex-col gap-1 shrink-0 w-40">
                     <span className="text-[10px] text-gray-600">or workflow</span>
@@ -427,30 +525,87 @@ export function LaunchDrawer({
           </div>
         </div>
 
-        <div className="border-t border-gray-800 px-4 py-3 bg-gray-900/40 flex items-center gap-3">
-          {error && (
-            <span className="text-[11px] text-red-400 flex items-center gap-1.5">
-              <AlertTriangle size={12} /> {error}
+        {pendingConfirm ? (
+          <div
+            data-testid="fleet-launch-confirm"
+            className="border-t border-gray-800 px-4 py-3 bg-amber-950/20 flex flex-col gap-2.5"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-amber-100">
+                  Launch {pendingConfirm.children.length} agent
+                  {pendingConfirm.children.length === 1 ? '' : 's'}?
+                </div>
+                <div className="mt-0.5 text-[11px] text-gray-400">
+                  {pendingConfirm.children.length} worktree
+                  {pendingConfirm.children.length === 1 ? '' : 's'} ·{' '}
+                  {typeof pendingConfirm.policy.budgetUsd === 'number'
+                    ? `$${pendingConfirm.policy.budgetUsd.toFixed(2)} budget`
+                    : 'no budget cap'}
+                  {pendingConfirm.policy.verify ? ' · adversarial verify' : ''} · est.{' '}
+                  {formatRange(estimate)}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {error && (
+                <span className="text-[11px] text-red-400 flex items-center gap-1.5">
+                  <AlertTriangle size={12} /> {error}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setPendingConfirm(null)}
+                disabled={submitting}
+                className="ml-auto px-3 py-2 rounded border border-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-800 hover:text-gray-100 disabled:opacity-30 transition-colors shrink-0"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={() => doLaunch(pendingConfirm)}
+                disabled={submitting}
+                className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+              >
+                {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                {submitting ? 'Launching…' : 'Confirm & launch'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="border-t border-gray-800 px-4 py-3 bg-gray-900/40 flex items-center gap-3">
+            {error && (
+              <span className="text-[11px] text-red-400 flex items-center gap-1.5">
+                <AlertTriangle size={12} /> {error}
+              </span>
+            )}
+            <span
+              data-testid="fleet-cost-estimate"
+              className="text-[11px] text-gray-500 flex items-center gap-1"
+              title="Rough pre-launch estimate based on child count and verification"
+            >
+              <DollarSign size={11} className="text-gray-600" /> Est. {formatRange(estimate)}
             </span>
-          )}
-          <button
-            type="button"
-            onClick={saveTemplate}
-            disabled={submitting}
-            className="ml-auto px-3 py-2 rounded border border-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-800 hover:text-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
-          >
-            <Save size={14} /> Save as template
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting}
-            className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
-          >
-            {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            {submitting ? 'Launching…' : 'Launch Fleet'}
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={saveTemplate}
+              disabled={submitting}
+              className="ml-auto px-3 py-2 rounded border border-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-800 hover:text-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+            >
+              <Save size={14} /> Save as template
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting}
+              className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+            >
+              {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              {submitting ? 'Launching…' : 'Launch Fleet'}
+            </button>
+          </div>
+        )}
       </div>
     </Dialog>
   )

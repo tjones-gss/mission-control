@@ -15,6 +15,62 @@ export const RUN_STATUS = {
   budget_exceeded: { cls: 'bg-orange-900/50 text-orange-300', dot: 'bg-orange-400' },
 }
 
+// Lifecycle steps shown as a stepper in the run header — a clearer signal than
+// the bare status word.
+const STEPS = ['Launch', 'Working', 'Synthesis', 'Done']
+const RUN_TERMINAL = new Set(['succeeded', 'partial', 'failed', 'cancelled', 'budget_exceeded'])
+const CHILD_SETTLED = new Set(['succeeded', 'failed', 'cancelled', 'rejected', 'budget_skipped'])
+
+// Map a run onto its current lifecycle step (0..3). Launch is always complete
+// once a run exists; Working covers children fanning out; Synthesis is the merge
+// pass; Done is any terminal state.
+function runStepIndex(run) {
+  const synth = run.synthesis?.status
+  if (RUN_TERMINAL.has(run.status)) return 3
+  if (synth === 'running' || synth === 'done') return 2
+  if (run.status === 'running') return 1
+  return 0
+}
+
+function FleetStepper({ run }) {
+  const current = runStepIndex(run)
+  const children = run.children || []
+  const settled = children.filter((c) => CHILD_SETTLED.has(c.status)).length
+  return (
+    <div data-testid="fleet-stepper" className="mt-2.5 flex flex-wrap items-center gap-1">
+      {STEPS.map((label, i) => {
+        const done = i < current
+        const active = i === current
+        const showCount = i === 1 && children.length > 0
+        return (
+          <div key={label} className="flex items-center gap-1">
+            <span
+              className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                active
+                  ? 'bg-indigo-900/50 text-indigo-200'
+                  : done
+                    ? 'text-emerald-400'
+                    : 'text-gray-600'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  active ? 'bg-indigo-400' : done ? 'bg-emerald-500' : 'bg-gray-700'
+                }`}
+              />
+              {label}
+              {showCount ? ` ${settled}/${children.length}` : ''}
+            </span>
+            {i < STEPS.length - 1 && (
+              <span className={`h-px w-3 ${done ? 'bg-emerald-700' : 'bg-gray-800'}`} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function timeAgo(iso) {
   if (!iso) return ''
   const t = Date.parse(iso)
@@ -137,6 +193,9 @@ export function RunDetail({ runId, version, onOpenSession }) {
           )}
           <span className="ml-auto text-[10px] text-gray-600">{timeAgo(run.createdAt)}</span>
         </div>
+
+        {/* Lifecycle stepper — Launch → Working → Synthesis → Done. */}
+        <FleetStepper run={run} />
 
         {/* Budget bar — spent vs cap, with a remaining readout. */}
         {budgetUsd != null && (

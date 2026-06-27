@@ -50,6 +50,16 @@ describe('RunDetail', () => {
     expect(screen.getByTestId('fleet-child-0')).toBeInTheDocument()
   })
 
+  it('renders the lifecycle stepper, marking the current phase', async () => {
+    // status running + synthesis pending + a running child → "Working" is active.
+    stub({ run: makeRun() })
+    render(<RunDetail runId="run-1" version={0} onOpenSession={vi.fn()} />)
+    await waitFor(() => expect(screen.getByTestId('fleet-stepper')).toBeInTheDocument())
+    const stepper = screen.getByTestId('fleet-stepper')
+    expect(stepper).toHaveTextContent(/working/i)
+    expect(stepper).toHaveTextContent('0/1')
+  })
+
   it('renders the budget bar when a budget cap is set', async () => {
     stub({
       run: makeRun({

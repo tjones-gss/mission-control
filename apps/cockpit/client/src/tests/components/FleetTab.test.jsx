@@ -138,7 +138,7 @@ describe('FleetTab', () => {
     await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
 
     // Open the launch drawer.
-    await userEvent.click(screen.getAllByRole('button', { name: /new fleet run/i })[0])
+    await userEvent.click(screen.getByRole('button', { name: /start your first run/i }))
     const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
 
     // Fill the goal + the first child's cwd + prompt.
@@ -167,7 +167,7 @@ describe('FleetTab', () => {
     render(<FleetTab fleetVersion={0} />)
     await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
 
-    await userEvent.click(screen.getAllByRole('button', { name: /new fleet run/i })[0])
+    await userEvent.click(screen.getByRole('button', { name: /start your first run/i }))
     const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
 
     const picker = within(dialog).getByLabelText(/child 0 working directory/i)
@@ -182,7 +182,7 @@ describe('FleetTab', () => {
     render(<FleetTab fleetVersion={0} />)
     await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
 
-    await userEvent.click(screen.getAllByRole('button', { name: /new fleet run/i })[0])
+    await userEvent.click(screen.getByRole('button', { name: /start your first run/i }))
     const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
 
     const notice = within(dialog).getByTestId('fleet-no-roots')
@@ -407,7 +407,7 @@ describe('FleetTab', () => {
     render(<FleetTab fleetVersion={0} />)
     await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
 
-    await userEvent.click(screen.getAllByRole('button', { name: /new fleet run/i })[0])
+    await userEvent.click(screen.getByRole('button', { name: /start your first run/i }))
     const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
 
     await userEvent.type(
@@ -424,7 +424,10 @@ describe('FleetTab', () => {
     await userEvent.click(within(dialog).getByLabelText(/verify results/i))
     await userEvent.click(within(dialog).getByLabelText(/child 0 quarantine/i))
 
+    // A budget > $1 routes through the confirmation step before launching.
     await userEvent.click(within(dialog).getByRole('button', { name: /launch fleet/i }))
+    const confirm = await within(dialog).findByTestId('fleet-launch-confirm')
+    await userEvent.click(within(confirm).getByRole('button', { name: /confirm & launch/i }))
 
     await waitFor(() => {
       const post = captured.find((c) => c.url === '/api/fleet')
@@ -533,7 +536,7 @@ describe('FleetTab', () => {
     render(<FleetTab fleetVersion={0} />)
     await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
 
-    await userEvent.click(screen.getAllByRole('button', { name: /new fleet run/i })[0])
+    await userEvent.click(screen.getByRole('button', { name: /start your first run/i }))
     const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
 
     // Populate the form FROM the saved template via the picker.
@@ -562,8 +565,11 @@ describe('FleetTab', () => {
       ])
     })
 
-    // 2) Launch FROM the template (the form is still populated) — POSTs to /api/fleet.
+    // 2) Launch FROM the template (the form is still populated) — POSTs to
+    // /api/fleet. The template's $20 budget triggers the confirmation step.
     await userEvent.click(within(dialog).getByRole('button', { name: /launch fleet/i }))
+    const confirm2 = await within(dialog).findByTestId('fleet-launch-confirm')
+    await userEvent.click(within(confirm2).getByRole('button', { name: /confirm & launch/i }))
     await waitFor(() => {
       const post = captured.find((c) => c.url === '/api/fleet')
       expect(post).toBeTruthy()
@@ -600,5 +606,87 @@ describe('FleetTab', () => {
     const c0 = screen.getByTestId('fleet-child-0')
     await userEvent.click(within(c0).getByRole('button', { name: /open session/i }))
     expect(onOpenSession).toHaveBeenCalledWith('sess-a')
+  })
+
+  // ── §3 launch UX polish ────────────────────────────────────────────────────
+  it('highlights empty required fields inline instead of launching', async () => {
+    const captured = stubFleet({ runs: [] })
+    render(<FleetTab fleetVersion={0} />)
+    await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /start your first run/i }))
+    const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
+
+    // Click Launch with nothing filled in.
+    await userEvent.click(within(dialog).getByRole('button', { name: /launch fleet/i }))
+
+    // Inline message + an aria-invalid goal field, and no POST issued.
+    expect(within(dialog).getByText(/a goal is required/i)).toBeInTheDocument()
+    expect(
+      within(dialog).getByPlaceholderText(/what should the fleet accomplish/i),
+    ).toHaveAttribute('aria-invalid', 'true')
+    expect(captured.find((c) => c.url === '/api/fleet')).toBeFalsy()
+  })
+
+  it('shows a rough pre-launch cost estimate', async () => {
+    stubFleet({ runs: [] })
+    render(<FleetTab fleetVersion={0} />)
+    await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /start your first run/i }))
+    const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
+
+    const est = within(dialog).getByTestId('fleet-cost-estimate')
+    expect(est).toHaveTextContent(/est\. ~\$/i)
+  })
+
+  it('requires confirmation for a 3+ agent run before launching', async () => {
+    const captured = stubFleet({ runs: [] })
+    render(<FleetTab fleetVersion={0} />)
+    await waitFor(() => expect(screen.getByText(/no fleet runs yet/i)).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /start your first run/i }))
+    const dialog = await screen.findByRole('dialog', { name: /new fleet run/i })
+
+    await userEvent.type(
+      within(dialog).getByPlaceholderText(/what should the fleet accomplish/i),
+      'Big fan-out',
+    )
+    const addChild = within(dialog).getByRole('button', { name: /add child/i })
+    await userEvent.click(addChild)
+    await userEvent.click(addChild)
+    for (const idx of [0, 1, 2]) {
+      await userEvent.selectOptions(
+        within(dialog).getByLabelText(new RegExp(`child ${idx} working directory`, 'i')),
+        'C:/proj/a',
+      )
+      await userEvent.type(
+        within(dialog).getByLabelText(new RegExp(`child ${idx} prompt`, 'i')),
+        'do it',
+      )
+    }
+
+    await userEvent.click(within(dialog).getByRole('button', { name: /launch fleet/i }))
+
+    // Confirmation appears; nothing posted yet.
+    const confirm = await within(dialog).findByTestId('fleet-launch-confirm')
+    expect(within(confirm).getByText(/launch 3 agents/i)).toBeInTheDocument()
+    expect(captured.find((c) => c.url === '/api/fleet')).toBeFalsy()
+
+    await userEvent.click(within(confirm).getByRole('button', { name: /confirm & launch/i }))
+    await waitFor(() => {
+      const post = captured.find((c) => c.url === '/api/fleet')
+      expect(post).toBeTruthy()
+      expect(post.body.children).toHaveLength(3)
+    })
+  })
+
+  it('renders a welcoming first-run CTA when there are no runs', async () => {
+    stubFleet({ runs: [] })
+    render(<FleetTab fleetVersion={0} />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /start your first run/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/launch your first fleet/i)).toBeInTheDocument()
   })
 })
