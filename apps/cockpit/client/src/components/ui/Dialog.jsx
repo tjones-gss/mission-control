@@ -47,7 +47,8 @@ function unlockBodyScroll() {
  *
  * @param {boolean} [open=true] - render when true; parents may also just unmount
  * @param {() => void} onClose
- * @param {'center'|'bottom'} [placement='center']
+ * @param {'center'|'bottom'|'left'|'right'} [placement='center'] - 'left'/'right'
+ *   anchor a full-height side drawer (used by the mobile sidebar / activity panels)
  * @param {boolean} [dismissible=true] - when false, Escape/backdrop won't close
  * @param {string} [label] - aria-label (used when labelledBy is absent)
  * @param {string} [labelledBy] - id of the element labeling the dialog
@@ -138,10 +139,12 @@ export function Dialog({
 
   if (!open) return null
 
-  const positionClasses =
-    placement === 'bottom'
-      ? 'fixed left-1/2 bottom-0 -translate-x-1/2 z-modal'
-      : 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal'
+  const positionClasses = {
+    bottom: 'fixed left-1/2 bottom-0 -translate-x-1/2 z-modal',
+    left: 'fixed left-0 top-0 bottom-0 z-modal',
+    right: 'fixed right-0 top-0 bottom-0 z-modal',
+    center: 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal',
+  }[placement]
 
   return createPortal(
     <>

@@ -289,6 +289,16 @@
   }
 }
 
+/* Mobile tap targets (WCAG 2.5.5 / AA): the top-chrome controls — tab nav,
+ * Advanced/Settings/Help, and the sidebar/activity drawer toggles — get a ≥44px
+ * hit area on small viewports without disturbing the dense desktop layout. */
+@media (max-width: 767px) {
+  header button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 body {
   @apply font-mono;
   /* Driven by the token layer so a theme swap recolors the base palette. The

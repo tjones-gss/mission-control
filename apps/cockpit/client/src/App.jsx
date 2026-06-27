@@ -19,6 +19,8 @@ import {
   SlidersHorizontal,
   Network,
   RadioTower,
+  Menu,
+  Activity,
 } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
@@ -46,6 +48,7 @@ import { LegendModal } from './components/LegendModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
 import { ShortcutHelpOverlay } from './components/ShortcutHelpOverlay.jsx'
 import { CommandPalette } from './components/CommandPalette.jsx'
+import { Dialog } from './components/ui/Dialog.jsx'
 import { NewSessionForm } from './components/NewSessionForm.jsx'
 import { WelcomeHero } from './components/WelcomeHero.jsx'
 import { ParserDegradedBanner } from './components/ParserDegradedBanner.jsx'
@@ -174,6 +177,11 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
+  // Mobile-responsive drawers: below the relevant breakpoint the Sessions
+  // sidebar (lg) and the LiveFeed activity panel (md) collapse to slide-in
+  // drawers opened from header toggles. No effect on the desktop fixed panes.
+  const [showSidebarDrawer, setShowSidebarDrawer] = useState(false)
+  const [showActivityDrawer, setShowActivityDrawer] = useState(false)
   const [events, setEvents] = useState([])
   // V3 hook instrumentation: the most recent real tool_call SSE event. MeshView
   // turns it into a live packet; null until a hook bridge is installed (then the
@@ -466,10 +474,66 @@ export default function App() {
 
   const [showNewSession, setShowNewSession] = useState(false)
 
+  // The Sessions panel body, shared by the desktop fixed sidebar (≥lg) and the
+  // mobile slide-in drawer (<lg). `onAfterSelect` lets the drawer close itself
+  // once the user picks a session; the fixed sidebar passes nothing.
+  const sessionsPanel = (onAfterSelect) => (
+    <>
+      <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+          Sessions
+        </span>
+        {sessions && <span className="ml-2 text-xs text-gray-500">{sessions.length}</span>}
+        <button
+          onClick={() => setShowNewSession((s) => !s)}
+          className="ml-auto text-gray-600 hover:text-gray-300 transition-colors p-0.5 rounded"
+          title="New session"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+      {showNewSession && (
+        <NewSessionForm
+          sessions={sessions}
+          onCreated={(arg) => {
+            setShowNewSession(false)
+            if (arg?.pendingSessionId) {
+              setSelectedSessionId(arg.pendingSessionId)
+              setAgentView('detail')
+            }
+            onAfterSelect?.()
+          }}
+        />
+      )}
+      <SessionsList
+        sessions={sessions}
+        selectedId={selectedSessionId}
+        onSelect={(id) => {
+          setSelectedSessionId(id)
+          onAfterSelect?.()
+        }}
+        onMuteSession={muteSession}
+        onReplySession={(id) => {
+          setSelectedSessionId(id)
+          setAgentView('detail')
+          onAfterSelect?.()
+        }}
+      />
+    </>
+  )
+
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
       {/* Header */}
       <header className="flex flex-wrap items-center px-4 py-2 border-b border-gray-800 shrink-0 gap-y-1">
+        <button
+          onClick={() => setShowSidebarDrawer(true)}
+          className="lg:hidden -ml-1 mr-1 p-2 rounded text-gray-500 hover:text-gray-300 transition-colors"
+          title="Sessions"
+          aria-label="Open sessions"
+        >
+          <Menu size={18} />
+        </button>
         <span className="text-sm font-bold text-gray-200 tracking-tight">Oversight</span>
         <span className="ml-2 text-xs text-gray-600 tracking-tight hidden sm:inline">
           behind the agent curtain
@@ -543,6 +607,14 @@ export default function App() {
             <span className="hidden md:inline">Advanced</span>
           </button>
           <button
+            onClick={() => setShowActivityDrawer(true)}
+            className="md:hidden text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            title="Activity feed"
+            aria-label="Open activity feed"
+          >
+            <Activity size={14} />
+          </button>
+          <button
             onClick={() => setShowSettings(true)}
             className="ml-1 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
             title="Settings (,)"
@@ -584,43 +656,9 @@ export default function App() {
       )}
 
       <div className="flex-1 flex overflow-hidden bg-gray-950 isolate" data-tab={activeTab}>
-        {/* Left: Sessions list */}
-        <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col relative z-10 bg-gray-950">
-          <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
-            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-              Sessions
-            </span>
-            {sessions && <span className="ml-2 text-xs text-gray-500">{sessions.length}</span>}
-            <button
-              onClick={() => setShowNewSession((s) => !s)}
-              className="ml-auto text-gray-600 hover:text-gray-300 transition-colors p-0.5 rounded"
-              title="New session"
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-          {showNewSession && (
-            <NewSessionForm
-              sessions={sessions}
-              onCreated={(arg) => {
-                setShowNewSession(false)
-                if (arg?.pendingSessionId) {
-                  setSelectedSessionId(arg.pendingSessionId)
-                  setAgentView('detail')
-                }
-              }}
-            />
-          )}
-          <SessionsList
-            sessions={sessions}
-            selectedId={selectedSessionId}
-            onSelect={setSelectedSessionId}
-            onMuteSession={muteSession}
-            onReplySession={(id) => {
-              setSelectedSessionId(id)
-              setAgentView('detail')
-            }}
-          />
+        {/* Left: Sessions list — fixed pane ≥lg, slide-in drawer below. */}
+        <aside className="hidden lg:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col relative z-10 bg-gray-950">
+          {sessionsPanel()}
         </aside>
 
         {/* Center: Main panel */}
@@ -786,11 +824,36 @@ export default function App() {
           )}
         </main>
 
-        {/* Right: Live Feed */}
-        <aside className="hidden lg:block w-64 shrink-0 border-l border-gray-800 overflow-hidden">
+        {/* Right: Live Feed — fixed pane ≥md, slide-in drawer below. */}
+        <aside className="hidden md:block w-64 shrink-0 border-l border-gray-800 overflow-hidden">
           <LiveFeed events={events} />
         </aside>
       </div>
+
+      {/* Mobile drawers: the Sessions sidebar (<lg) and the activity feed (<md)
+          collapse to slide-in panels opened from the header toggles. */}
+      {showSidebarDrawer && (
+        <Dialog
+          open
+          onClose={() => setShowSidebarDrawer(false)}
+          placement="left"
+          label="Sessions"
+          className="flex w-[min(20rem,85vw)] flex-col overflow-hidden border-r border-gray-800 bg-gray-950 shadow-2xl"
+        >
+          {sessionsPanel(() => setShowSidebarDrawer(false))}
+        </Dialog>
+      )}
+      {showActivityDrawer && (
+        <Dialog
+          open
+          onClose={() => setShowActivityDrawer(false)}
+          placement="right"
+          label="Activity feed"
+          className="flex w-[min(20rem,85vw)] flex-col overflow-hidden border-l border-gray-800 bg-gray-950 shadow-2xl"
+        >
+          <LiveFeed events={events} />
+        </Dialog>
+      )}
 
       <CommandPalette
         open={showPalette}

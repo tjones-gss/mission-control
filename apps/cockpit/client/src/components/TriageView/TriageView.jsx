@@ -268,7 +268,7 @@ export function TriageView({ sessions = [], selectedId, onSelect = () => {} }) {
 
   return (
     <div className="flex-1 overflow-y-auto bg-[var(--mc-bg)]">
-      <div className="mx-auto max-w-5xl px-7 py-6">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-7">
         {/* Phase S1 — Oversight is watching its own build. */}
         {metaCount > 0 && <MetaBuildBanner count={metaCount} />}
 
