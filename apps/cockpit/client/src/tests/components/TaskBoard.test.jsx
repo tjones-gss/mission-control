@@ -37,6 +37,22 @@ describe('TaskBoard', () => {
     expect(screen.getByText('No tasks for this session')).toBeInTheDocument()
   })
 
+  it('shows an error state with a working Retry when the fetch failed', async () => {
+    const refetch = vi.fn()
+    render(
+      <TaskBoard
+        tasks={null}
+        loading={false}
+        error="HTTP 500"
+        sessionId="test-session"
+        refetch={refetch}
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('HTTP 500')
+    await userEvent.click(screen.getByRole('button', { name: /retry/i }))
+    expect(refetch).toHaveBeenCalled()
+  })
+
   it('groups tasks by status', () => {
     render(<TaskBoard {...defaultProps()} />)
     expect(screen.getByText('Task A')).toBeInTheDocument()

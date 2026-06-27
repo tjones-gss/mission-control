@@ -215,6 +215,7 @@ export default function App() {
   const {
     data: tasks,
     loading: tasksLoading,
+    error: tasksError,
     refetch: refetchTasks,
   } = useApi(selectedSessionId ? `/api/tasks/${selectedSessionId}` : null, [
     selectedSessionId,
@@ -765,6 +766,7 @@ export default function App() {
             <TaskBoard
               tasks={tasks}
               loading={tasksLoading}
+              error={tasksError}
               sessionId={selectedSessionId}
               refetch={refetchTasks}
             />

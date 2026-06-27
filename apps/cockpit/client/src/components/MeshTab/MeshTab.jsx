@@ -1,5 +1,6 @@
 import { RadioTower, Battery, Radio, Clock } from 'lucide-react'
 import { useApi } from '../../hooks/useApi.js'
+import { LoadingState, ErrorState } from '../ui/States.jsx'
 
 // EXPERIMENTAL (ADR-0007 / GOALS_MESH_TAB) — the MeshMonitor/Meshtastic tab.
 // Reads parsed LoRa node data from GET /api/mesh/nodes and renders a grid of
@@ -66,7 +67,7 @@ function NodeCard({ node }) {
 }
 
 export function MeshTab() {
-  const { data, loading } = useApi('/api/mesh/nodes')
+  const { data, loading, error, refetch } = useApi('/api/mesh/nodes')
   const nodes = Array.isArray(data?.nodes) ? data.nodes : []
 
   return (
@@ -81,9 +82,9 @@ export function MeshTab() {
         </div>
 
         {loading && nodes.length === 0 ? (
-          <div className="rounded-xl border border-[var(--mc-border)] bg-[var(--mc-surface)] px-5 py-7 text-center text-sm text-[var(--mc-fg-3)]">
-            Loading mesh nodes…
-          </div>
+          <LoadingState label="Loading mesh nodes…" />
+        ) : error && nodes.length === 0 ? (
+          <ErrorState message={error} onRetry={refetch} />
         ) : nodes.length === 0 ? (
           <div className="rounded-xl border border-[var(--mc-border)] bg-[var(--mc-surface)] px-5 py-10 text-center text-sm text-[var(--mc-fg-3)]">
             No MeshMonitor data found — set{' '}

@@ -289,6 +289,27 @@
   }
 }
 
+/* Accessible keyboard focus ring (WCAG 2.4.7). A single themed indicator for
+ * every interactive element on keyboard focus only (:focus-visible — mouse
+ * clicks don't trigger it). !important is deliberate: many controls use
+ * Tailwind's `focus:outline-none`, and this baseline must win over it so no
+ * keyboard user is ever left without a visible focus target. */
+:focus-visible {
+  outline: 2px solid var(--mc-accent) !important;
+  outline-offset: 2px !important;
+  border-radius: 2px;
+}
+
+/* Spacing scale — the canonical step values for padding/margin, documented as
+ * tokens so new surfaces share one rhythm instead of ad-hoc pixel values. */
+:root {
+  --mc-space-1: 0.25rem;
+  --mc-space-2: 0.5rem;
+  --mc-space-3: 0.75rem;
+  --mc-space-4: 1rem;
+  --mc-space-6: 1.5rem;
+}
+
 /* Mobile tap targets (WCAG 2.5.5 / AA): the top-chrome controls — tab nav,
  * Advanced/Settings/Help, and the sidebar/activity drawer toggles — get a ≥44px
  * hit area on small viewports without disturbing the dense desktop layout. */

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { CheckCircle2, Circle, Loader2, Trash2, ChevronDown } from 'lucide-react'
+import { ErrorState } from './ui/States.jsx'
 
 const STATUS_CONFIG = {
   completed: {
@@ -211,7 +212,7 @@ function TaskItem({ task, sessionId, refetch }) {
   )
 }
 
-export function TaskBoard({ tasks, loading, sessionId, refetch }) {
+export function TaskBoard({ tasks, loading, error, sessionId, refetch }) {
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
 
@@ -231,6 +232,7 @@ export function TaskBoard({ tasks, loading, sessionId, refetch }) {
   }
 
   if (loading) return <div className="p-4 text-gray-600 text-xs">Loading tasks...</div>
+  if (error) return <ErrorState message={error} onRetry={refetch} />
 
   const groups = {
     in_progress: (tasks || []).filter((t) => t.status === 'in_progress'),
