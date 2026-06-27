@@ -157,9 +157,9 @@ describe('CommandPalette — search', () => {
     await waitFor(() => expect(screen.getByText(/pipeline by pinning node/)).toBeInTheDocument())
 
     // Group headers present (selector: the type-filter pill is also labeled
-    // "Messages", but it is a button — headings are divs)
-    expect(screen.getByText('Sessions', { selector: 'div' })).toBeInTheDocument()
-    expect(screen.getByText('Messages', { selector: 'div' })).toBeInTheDocument()
+    // "Messages", but it is a button — heading labels are spans)
+    expect(screen.getByText('Sessions', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.getByText('Messages', { selector: 'span' })).toBeInTheDocument()
 
     // Sessions group comes first: the first option is the matching session
     const options = screen.getAllByRole('option')
@@ -269,7 +269,7 @@ describe('CommandPalette — patterns (Phase I2)', () => {
 
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'git' } })
     await waitFor(() =>
-      expect(screen.getByText('Patterns', { selector: 'div' })).toBeInTheDocument(),
+      expect(screen.getByText('Patterns', { selector: 'span' })).toBeInTheDocument(),
     )
     expect(screen.getByText('git')).toBeInTheDocument()
     expect(screen.getByText(/4 sessions/)).toBeInTheDocument()
@@ -360,6 +360,49 @@ describe('CommandPalette — states', () => {
     render(<CommandPalette open sessions={SESSIONS} onNavigate={() => {}} onClose={() => {}} />)
 
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'zebra' } })
-    await waitFor(() => expect(screen.getByText(/no matches/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/no results for/i)).toBeInTheDocument())
+    expect(screen.getByText(/try a shorter term/i)).toBeInTheDocument()
+    expect(screen.getByText('“zebra”')).toBeInTheDocument()
+  })
+})
+
+describe('CommandPalette — §2 search UX polish', () => {
+  it('shows per-group result counts in the headings', async () => {
+    mockSearch()
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={() => {}} onClose={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+    await waitFor(() => expect(screen.getByText(/pipeline by pinning node/)).toBeInTheDocument())
+
+    // Sessions group: 1 matching session; Messages group: 1 hit.
+    const sessionsHeading = screen.getByText('Sessions', { selector: 'span' }).closest('div')
+    expect(sessionsHeading).toHaveTextContent('1')
+    const messagesHeading = screen.getByText('Messages', { selector: 'span' }).closest('div')
+    expect(messagesHeading).toHaveTextContent('1')
+  })
+
+  it('groups memory/summary docs under a separate Knowledge heading', async () => {
+    mockSearch([MEMORY_HIT])
+    render(<CommandPalette open sessions={[]} onNavigate={() => {}} onClose={() => {}} />)
+
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'deploy' } })
+    await waitFor(() => expect(screen.getByText('install-topology.md')).toBeInTheDocument())
+
+    expect(screen.getByText('Knowledge', { selector: 'span' })).toBeInTheDocument()
+    // It is NOT under a Messages group.
+    expect(screen.queryByText('Messages', { selector: 'span' })).not.toBeInTheDocument()
+  })
+
+  it('clears the query with the × button and returns to the idle prompt', async () => {
+    mockSearch()
+    render(<CommandPalette open sessions={SESSIONS} onNavigate={() => {}} onClose={() => {}} />)
+
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: 'deploy' } })
+    await waitFor(() => expect(screen.getByText(/pipeline by pinning node/)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /clear search/i }))
+    expect(input).toHaveValue('')
+    expect(screen.getByText(/search sessions and everything/i)).toBeInTheDocument()
   })
 })

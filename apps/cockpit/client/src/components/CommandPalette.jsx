@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { Dialog } from './ui/Dialog.jsx'
 import { projectLabel } from '../utils/session.js'
 
@@ -7,9 +7,13 @@ import { projectLabel } from '../utils/session.js'
 // from anywhere to anything any agent ever did. Sessions matched by name/slug
 // come first, then full-text message hits from GET /api/search (FTS5).
 // Styled exclusively with --mc-* theme tokens.
-const DEBOUNCE_MS = 200
+const DEBOUNCE_MS = 150
 const SESSION_LIMIT = 6
 const MESSAGE_LIMIT = 12
+
+// Knowledge docs (memory + session summaries) get their own group, separate
+// from raw transcript message hits.
+const KNOWLEDGE_DOCTYPES = new Set(['memory', 'summary'])
 
 // Phase 6 — knowledge surfacing: the doc-type filter mirrors the server's
 // GET /api/search?type=. 'all' (the default) omits the param entirely.
@@ -66,10 +70,11 @@ function matchSessions(sessions, query) {
     .slice(0, SESSION_LIMIT)
 }
 
-function GroupHeading({ children }) {
+function GroupHeading({ children, count }) {
   return (
-    <div className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--mc-fg-4)]">
-      {children}
+    <div className="flex items-center gap-2 px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--mc-fg-4)]">
+      <span>{children}</span>
+      {count != null && <span className="text-[var(--mc-fg-5)] tabular-nums">{count}</span>}
     </div>
   )
 }
@@ -204,12 +209,24 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
 
   const sessionMatches = useMemo(() => matchSessions(sessions, query), [sessions, query])
 
-  // Flat selectable list: sessions group first, then message hits.
+  // Raw transcript hits and knowledge docs (memory + summaries) render as two
+  // distinct groups: Messages and Knowledge.
+  const messageHits = useMemo(() => hits.filter((h) => !KNOWLEDGE_DOCTYPES.has(h.docType)), [hits])
+  const knowledgeHits = useMemo(() => hits.filter((h) => KNOWLEDGE_DOCTYPES.has(h.docType)), [hits])
+
+  // Flat selectable list, in render order: sessions → messages → knowledge →
+  // patterns. activeIndex maps into this list; each group below offsets by the
+  // lengths of the groups before it.
   const items = useMemo(
     () => [
       ...sessionMatches.map((s) => ({ key: `s-${s.sessionId}`, sessionId: s.sessionId })),
-      ...hits.map((h) => ({
+      ...messageHits.map((h) => ({
         key: `m-${h.sessionId}-${h.idx}`,
+        sessionId: h.sessionId,
+        docType: h.docType,
+      })),
+      ...knowledgeHits.map((h) => ({
+        key: `k-${h.sessionId}-${h.idx}`,
         sessionId: h.sessionId,
         docType: h.docType,
       })),
@@ -218,8 +235,11 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
         sessionId: p.example_session_ids?.[0],
       })),
     ],
-    [sessionMatches, hits, patterns],
+    [sessionMatches, messageHits, knowledgeHits, patterns],
   )
+  const msgOffset = sessionMatches.length
+  const knowledgeOffset = msgOffset + messageHits.length
+  const patternsOffset = knowledgeOffset + knowledgeHits.length
 
   // New query/filter → selection snaps back to the top result.
   useEffect(() => {
@@ -276,6 +296,20 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
           placeholder="Search sessions and messages…"
           className="flex-1 bg-transparent text-sm text-[var(--mc-fg)] outline-none placeholder:text-[var(--mc-fg-5)]"
         />
+        {query && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={() => {
+              setQuery('')
+              inputRef.current?.focus()
+            }}
+            onMouseDown={(e) => e.preventDefault()}
+            className="shrink-0 rounded p-0.5 text-[var(--mc-fg-4)] transition-colors hover:text-[var(--mc-fg-2)]"
+          >
+            <X size={14} />
+          </button>
+        )}
         <kbd className="shrink-0 rounded border border-[var(--mc-border-2)] bg-[var(--mc-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--mc-fg-4)]">
           esc
         </kbd>
@@ -315,12 +349,16 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
         )}
 
         {showEmpty && (
-          <div className="px-3 py-6 text-center text-xs text-[var(--mc-fg-4)]">No matches</div>
+          <div className="px-3 py-6 text-center text-xs text-[var(--mc-fg-4)]">
+            No results for{' '}
+            <span className="font-semibold text-[var(--mc-fg-3)]">“{query.trim()}”</span> — try a
+            shorter term
+          </div>
         )}
 
         {sessionMatches.length > 0 && (
           <>
-            <GroupHeading>Sessions</GroupHeading>
+            <GroupHeading count={sessionMatches.length}>Sessions</GroupHeading>
             {sessionMatches.map((s, i) => (
               <PaletteRow
                 key={`s-${s.sessionId}`}
@@ -346,14 +384,14 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
           <div className="px-3 py-2 text-xs text-[var(--mc-fg-4)]">Searching…</div>
         )}
 
-        {hits.length > 0 && (
+        {messageHits.length > 0 && (
           <>
-            <GroupHeading>Messages</GroupHeading>
-            {hits.map((h, i) => (
+            <GroupHeading count={messageHits.length}>Messages</GroupHeading>
+            {messageHits.map((h, i) => (
               <PaletteRow
                 key={`m-${h.sessionId}-${h.idx}`}
-                active={activeIndex === sessionMatches.length + i}
-                onSelect={() => select(items[sessionMatches.length + i])}
+                active={activeIndex === msgOffset + i}
+                onSelect={() => select(items[msgOffset + i])}
               >
                 <div className="mb-0.5 flex items-center gap-2">
                   <span className="truncate text-xs font-semibold text-[var(--mc-fg-2)]">
@@ -375,14 +413,43 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
           </>
         )}
 
+        {knowledgeHits.length > 0 && (
+          <>
+            <GroupHeading count={knowledgeHits.length}>Knowledge</GroupHeading>
+            {knowledgeHits.map((h, i) => (
+              <PaletteRow
+                key={`k-${h.sessionId}-${h.idx}`}
+                active={activeIndex === knowledgeOffset + i}
+                onSelect={() => select(items[knowledgeOffset + i])}
+              >
+                <div className="mb-0.5 flex items-center gap-2">
+                  <span className="truncate text-xs font-semibold text-[var(--mc-fg-2)]">
+                    {h.slug || h.sessionId}
+                  </span>
+                  <span className="shrink-0 text-[10px] uppercase text-[var(--mc-fg-5)]">
+                    {h.docType}
+                  </span>
+                  <span className="flex-1" />
+                  <span className="shrink-0 text-xs text-[var(--mc-fg-5)]">
+                    {formatTs(h.lastModified)}
+                  </span>
+                </div>
+                <div className="break-all font-mono text-xs leading-relaxed text-[var(--mc-fg-3)]">
+                  {renderSnippet(h.snippet)}
+                </div>
+              </PaletteRow>
+            ))}
+          </>
+        )}
+
         {patterns.length > 0 && (
           <>
-            <GroupHeading>Patterns</GroupHeading>
+            <GroupHeading count={patterns.length}>Patterns</GroupHeading>
             {patterns.map((p, i) => (
               <PaletteRow
                 key={`p-${p.id}`}
-                active={activeIndex === sessionMatches.length + hits.length + i}
-                onSelect={() => select(items[sessionMatches.length + hits.length + i])}
+                active={activeIndex === patternsOffset + i}
+                onSelect={() => select(items[patternsOffset + i])}
               >
                 <div className="flex items-center gap-2">
                   <span className="truncate text-xs font-semibold text-[var(--mc-fg)]">
