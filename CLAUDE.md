@@ -133,6 +133,7 @@ JSON schemas in `schemas/`. `index.js` exports schema objects and `SCHEMA_VERSIO
 | `PORT` | `3001` | Server port |
 | `OVERSIGHT_HOST` | `127.0.0.1` | Bind address (set `0.0.0.0` for LAN) |
 | `OVERSIGHT_API_KEY` | — | Optional API key guard |
+| `OVERSIGHT_AUTH_TOKEN` | auto | Local API auth token (ON by default). Auto-generated to `server/data/.auth-token` on first boot; set this to override (scripted setups). Required on every non-health request via `Authorization: Bearer` or `?token=` (SSE) |
 | `OVERSIGHT_CORS_ORIGIN` | — | Explicit CORS origin |
 | `OVERSIGHT_RATE_LIMIT` | `2000` | Req/15min; `0` disables (used in e2e) |
 | `OTEL_ENABLED` | — | Enable OTel tracing |

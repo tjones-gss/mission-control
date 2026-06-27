@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { withAuthToken } from '../lib/authToken.js'
 
 export function useSSE(onMessage) {
   const onMessageRef = useRef(onMessage)
@@ -38,7 +39,7 @@ export function useSSE(onMessage) {
     ]
 
     function connect() {
-      es = new EventSource('/api/stream')
+      es = new EventSource(withAuthToken('/api/stream'))
       let wasOpen = false
 
       events.forEach((evt) => {

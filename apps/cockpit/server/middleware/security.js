@@ -1,5 +1,6 @@
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
+import { getActiveToken } from '../lib/auth-token.js'
 
 // Helmet: security headers (CSP, X-Frame-Options, HSTS, X-Content-Type-Options, etc.)
 const helmetMiddleware = helmet({
@@ -147,6 +148,43 @@ export function apiKeyAuth(req, res, next) {
     req.path === '/api/stream'
   )
     return next()
+  res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' })
+}
+
+// Local auth token (ON by default — distinct from the opt-in OVERSIGHT_API_KEY
+// above). The cockpit serves full conversation histories on GET /api/*, so by
+// default every browser tab on the machine could read them. authMiddleware
+// closes that: the active token (server/data/.auth-token, generated on first
+// boot) must be presented on every non-health request.
+//
+// Only /api/health* is exempt — the startup health gate (scripts/wait-ready.js)
+// polls it before the client has a token. /api/stream is NOT exempt: the browser
+// EventSource API can't set headers, so SSE authenticates via the ?token= query
+// param instead.
+function isAuthExempt(req) {
+  const p = req.path
+  return p === '/api/health' || p.startsWith('/api/health/')
+}
+
+// True when the request presents the token via either accepted channel:
+//   Authorization: Bearer <token>   (normal fetch)
+//   ?token=<token>                  (SSE / EventSource, which can't set headers)
+export function hasValidAuthToken(req, token) {
+  const auth = req.headers?.authorization
+  if (auth && auth.startsWith('Bearer ') && auth.slice(7).trim() === token) return true
+  if (req.query?.token && req.query.token === token) return true
+  return false
+}
+
+// Enforce the local auth token on every non-health request. A no-op when no
+// token is configured (getActiveToken() === null) — that path is only reachable
+// in tests that build the app without booting; the real server always loads a
+// token in start(), so production always enforces.
+export function authMiddleware(req, res, next) {
+  const token = getActiveToken()
+  if (!token) return next()
+  if (isAuthExempt(req)) return next()
+  if (hasValidAuthToken(req, token)) return next()
   res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' })
 }
 

@@ -4,6 +4,35 @@ import { server } from '../mocks/server.js'
 import { useApi } from '../../hooks/useApi.js'
 
 describe('useApi', () => {
+  afterEach(() => localStorage.clear())
+
+  it('sends no Authorization header when no token is stored', async () => {
+    let seenAuth = 'unset'
+    server.use(
+      http.get('/api/test', ({ request }) => {
+        seenAuth = request.headers.get('authorization')
+        return HttpResponse.json({ ok: true })
+      }),
+    )
+    const { result } = renderHook(() => useApi('/api/test'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(seenAuth).toBeNull()
+  })
+
+  it('sends Authorization: Bearer <token> when a token is stored', async () => {
+    localStorage.setItem('mc_auth_token', 'tok-xyz')
+    let seenAuth = null
+    server.use(
+      http.get('/api/test', ({ request }) => {
+        seenAuth = request.headers.get('authorization')
+        return HttpResponse.json({ ok: true })
+      }),
+    )
+    const { result } = renderHook(() => useApi('/api/test'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(seenAuth).toBe('Bearer tok-xyz')
+  })
+
   it('url=null → no fetch, loading=false, data=null', () => {
     const { result } = renderHook(() => useApi(null))
     expect(result.current.loading).toBe(false)
