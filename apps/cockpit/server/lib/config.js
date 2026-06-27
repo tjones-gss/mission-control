@@ -1,3 +1,6 @@
+import path from 'path'
+import os from 'os'
+
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   // Bind to loopback only by default — the cockpit should not be reachable from
@@ -14,4 +17,7 @@ export const config = {
   secretScanLogOnly: process.env.OVERSIGHT_SECRET_SCAN_LOG_ONLY === 'true',
   budgetMaxUsd: parseFloat(process.env.OVERSIGHT_BUDGET_MAX || '0'),
   budgetWarningThreshold: parseFloat(process.env.OVERSIGHT_BUDGET_WARNING || '0.80'),
+  // MeshMonitor / Meshtastic node data directory. Opt-in: defaults to ~/.meshtastic,
+  // which usually won't exist — the parser degrades gracefully when it's absent.
+  meshtasticDataPath: process.env.MESHTASTIC_DATA_PATH || path.join(os.homedir(), '.meshtastic'),
 }

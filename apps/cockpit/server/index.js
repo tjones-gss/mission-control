@@ -36,6 +36,7 @@ import { router as searchRouter } from './routes/search.js'
 import { router as patternsRouter } from './routes/patterns.js'
 import { router as graphRouter } from './routes/graph.js'
 import { router as statsRouter } from './routes/stats.js'
+import { router as meshRouter } from './routes/mesh.js'
 import { reconcileFleetRuns } from './fleet/fleet-runner.js'
 import { rebuildAll } from './lib/db/session-index.js'
 import { rebuildMemoryIndex } from './lib/db/memory-index.js'
@@ -115,6 +116,7 @@ export function buildApp() {
   app.use('/api/patterns', patternsRouter)
   app.use('/api/graph', graphRouter)
   app.use('/api/stats', statsRouter)
+  app.use('/api/mesh', meshRouter)
 
   // OpenAPI docs surface (Phase 4 / C-openapi). Mounted AFTER express.json + the
   // routers but BEFORE the '/api' 404 catch-all, so GET /api/docs(.json) is not

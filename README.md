@@ -39,6 +39,10 @@ philosophy instead of presenting everything at once.
   whenever an agent hits a tool-approval or danger-zone gate — point it at
   your Telegram/Slack bridge and get pinged when a fleet needs you. Outbound
   only: approving still happens in the cockpit, through the audited routes.
+- **Meshtastic tab (experimental).** Point `MESHTASTIC_DATA_PATH` at a MeshMonitor
+  data directory and the cockpit surfaces live LoRa mesh nodes alongside your
+  agents — SNR-tiered cards (green ≥10dB / amber 5–10dB / red <5dB), last-heard,
+  battery and hop count. Degrades silently to an empty state when no data is found.
 - **Runs** is the unified orchestration surface. Conductor (ADR-driven single runs)
   and Mission Control (the harness mission loop) used to be two top-level tabs; they
   are now two modes under one "Runs" concept.
