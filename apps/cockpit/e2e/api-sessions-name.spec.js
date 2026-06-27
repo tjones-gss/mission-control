@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { E2E_API_HEADERS } from './auth.js'
 
 // API-level tests for the session display-name endpoints added in
 // Run #30 + Run #31. These bypass the UI since renaming requires an
@@ -10,8 +11,9 @@ const API = 'http://localhost:3001'
 // State-changing routes are Origin-pinned by the server's originGuard (CSRF
 // defense) — a POST without an allowlisted Origin gets 403. The browser client
 // always sends one; the APIRequestContext does not, so pin it to the cockpit's
-// own client origin.
-test.use({ extraHTTPHeaders: { Origin: 'http://localhost:5173' } })
+// own client origin. E2E_API_HEADERS also carries the Bearer auth token the
+// server now requires (authMiddleware). See e2e/auth.js.
+test.use({ extraHTTPHeaders: E2E_API_HEADERS })
 
 // Serial mode: all of these tests hit the shared session-names.json
 // file (which the server keeps in an in-memory cache + rewrites on

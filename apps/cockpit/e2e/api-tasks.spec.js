@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { E2E_API_HEADERS } from './auth.js'
 
 // API-level tests for the task routes. The key bug fix to cover is
 // Run #29's read-modify-write PUT: a partial PUT like { status: ... }
@@ -7,11 +8,10 @@ import { test, expect } from '@playwright/test'
 
 const API = 'http://localhost:3001'
 
-// State-changing routes are Origin-pinned by the server's originGuard (CSRF
-// defense) — a POST/PUT/DELETE without an allowlisted Origin gets 403. The
-// browser client always sends one; the APIRequestContext does not, so pin it
-// to the cockpit's own client origin.
-test.use({ extraHTTPHeaders: { Origin: 'http://localhost:5173' } })
+// The APIRequestContext is not a browser: it must supply both credentials the
+// server requires — the Origin pin (originGuard / CSRF) and the Bearer auth
+// token (authMiddleware). See e2e/auth.js.
+test.use({ extraHTTPHeaders: E2E_API_HEADERS })
 
 // Each test block gets its own session id so parallel workers never
 // step on each other's task files.

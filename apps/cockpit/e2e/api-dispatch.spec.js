@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { E2E_API_HEADERS } from './auth.js'
 
 // Pure backend shape/validation tests for the dispatch surface.
 //
@@ -21,8 +22,9 @@ const API = 'http://localhost:3001'
 // carries an Origin in the client allowlist (or a valid API key). A real
 // browser client always sends its Origin; the APIRequestContext does not, so
 // pin it to the cockpit's own client origin to exercise the routes as the
-// dashboard does.
-test.use({ extraHTTPHeaders: { Origin: 'http://localhost:5173' } })
+// dashboard does. E2E_API_HEADERS also carries the Bearer auth token the server
+// now requires (authMiddleware). See e2e/auth.js.
+test.use({ extraHTTPHeaders: E2E_API_HEADERS })
 
 test.describe('api: dispatch surface', () => {
   test('GET /api/managers returns correct shape', async ({ request }) => {
