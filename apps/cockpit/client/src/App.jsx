@@ -18,7 +18,6 @@ import {
   Gauge,
   SlidersHorizontal,
   Network,
-  RadioTower,
   Menu,
   Activity,
 } from 'lucide-react'
@@ -40,7 +39,6 @@ import { RunsTab } from './components/RunsTab/RunsTab.jsx'
 import { FleetTab } from './components/FleetTab/FleetTab.jsx'
 import { TriageView } from './components/TriageView/TriageView.jsx'
 import { MeshView } from './components/MeshView/index.js'
-import { MeshTab } from './components/MeshTab/index.js'
 import { FeatureBrief } from './components/FeatureBrief/FeatureBrief.jsx'
 import { ErrorBoundary } from './components/ErrorBoundary.jsx'
 import { LiveFeed } from './components/LiveFeed.jsx'
@@ -77,10 +75,6 @@ export const ADVANCED_TABS = [
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
   { id: 'teams', label: 'Teams', icon: Users },
-  // EXPERIMENTAL (ADR-0007): MeshMonitor / Meshtastic LoRa hardware integration.
-  // id is 'meshtastic' (not 'mesh') — the 'mesh' id/label belong to the existing
-  // agent-activity MeshView in CORE_TABS; this is a separate hardware-telemetry tab.
-  { id: 'meshtastic', label: 'Meshtastic', icon: RadioTower },
 ]
 
 // Combined list (core first, then advanced) for any caller that needs the full
@@ -755,11 +749,6 @@ export default function App() {
                   setAgentView('detail')
                 }}
               />
-            </ErrorBoundary>
-          )}
-          {activeTab === 'meshtastic' && (
-            <ErrorBoundary>
-              <MeshTab />
             </ErrorBoundary>
           )}
           {activeTab === 'tasks' && (
