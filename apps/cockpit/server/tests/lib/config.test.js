@@ -1,3 +1,4 @@
+import { afterEach, vi } from 'vitest'
 import { config, isLanHost } from '../../lib/config.js'
 
 describe('config', () => {
@@ -53,5 +54,25 @@ describe('isLanHost', () => {
 
   test('is case- and whitespace-insensitive', () => {
     expect(isLanHost(' LOCALHOST ')).toBe(false)
+  })
+})
+
+describe('OVERSIGHT_HOST override (LAN team-lead bind)', () => {
+  const savedHost = process.env.OVERSIGHT_HOST
+
+  afterEach(() => {
+    if (savedHost === undefined) delete process.env.OVERSIGHT_HOST
+    else process.env.OVERSIGHT_HOST = savedHost
+    vi.resetModules()
+  })
+
+  // config.host is exactly what start() passes to app.listen(port, host); proving
+  // it resolves to 0.0.0.0 proves the server binds all interfaces in LAN mode.
+  test('binds 0.0.0.0 (all interfaces) and enables lanMode when OVERSIGHT_HOST=0.0.0.0', async () => {
+    process.env.OVERSIGHT_HOST = '0.0.0.0'
+    vi.resetModules()
+    const { config: lanConfig } = await import('../../lib/config.js')
+    expect(lanConfig.host).toBe('0.0.0.0')
+    expect(lanConfig.lanMode).toBe(true)
   })
 })

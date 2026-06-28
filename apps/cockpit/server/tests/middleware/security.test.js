@@ -382,6 +382,25 @@ describe('security middleware', () => {
       expect(next3).not.toHaveBeenCalled()
       expect(res.status).toHaveBeenCalledWith(403)
     })
+
+    it('still rejects a DNS-rebinding Host with a LAN allowlist set (LAN bind never relaxes the guard)', () => {
+      // Sprint 2-b LAN team-lead mode binds beyond loopback (OVERSIGHT_HOST=0.0.0.0)
+      // and operators open OVERSIGHT_ALLOWED_HOSTS for their LAN name. The bind mode
+      // must NOT weaken hostCheck: the allowlisted name passes, every other Host is
+      // still 403 — so a rebinding attacker cannot ride the wider bind.
+      process.env.OVERSIGHT_ALLOWED_HOSTS = 'cockpit.local'
+
+      const allowedNext = vi.fn()
+      hostCheck(makeReq('cockpit.local'), makeRes(), allowedNext)
+      expect(allowedNext).toHaveBeenCalled()
+
+      const res = makeRes()
+      const rebindNext = vi.fn()
+      hostCheck(makeReq('attacker.example.com'), res, rebindNext)
+      expect(rebindNext).not.toHaveBeenCalled()
+      expect(res.status).toHaveBeenCalledWith(403)
+      expect(res.json).toHaveBeenCalledWith({ error: 'forbidden_host' })
+    })
   })
 
   describe('originGuard (CSRF / Origin pin)', () => {
