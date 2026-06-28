@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { E2E_AUTH_TOKEN } from './e2e/auth.js'
 
 export default defineConfig({
   testDir: './e2e',
@@ -27,6 +28,21 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
+    // Seed the auth token into browser localStorage so the client attaches it
+    // to every /api fetch and to the SSE ?token= param — exactly as a real user
+    // would after pasting it on the /setup page. Without this every page test
+    // 401s and hangs (the server now enforces the token by default). The API
+    // request contexts can't use localStorage, so they send the Bearer header
+    // directly via E2E_API_HEADERS (see e2e/auth.js).
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: 'http://localhost:5173',
+          localStorage: [{ name: 'mc_auth_token', value: E2E_AUTH_TOKEN }],
+        },
+      ],
+    },
   },
   projects: [
     {
@@ -50,7 +66,13 @@ export default defineConfig({
       // dev-default 2000/15min cap starts returning 429 ~halfway
       // through the suite. OVERSIGHT_RATE_LIMIT=0 is the documented
       // opt-out in middleware/security.js.
-      env: { OVERSIGHT_RATE_LIMIT: '0' },
+      //
+      // OVERSIGHT_AUTH_TOKEN pins the server to a KNOWN token instead of the
+      // random one it generates on first boot, so the browser (seeded
+      // localStorage, see `use.storageState`) and the API request contexts
+      // (E2E_API_HEADERS) can present the matching credential. Without it the
+      // server enforces a token nothing in the harness knows → 401 everywhere.
+      env: { OVERSIGHT_RATE_LIMIT: '0', OVERSIGHT_AUTH_TOKEN: E2E_AUTH_TOKEN },
     },
     {
       command: 'cd client && npm run dev',

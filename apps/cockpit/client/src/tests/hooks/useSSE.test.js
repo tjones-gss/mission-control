@@ -15,6 +15,14 @@ describe('useSSE', () => {
     expect(global.EventSource.instance.url).toBe('/api/stream')
   })
 
+  it('appends ?token= to the SSE url when a token is stored', () => {
+    localStorage.setItem('mc_auth_token', 'tok-sse')
+    const onMessage = vi.fn()
+    renderHook(() => useSSE(onMessage))
+    expect(global.EventSource.instance.url).toBe('/api/stream?token=tok-sse')
+    localStorage.clear()
+  })
+
   it('calls onMessage for session_update events', () => {
     const onMessage = vi.fn()
     renderHook(() => useSSE(onMessage))

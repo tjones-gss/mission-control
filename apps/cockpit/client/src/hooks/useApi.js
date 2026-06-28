@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { authHeaders } from '../lib/authToken.js'
 
 export function useApi(url, deps = []) {
   const [data, setData] = useState(null)
@@ -12,7 +13,7 @@ export function useApi(url, deps = []) {
       setLoading(true)
       let aborted = false
       try {
-        const res = await fetch(url, { signal })
+        const res = await fetch(url, { signal, headers: authHeaders() })
         if (!res.ok) {
           let msg = `HTTP ${res.status}`
           try {

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { E2E_API_HEADERS } from './auth.js'
 
 // API-level validation tests for the tightened skill/workflow name
 // rules (Run #30). These assert the backend rejects the specific
@@ -9,8 +10,9 @@ const API = 'http://localhost:3001'
 // State-changing routes are Origin-pinned by the server's originGuard (CSRF
 // defense) — a POST without an allowlisted Origin gets 403. The browser client
 // always sends one; the APIRequestContext does not, so pin it to the cockpit's
-// own client origin.
-test.use({ extraHTTPHeaders: { Origin: 'http://localhost:5173' } })
+// own client origin. E2E_API_HEADERS also carries the Bearer auth token the
+// server now requires (authMiddleware). See e2e/auth.js.
+test.use({ extraHTTPHeaders: E2E_API_HEADERS })
 
 test.describe('api: skill name validation', () => {
   test('rejects names starting with a hyphen', async ({ request }) => {

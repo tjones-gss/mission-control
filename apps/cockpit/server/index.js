@@ -3,11 +3,13 @@ import cors from 'cors'
 import { config } from './lib/config.js'
 import {
   securityMiddleware,
+  authMiddleware,
   getCorsOrigin,
   hostCheck,
   originGuard,
   insecureExposureWarning,
 } from './middleware/security.js'
+import { loadOrCreateToken } from './lib/auth-token.js'
 import { requestLogger } from './middleware/requestLogger.js'
 import { performanceMiddleware } from './middleware/performance.js'
 import { registerShutdown } from './lib/lifecycle.js'
@@ -86,6 +88,13 @@ export function buildApp() {
   // /api/sessions/:id/tool-approval is rejected before any handler sees it.
   app.use(originGuard)
   app.use(...securityMiddleware)
+  // Local auth token gate (ON by default). Runs after the host/CORS/origin and
+  // helmet/rate-limit stack but BEFORE the routers, so every non-health request
+  // must present the token (server/data/.auth-token) before any handler — closing
+  // the default hole where any local browser tab could read /api/* histories.
+  // No-op until a token is loaded, which start() always does; tests that import
+  // buildApp() without booting are unaffected.
+  app.use(authMiddleware)
   app.use(requestLogger)
   app.use(...performanceMiddleware)
   app.use(express.json({ limit: '1mb' }))
@@ -148,6 +157,13 @@ export const createApp = buildApp
 // factory (e.g. in a test) never opens a socket.
 export function start() {
   const app = buildApp()
+
+  // Load (or generate on first run) the local auth token BEFORE binding the
+  // socket, so the gate is armed the instant the server accepts connections.
+  // Never log the value — the startup script (scripts/wait-ready.js) prints it
+  // once for the user to copy; the server only confirms it loaded.
+  loadOrCreateToken()
+  logger.info('auth token loaded (server/data/.auth-token)')
 
   // Startup security advisory (never fatal): warn if the cockpit is reachable
   // beyond loopback with no API key set. See middleware/security.js.

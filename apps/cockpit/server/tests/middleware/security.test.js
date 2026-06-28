@@ -1,12 +1,15 @@
 import {
   securityMiddleware,
   apiKeyAuth,
+  authMiddleware,
+  hasValidAuthToken,
   getCorsOrigin,
   getAllowedOrigins,
   hostCheck,
   originGuard,
   insecureExposureWarning,
 } from '../../middleware/security.js'
+import { setActiveToken } from '../../lib/auth-token.js'
 
 describe('security middleware', () => {
   let savedApiKey
@@ -158,6 +161,135 @@ describe('security middleware', () => {
       const next = vi.fn()
       apiKeyAuth(makeReq({ path: '/api/stream' }), makeRes(), next)
       expect(next).toHaveBeenCalled()
+    })
+  })
+
+  describe('authMiddleware (local token auth)', () => {
+    const TOKEN = 'a'.repeat(64)
+
+    let savedAuthEnv
+    beforeEach(() => {
+      savedAuthEnv = process.env.OVERSIGHT_AUTH_TOKEN
+      delete process.env.OVERSIGHT_AUTH_TOKEN
+      setActiveToken(null)
+    })
+    afterEach(() => {
+      if (savedAuthEnv !== undefined) process.env.OVERSIGHT_AUTH_TOKEN = savedAuthEnv
+      else delete process.env.OVERSIGHT_AUTH_TOKEN
+      setActiveToken(null)
+    })
+
+    function makeReq(overrides = {}) {
+      return { headers: {}, query: {}, path: '/api/sessions', ...overrides }
+    }
+    function makeRes() {
+      return { status: vi.fn().mockReturnThis(), json: vi.fn() }
+    }
+
+    it('is a no-op (calls next) when no token is configured', () => {
+      const next = vi.fn()
+      authMiddleware(makeReq(), makeRes(), next)
+      expect(next).toHaveBeenCalled()
+    })
+
+    it('returns 401 when a token is configured but none is provided', () => {
+      setActiveToken(TOKEN)
+      const res = makeRes()
+      const next = vi.fn()
+      authMiddleware(makeReq(), res, next)
+      expect(next).not.toHaveBeenCalled()
+      expect(res.status).toHaveBeenCalledWith(401)
+      expect(res.json).toHaveBeenCalledWith({ error: 'Unauthorized', code: 'AUTH_REQUIRED' })
+    })
+
+    it('passes with a valid Authorization: Bearer <token> header', () => {
+      setActiveToken(TOKEN)
+      const next = vi.fn()
+      authMiddleware(makeReq({ headers: { authorization: `Bearer ${TOKEN}` } }), makeRes(), next)
+      expect(next).toHaveBeenCalled()
+    })
+
+    it('passes with a valid ?token= query param (for SSE)', () => {
+      setActiveToken(TOKEN)
+      const next = vi.fn()
+      authMiddleware(makeReq({ path: '/api/stream', query: { token: TOKEN } }), makeRes(), next)
+      expect(next).toHaveBeenCalled()
+    })
+
+    it('rejects a wrong Bearer token with 401', () => {
+      setActiveToken(TOKEN)
+      const res = makeRes()
+      const next = vi.fn()
+      authMiddleware(makeReq({ headers: { authorization: 'Bearer wrong' } }), res, next)
+      expect(next).not.toHaveBeenCalled()
+      expect(res.status).toHaveBeenCalledWith(401)
+    })
+
+    it('rejects a wrong ?token= query with 401', () => {
+      setActiveToken(TOKEN)
+      const res = makeRes()
+      const next = vi.fn()
+      authMiddleware(makeReq({ query: { token: 'nope' } }), res, next)
+      expect(next).not.toHaveBeenCalled()
+      expect(res.status).toHaveBeenCalledWith(401)
+    })
+
+    it('exempts /api/health even when a token is configured', () => {
+      setActiveToken(TOKEN)
+      const next = vi.fn()
+      authMiddleware(makeReq({ path: '/api/health' }), makeRes(), next)
+      expect(next).toHaveBeenCalled()
+    })
+
+    it('exempts /api/health/ready even when a token is configured', () => {
+      setActiveToken(TOKEN)
+      const next = vi.fn()
+      authMiddleware(makeReq({ path: '/api/health/ready' }), makeRes(), next)
+      expect(next).toHaveBeenCalled()
+    })
+
+    it('does NOT exempt /api/stream — SSE must present the token', () => {
+      setActiveToken(TOKEN)
+      const res = makeRes()
+      const next = vi.fn()
+      authMiddleware(makeReq({ path: '/api/stream' }), res, next)
+      expect(next).not.toHaveBeenCalled()
+      expect(res.status).toHaveBeenCalledWith(401)
+    })
+
+    it('honors OVERSIGHT_AUTH_TOKEN as the active token', () => {
+      process.env.OVERSIGHT_AUTH_TOKEN = 'scripted-token'
+      const next = vi.fn()
+      authMiddleware(
+        makeReq({ headers: { authorization: 'Bearer scripted-token' } }),
+        makeRes(),
+        next,
+      )
+      expect(next).toHaveBeenCalled()
+    })
+  })
+
+  describe('hasValidAuthToken', () => {
+    const TOKEN = 'tok-123'
+
+    it('accepts a matching Bearer header', () => {
+      expect(
+        hasValidAuthToken({ headers: { authorization: `Bearer ${TOKEN}` }, query: {} }, TOKEN),
+      ).toBe(true)
+    })
+
+    it('accepts a matching ?token= query param', () => {
+      expect(hasValidAuthToken({ headers: {}, query: { token: TOKEN } }, TOKEN)).toBe(true)
+    })
+
+    it('rejects a mismatched Bearer header', () => {
+      expect(
+        hasValidAuthToken({ headers: { authorization: 'Bearer other' }, query: {} }, TOKEN),
+      ).toBe(false)
+    })
+
+    it('rejects when neither header nor query is present', () => {
+      expect(hasValidAuthToken({ headers: {}, query: {} }, TOKEN)).toBe(false)
     })
   })
 

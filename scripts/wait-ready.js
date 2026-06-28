@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { argv, platform } from "node:process";
 import { main as checkPortsCli } from "../apps/cockpit/server/scripts/prestart.js";
+import { loadOrCreateToken } from "../apps/cockpit/server/lib/auth-token.js";
 
 const HEALTH_URL = "http://localhost:3001/api/health";
 const CLIENT_URL = "http://localhost:5173";
@@ -49,10 +50,24 @@ export async function waitForReady({
   return false;
 }
 
+// Ensure the local auth token exists and print it once, clearly, so the user can
+// copy it into the cockpit's /setup page on first run. The server reads the same
+// file on boot (idempotent), so printing here never desyncs from what it enforces.
+function announceToken() {
+  const token = loadOrCreateToken();
+  console.log(
+    `\n🔑 Auth token: ${token}  (saved to server/data/.auth-token)\n` +
+      `   Paste it at ${CLIENT_URL}/setup on first run.\n`,
+  );
+}
+
 async function run() {
   // 1. Port pre-flight (exits non-zero with instructions if blocked).
   const portCode = await checkPortsCli();
   if (portCode !== 0) process.exit(portCode);
+
+  // 1b. Auth token banner (before the dev process spawns, so it isn't buried).
+  announceToken();
 
   // 2. Spawn the dev process. shell:true so npm/npm.cmd resolves on Windows.
   const child = spawn("npm", ["--prefix", "apps/cockpit", "run", "dev"], {
