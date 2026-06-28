@@ -17,6 +17,8 @@ import { emit, onEvent } from '../sse.js'
 import { logger } from '../lib/logger.js'
 import { parseSessionRecord, getAllSessions } from '../parsers/sessions.js'
 import { isMetaSession } from './meta-session-detector.js'
+import { detectLoop } from './loop-detector.js'
+import { detectCostRunway } from './cost-runway.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -287,6 +289,35 @@ export async function scanSession(sessionId, { filePath, now = Date.now(), budge
 
   const meta = isMetaSession(snapshot.cwd)
   const anomalies = detectAnomalies(snapshot, { now, budgetMax, meta })
+
+  // Sprint 2 — semantic alerting. These two detectors need richer inputs than the
+  // arithmetic snapshot (the full record stream for loops, the budget ceiling for
+  // runway), so they run here and append their findings as additional anomaly
+  // kinds that flow through the same emit + log + edge-triggered dedup below.
+  const loop = detectLoop({ messages: parsed.records })
+  if (loop.looping) {
+    anomalies.push({
+      sessionId,
+      kind: 'loop_detected',
+      tool: loop.tool,
+      count: loop.count,
+      duration_ms: loop.duration_ms,
+      detail: `Agent looping: ${loop.count} consecutive ${loop.tool} calls — review and steer.`,
+      ts: now,
+    })
+  }
+  const runway = detectCostRunway(snapshot, budgetMax)
+  if (runway.runway_alert) {
+    anomalies.push({
+      sessionId,
+      kind: 'cost_runway',
+      pct: runway.pct,
+      critical: Boolean(runway.critical),
+      detail: `Budget runway: ${runway.pct}% consumed — ${runway.critical ? 'ceiling imminent' : 'approaching limit'}.`,
+      ts: now,
+    })
+  }
+
   const currentKinds = new Set(anomalies.map((a) => a.kind))
   const prevKinds = activeAnomalies.get(sessionId) || new Set()
 

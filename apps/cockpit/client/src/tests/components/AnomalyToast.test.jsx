@@ -53,6 +53,35 @@ describe('AnomalyToast', () => {
     expect(onOpen).not.toHaveBeenCalled()
   })
 
+  it('renders the loop_detected message from its count and tool fields', () => {
+    render(
+      <AnomalyToast
+        anomalies={[mk({ kind: 'loop_detected', count: 3, tool: 'bash', detail: undefined })]}
+      />,
+    )
+    expect(
+      screen.getByText('Agent looping: 3 consecutive bash calls — review and steer'),
+    ).toBeInTheDocument()
+  })
+
+  it('renders the cost_runway message — approaching limit when not critical', () => {
+    render(
+      <AnomalyToast
+        anomalies={[mk({ kind: 'cost_runway', pct: 80, critical: false, detail: undefined })]}
+      />,
+    )
+    expect(screen.getByText('Budget runway: 80% consumed — approaching limit')).toBeInTheDocument()
+  })
+
+  it('renders the cost_runway message — ceiling imminent when critical', () => {
+    render(
+      <AnomalyToast
+        anomalies={[mk({ kind: 'cost_runway', pct: 95, critical: true, detail: undefined })]}
+      />,
+    )
+    expect(screen.getByText('Budget runway: 95% consumed — ceiling imminent')).toBeInTheDocument()
+  })
+
   it('auto-dismisses after 8 seconds', () => {
     vi.useFakeTimers()
     const onDismiss = vi.fn()

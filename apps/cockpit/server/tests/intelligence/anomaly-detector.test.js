@@ -348,6 +348,52 @@ describe('scanSession — wiring (emit + append-only log + dedup)', () => {
   })
 })
 
+describe('scanSession — Sprint 2 semantic alerting (loop + cost runway)', () => {
+  let logPath
+  const iso = (ms) => new Date(ms).toISOString()
+  beforeEach(() => {
+    logPath = path.join(os.tmpdir(), `anomalies-test-${Math.random().toString(36).slice(2)}.jsonl`)
+    setAnomalyLogPath(logPath)
+  })
+  afterEach(() => {
+    try {
+      fs.unlinkSync(logPath)
+    } catch {
+      /* ignore */
+    }
+  })
+
+  it('emits a loop_detected anomaly when the session is in a tight tool loop', async () => {
+    const bash = (ms) => ({
+      type: 'assistant',
+      timestamp: iso(ms),
+      message: { content: [{ type: 'tool_use', name: 'bash', input: { command: 'ls' } }] },
+    })
+    parseSessionRecord.mockReturnValue({
+      // lastMainEndTurn true + fresh mtime → isolate loop_detected from stall.
+      summary: { sessionId: 's1', lastModified: NOW, estimatedCost: 0 },
+      lastMainEndTurn: true,
+      records: [bash(NOW - 60_000), bash(NOW - 30_000), bash(NOW)],
+    })
+    await scanSession('s1', { now: NOW })
+    const loopEmit = emit.mock.calls.find(([n, d]) => n === 'anomaly' && d.kind === 'loop_detected')
+    expect(loopEmit).toBeTruthy()
+    expect(loopEmit[1]).toMatchObject({ sessionId: 's1', tool: 'bash', count: 3 })
+  })
+
+  it('emits a cost_runway anomaly when the session nears the budget ceiling', async () => {
+    parseSessionRecord.mockReturnValue({
+      summary: { sessionId: 's2', lastModified: NOW, estimatedCost: 0.9 },
+      lastMainEndTurn: true,
+      records: [{ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read' }] } }],
+    })
+    await scanSession('s2', { now: NOW, budgetMax: 1.0 })
+    const runwayEmit = emit.mock.calls.find(([n, d]) => n === 'anomaly' && d.kind === 'cost_runway')
+    expect(runwayEmit).toBeTruthy()
+    expect(runwayEmit[1]).toMatchObject({ sessionId: 's2', pct: 90 })
+  })
+})
+
 describe('log path accessors', () => {
   it('round-trips the configured log path', () => {
     setAnomalyLogPath('/tmp/foo.jsonl')
