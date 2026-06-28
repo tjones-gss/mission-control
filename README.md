@@ -1,20 +1,89 @@
 # Mission Control
 
-A live cockpit for the coding agents you're already running. If you have several
-Claude Code agents going at once and want to see and steer them from one place,
-this is for you. (Oversight reads Claude Code's own `~/.claude` — the cross-vendor
-reach lives in the opt-in _rails_ adapters, not the viewer.)
+**The only open-source approval layer for agentic AI work.** Mission Control is a
+governance cockpit for teams running Claude Code agents: the actions that matter
+route through a **risk-typed approval gate**, and every decision lands in an
+**append-only audit trail** — who approved what, when, and under which controls.
+It keeps a human in the loop without slowing the machines down.
+
+- **What it is** — a live, multi-project oversight window over the Claude Code
+  agents you're already running, with approval gates at the danger-zone boundary
+  and a tamper-evident audit log of every approve/steer decision.
+- **Who it's for** — team leads and engineers running several agent sessions at
+  once who need to _see, steer, and answer for_ what those agents do — not just
+  watch a dashboard.
+- **Why it's different** — first-party tools (Claude.ai, Cursor, Windsurf) optimize
+  for solo-developer velocity; none lead with audit trails, approval gates, or
+  multi-agent oversight. Mission Control owns that unoccupied position — the
+  team-lead cockpit — and stays local-first: no cloud, no account, no relay.
+
+<!-- screenshot: triage view with approval card -->
+<!-- Drop the asset at docs/screenshots/triage-approval.png and uncomment the line below.
+     It must show the "Needs you" triage view with a risk-typed approval card — NOT the kanban board. -->
+<!-- ![Mission Control's triage view — an agent paused on a risk-typed approval card, awaiting a human decision](docs/screenshots/triage-approval.png) -->
+
+> 📸 _Screenshot placeholder — the "Needs you" triage queue with an agent paused on a risk-typed approval card. (Asset lands at `docs/screenshots/triage-approval.png`.)_
+
+## Governance: approval gates + audit trail
+
+The governance loop is the point of the product. Agents run; the moment one hits a
+tool-approval or danger-zone gate it _escalates_ to you instead of proceeding, and
+your decision is recorded.
+
+- **In-cockpit approvals are risk-typed, never auto-approved.** Tool approvals
+  and harness danger-zone escalations surface in the UI with a real risk
+  classification (`DESTRUCTIVE` / `CODE_EXECUTION` / `REQUIRES_REVIEW` — never
+  fabricated; null when unclassified), and every decision is written to the
+  append-only audit log with its control state (which gates and policies were
+  in force, who decided).
+- **The audit trail is an evidence artifact.** Decisions append to a JSONL log
+  validated against the shared contract schema before each write; the cockpit is
+  its sole writer. It is never a cache candidate — it is the record of who stayed
+  in the loop and what they decided.
+- **AFK gate notifications (notify-only).** Set `OVERSIGHT_WEBHOOK_URL` and the
+  cockpit POSTs a compact payload (session, tool, risk classification, link)
+  whenever an agent hits a tool-approval or danger-zone gate — point it at
+  your Telegram/Slack bridge and get pinged when a fleet needs you. Outbound
+  only: approving still happens in the cockpit, through the audited routes. The
+  AFK webhook is deliberately notify-only — there is no remote-approve path.
+- **Approvals begin at the triage queue.** The Agents tab's "Needs you" triage
+  view is attention-ranked and the default surface: it puts the sessions waiting
+  on a human decision at the top, with inline approve/steer right on the card.
+
+### What governance here is — and isn't
+
+- **Is**: a live cockpit for your agents plus accident-prevention. The window
+  works with zero harness setup; the rails are progressive disclosure you opt into.
+- **The danger-zone rails are best-effort accident-prevention, not an
+  adversary-proof security boundary.** They catch common mistakes (a stray
+  `rm -rf`, a forgotten mission scope) at the tool-call boundary. They are not
+  designed to stop a determined or adversarial agent, and you should not treat
+  them as a sandbox.
+- **The real control for destructive operations is OS-level sandboxing** —
+  containers, VMs, restricted users, scoped credentials. The harness hooks
+  complement that; they do not replace it.
+
+## Who this is for
+
+People already running multiple Claude Code agents who want to see and steer them
+in one place. It assumes you've felt the friction of juggling
+several agent sessions and want a single live view — it does not promise to turn a
+first-time user into a power user.
+
+## How it's built
 
 Mission Control unifies two pieces: **Oversight** (the window — a live, multi-project
 mission view) and the **adaptive agentic engineering harness** (the rails — opt-in
 guardrails you adopt when you feel the pain, not a prerequisite for the window).
+Oversight reads Claude Code's own `~/.claude` — the cross-vendor reach lives in the
+opt-in _rails_ adapters, not the viewer.
 
 - `apps/cockpit` — the Oversight dashboard (global runtime, the front door)
 - `packages/harness` — the harness control plane (per-project, opt-in rails)
 - `packages/contracts` — shared JSON schemas between them
 - `installers` — one-command setup
 
-## What it is
+## The cockpit surface
 
 The cockpit leads with a **Core** view and hides power surfaces behind an
 **Advanced** toggle — progressive disclosure that matches the window-vs-rails
@@ -34,11 +103,6 @@ philosophy instead of presenting everything at once.
   a local SQLite read-cache of `~/.claude`
   ([ADR-0008](docs/adr/0008-sqlite-derived-read-cache.md)) — a pure derived
   cache you can delete at any time; it rebuilds itself.
-- **AFK gate notifications (notify-only).** Set `OVERSIGHT_WEBHOOK_URL` and the
-  cockpit POSTs a compact payload (session, tool, risk classification, link)
-  whenever an agent hits a tool-approval or danger-zone gate — point it at
-  your Telegram/Slack bridge and get pinged when a fleet needs you. Outbound
-  only: approving still happens in the cockpit, through the audited routes.
 - **Runs** is the unified orchestration surface. Conductor (ADR-driven single runs)
   and Mission Control (the harness mission loop) used to be two top-level tabs; they
   are now two modes under one "Runs" concept.
@@ -61,7 +125,7 @@ philosophy instead of presenting everything at once.
   worker's diff against the goal, with bounded re-dispatch on reject); **quarantine**
   (a best-effort read-only stance for a child); and **save/replay templates** for
   repeatable fleet configs. Because Fleet spawns _several_ autonomous agents at once,
-  the honest framing below matters more than ever: the rails — and quarantine — are
+  the honest framing above matters more than ever: the rails — and quarantine — are
   best-effort accident-prevention, **not** a sandbox. The real control is OS-level
   sandboxing, and Fleet enforces hard ceilings on how many children it will ever spawn.
 - **Missions graduate draft → ready → build.** The roadmap compiler slices a
@@ -106,33 +170,6 @@ tab):
   in the Triage view with a one-tap **steer** action. The steer routes through the
   existing `/api/sessions/:id/message` write path — it never auto-approves or
   bypasses a human decision.
-
-## Who this is for
-
-People already running multiple Claude Code agents who want to see and steer them
-in one place. It assumes you've felt the friction of juggling
-several agent sessions and want a single live view — it does not promise to turn a
-first-time user into a power user.
-
-## What this is / isn't
-
-- **Is**: a live cockpit for your agents plus accident-prevention. The window
-  works with zero harness setup; the rails are progressive disclosure you opt into.
-- **The danger-zone rails are best-effort accident-prevention, not an
-  adversary-proof security boundary.** They catch common mistakes (a stray
-  `rm -rf`, a forgotten mission scope) at the tool-call boundary. They are not
-  designed to stop a determined or adversarial agent, and you should not treat
-  them as a sandbox.
-- **The real control for destructive operations is OS-level sandboxing** —
-  containers, VMs, restricted users, scoped credentials. The harness hooks
-  complement that; they do not replace it.
-- **In-cockpit approvals are risk-typed, never auto-approved.** Tool approvals
-  and harness danger-zone escalations surface in the UI with a real risk
-  classification (`DESTRUCTIVE` / `CODE_EXECUTION` / `REQUIRES_REVIEW` — never
-  fabricated; null when unclassified), and every decision is written to the
-  append-only audit log with its control state (which gates and policies were
-  in force, who decided). The AFK webhook is deliberately notify-only — there
-  is no remote-approve path.
 
 ## Quick start
 
