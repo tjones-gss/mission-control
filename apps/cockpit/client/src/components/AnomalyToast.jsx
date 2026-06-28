@@ -16,14 +16,18 @@ const KIND_META = {
   approval: { label: 'Approval waiting', Icon: Clock },
   // Sprint 2 — semantic alerting kinds.
   loop_detected: { label: 'Agent looping', Icon: Repeat },
+  cost_runway: { label: 'Budget runway', Icon: DollarSign },
 }
 
-// The semantic-alerting kinds carry structured fields (count/tool) rather than a
-// pre-baked sentence, so the body is composed here. Everything else shows the
-// detail string the server emitted.
+// The semantic-alerting kinds carry structured fields (count/tool, pct/critical)
+// rather than a pre-baked sentence, so the body is composed here. Everything else
+// shows the detail string the server emitted.
 function bodyFor(anomaly) {
   if (anomaly.kind === 'loop_detected') {
     return `Agent looping: ${anomaly.count} consecutive ${anomaly.tool} calls — review and steer`
+  }
+  if (anomaly.kind === 'cost_runway') {
+    return `Budget runway: ${anomaly.pct}% consumed — ${anomaly.critical ? 'ceiling imminent' : 'approaching limit'}`
   }
   return anomaly.detail
 }

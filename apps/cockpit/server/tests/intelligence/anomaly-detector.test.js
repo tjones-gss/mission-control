@@ -348,7 +348,7 @@ describe('scanSession — wiring (emit + append-only log + dedup)', () => {
   })
 })
 
-describe('scanSession — Sprint 2 semantic alerting (loop detection)', () => {
+describe('scanSession — Sprint 2 semantic alerting (loop + cost runway)', () => {
   let logPath
   const iso = (ms) => new Date(ms).toISOString()
   beforeEach(() => {
@@ -379,6 +379,18 @@ describe('scanSession — Sprint 2 semantic alerting (loop detection)', () => {
     const loopEmit = emit.mock.calls.find(([n, d]) => n === 'anomaly' && d.kind === 'loop_detected')
     expect(loopEmit).toBeTruthy()
     expect(loopEmit[1]).toMatchObject({ sessionId: 's1', tool: 'bash', count: 3 })
+  })
+
+  it('emits a cost_runway anomaly when the session nears the budget ceiling', async () => {
+    parseSessionRecord.mockReturnValue({
+      summary: { sessionId: 's2', lastModified: NOW, estimatedCost: 0.9 },
+      lastMainEndTurn: true,
+      records: [{ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read' }] } }],
+    })
+    await scanSession('s2', { now: NOW, budgetMax: 1.0 })
+    const runwayEmit = emit.mock.calls.find(([n, d]) => n === 'anomaly' && d.kind === 'cost_runway')
+    expect(runwayEmit).toBeTruthy()
+    expect(runwayEmit[1]).toMatchObject({ sessionId: 's2', pct: 90 })
   })
 })
 
