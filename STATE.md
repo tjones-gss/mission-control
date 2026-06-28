@@ -58,6 +58,9 @@ PROGRESS.md for the per-phase log and FULL_BUILD_SUMMARY.md for the final summar
 
 The last loop executed:
 
+- **Sprint 2-b — LAN team-lead mode** (`ce12ec0`, #23): `lib/discovery.js` advertises the
+  cockpit over mDNS when bound beyond loopback (`OVERSIGHT_HOST=0.0.0.0` → `config.lanMode`),
+  and `lib/seat.js` maps the `X-Oversight-Seat` header to the audit `actor` on tool approvals.
 - **I3 — Knowledge graph** (`d7a9a5c`): `lib/db/knowledge-graph.js`, `GET /api/graph`,
   `InspectPanel/GraphPanel.jsx`; SQLite schema v5→v6 (nodes + edges).
 - **S1 — Self-monitoring** (`e6fbd9c`): `intelligence/meta-session-detector.js`,
