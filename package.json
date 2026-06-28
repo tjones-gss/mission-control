@@ -1,7 +1,36 @@
 {
-  "name": "mission-control",
-  "private": true,
+  "name": "@mission-control/app",
   "version": "0.5.0",
+  "description": "Mission Control — a live cockpit for Claude Code agents. Run `npx @mission-control/app` to go from zero to a running cockpit.",
+  "bin": "bin/start.mjs",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "installers/",
+    "packages/contracts/",
+    "apps/cockpit/package.json",
+    "apps/cockpit/server/",
+    "apps/cockpit/client/",
+    "README.md",
+    "!**/node_modules/**",
+    "!**/tests/**",
+    "!**/test/**",
+    "!**/*.test.*",
+    "!**/vitest*.config.*",
+    "!**/e2e/**",
+    "!**/e2e-server/**",
+    "!**/fixtures/**",
+    "!**/__fixtures__/**",
+    "!**/test-results/**",
+    "!**/playwright-report/**",
+    "!**/coverage/**",
+    "!apps/cockpit/client/dist/**",
+    "!apps/cockpit/server/data/**",
+    "!scripts/release/**"
+  ],
   "workspaces": [
     "apps/cockpit",
     "packages/contracts"
