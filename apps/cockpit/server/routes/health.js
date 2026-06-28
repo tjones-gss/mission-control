@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { getDegradedSignals } from '../lib/claude-format.js'
 
 const router = Router()
 const startTime = Date.now()
@@ -111,7 +112,7 @@ async function detectHarness() {
  *     tags: [Health]
  *     responses:
  *       200:
- *         description: Server is up; includes whether the python harness CLI is reachable.
+ *         description: Server is up; includes whether the python harness CLI is reachable and any active parser-degradation warnings.
  */
 router.get('/', async (req, res) => {
   const harness = await detectHarness()
@@ -122,6 +123,10 @@ router.get('/', async (req, res) => {
     uptime: Math.floor((Date.now() - startTime) / 1000),
     ts: Date.now(),
     harness,
+    // Active graceful-degrade signals: a parser found ~/.claude data it could
+    // not read (likely a Claude Code format change). [] = all parsers healthy.
+    // Same {parser, reason} shape the parser_degraded SSE event carries.
+    schema_warnings: getDegradedSignals(),
   })
 })
 
