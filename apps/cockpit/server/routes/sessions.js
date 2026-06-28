@@ -33,6 +33,7 @@ import { validateSessionId, validateSlashCommand } from '../utils/validate.js'
 import { formatAsMarkdown, formatAsJson } from '../utils/export.js'
 import { atomicWriteJson } from '../lib/atomic-write.js'
 import { recordAuditEventSafe } from '../lib/audit-log.js'
+import { seatFromHeaders } from '../lib/seat.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const NAMES_FILE = path.join(__dirname, '..', 'data', 'session-names.json')
@@ -871,6 +872,11 @@ router.post('/:sessionId/tool-approval', (req, res) => {
     return res.status(404).json({ error: 'Approval not found or already resolved' })
   }
 
+  // Multi-seat team-lead mode (Sprint 2-b): when several leads share one cockpit,
+  // the X-Oversight-Seat header names the lead who resolved this approval. Null
+  // when unset (the single-operator default) — never fabricated.
+  const seat = seatFromHeaders(req.headers)
+
   // AUDIT (cockpit sole writer): a human tool-approval decision is the canonical
   // 'approval' event. Recorded only AFTER it was actually resolved (so a 404 writes
   // nothing). source 'cockpit' — the dashboard resolved it via the in-memory SDK
@@ -880,6 +886,8 @@ router.post('/:sessionId/tool-approval', (req, res) => {
     source: 'cockpit',
     sessionId,
     subjectId: approvalId,
+    // The operator identity behind the decision — the seat that resolved it.
+    actor: seat,
     decision: decision === 'allow' ? 'approved' : 'denied',
     outcome: 'succeeded',
     // v9 controlState: the SDK tool approval is a HARD gate — the tool call was
@@ -897,7 +905,8 @@ router.post('/:sessionId/tool-approval', (req, res) => {
     },
   })
 
-  res.json({ ok: true })
+  // Echo the resolving seat so a multi-seat client can show who acted.
+  res.json({ ok: true, seat })
 })
 
 /**

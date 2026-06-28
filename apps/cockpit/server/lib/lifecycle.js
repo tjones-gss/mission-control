@@ -44,12 +44,23 @@ export function registerShutdown({ server, watcher, exit = (code) => process.exi
       /* db module may not be loaded (degraded mode / tests) */
     }
 
-    // 4. Close file watcher
+    // 4. Stop LAN mDNS advertisement (Sprint 2-b), so we send a goodbye packet
+    // and free the multicast socket instead of leaving a stale record on the
+    // LAN. Best-effort: a no-op when not advertising (the loopback default) and
+    // never blocks shutdown. Dynamic import mirrors the sse/db handling above.
+    try {
+      const { stopDiscovery } = await import('./discovery.js')
+      stopDiscovery()
+    } catch {
+      /* discovery module may not be loaded in tests */
+    }
+
+    // 5. Close file watcher
     if (watcher && typeof watcher.close === 'function') {
       await watcher.close()
     }
 
-    // 5. Exit
+    // 6. Exit
     exit(0)
   }
 

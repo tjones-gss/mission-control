@@ -131,7 +131,7 @@ JSON schemas in `schemas/`. `index.js` exports schema objects and `SCHEMA_VERSIO
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `3001` | Server port |
-| `OVERSIGHT_HOST` | `127.0.0.1` | Bind address (set `0.0.0.0` for LAN) |
+| `OVERSIGHT_HOST` | `127.0.0.1` | Bind address (set `0.0.0.0` for LAN team-lead mode). A non-loopback bind flips `config.lanMode` on, enabling mDNS advertisement |
 | `OVERSIGHT_API_KEY` | — | Optional API key guard |
 | `OVERSIGHT_AUTH_TOKEN` | auto | Local API auth token (ON by default). Auto-generated to `server/data/.auth-token` on first boot; set this to override (scripted setups). Required on every non-health request via `Authorization: Bearer` or `?token=` (SSE) |
 | `OVERSIGHT_CORS_ORIGIN` | — | Explicit CORS origin |
@@ -140,6 +140,9 @@ JSON schemas in `schemas/`. `index.js` exports schema objects and `SCHEMA_VERSIO
 | `OVERSIGHT_WEBHOOK_URL` | — | AFK gate notifier: POST approval-pending events to this webhook (notify-only, no inbound path; unset = no-op) |
 | `OVERSIGHT_BUDGET_MAX` | `0` | Max USD budget (0 = unlimited) |
 | `OVERSIGHT_FLEET_ACK_TIMEOUT_MS` | `15000` | Fleet session-ack timeout |
+| `OVERSIGHT_MDNS` | — | LAN mDNS/Bonjour advertisement. On by default in LAN mode; set `false` to opt out. No effect on a loopback bind |
+| `OVERSIGHT_MDNS_NAME` | `Mission Control` | Service name advertised over mDNS (disambiguates multiple leads on one LAN) |
+| `OVERSIGHT_SEAT` (header `X-Oversight-Seat`) | — | Multi-seat team-lead identity sent on approval requests; recorded as the audit `actor`. Request header, not an env var |
 
 ## ADRs
 
