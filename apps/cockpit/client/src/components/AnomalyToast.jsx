@@ -14,6 +14,18 @@ const KIND_META = {
   budget: { label: 'Budget overrun', Icon: DollarSign },
   loop: { label: 'Tool loop', Icon: Repeat },
   approval: { label: 'Approval waiting', Icon: Clock },
+  // Sprint 2 — semantic alerting kinds.
+  loop_detected: { label: 'Agent looping', Icon: Repeat },
+}
+
+// The semantic-alerting kinds carry structured fields (count/tool) rather than a
+// pre-baked sentence, so the body is composed here. Everything else shows the
+// detail string the server emitted.
+function bodyFor(anomaly) {
+  if (anomaly.kind === 'loop_detected') {
+    return `Agent looping: ${anomaly.count} consecutive ${anomaly.tool} calls — review and steer`
+  }
+  return anomaly.detail
 }
 
 function ToastRow({ anomaly, onOpen, onDismiss }) {
@@ -44,7 +56,7 @@ function ToastRow({ anomaly, onOpen, onDismiss }) {
           {meta.label}
         </div>
         <div className="mt-0.5 break-words" style={{ color: 'var(--mc-fg-2)' }}>
-          {anomaly.detail}
+          {bodyFor(anomaly)}
         </div>
       </div>
       <button

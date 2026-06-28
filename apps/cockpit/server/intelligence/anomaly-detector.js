@@ -17,6 +17,7 @@ import { emit, onEvent } from '../sse.js'
 import { logger } from '../lib/logger.js'
 import { parseSessionRecord, getAllSessions } from '../parsers/sessions.js'
 import { isMetaSession } from './meta-session-detector.js'
+import { detectLoop } from './loop-detector.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -287,6 +288,24 @@ export async function scanSession(sessionId, { filePath, now = Date.now(), budge
 
   const meta = isMetaSession(snapshot.cwd)
   const anomalies = detectAnomalies(snapshot, { now, budgetMax, meta })
+
+  // Sprint 2 — semantic alerting. Loop detection needs the full record stream
+  // (richer than the arithmetic snapshot), so it runs here and appends its finding
+  // as an additional anomaly kind that flows through the same emit + log +
+  // edge-triggered dedup below.
+  const loop = detectLoop({ messages: parsed.records })
+  if (loop.looping) {
+    anomalies.push({
+      sessionId,
+      kind: 'loop_detected',
+      tool: loop.tool,
+      count: loop.count,
+      duration_ms: loop.duration_ms,
+      detail: `Agent looping: ${loop.count} consecutive ${loop.tool} calls — review and steer.`,
+      ts: now,
+    })
+  }
+
   const currentKinds = new Set(anomalies.map((a) => a.kind))
   const prevKinds = activeAnomalies.get(sessionId) || new Set()
 

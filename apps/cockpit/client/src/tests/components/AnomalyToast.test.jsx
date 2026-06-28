@@ -53,6 +53,17 @@ describe('AnomalyToast', () => {
     expect(onOpen).not.toHaveBeenCalled()
   })
 
+  it('renders the loop_detected message from its count and tool fields', () => {
+    render(
+      <AnomalyToast
+        anomalies={[mk({ kind: 'loop_detected', count: 3, tool: 'bash', detail: undefined })]}
+      />,
+    )
+    expect(
+      screen.getByText('Agent looping: 3 consecutive bash calls — review and steer'),
+    ).toBeInTheDocument()
+  })
+
   it('auto-dismisses after 8 seconds', () => {
     vi.useFakeTimers()
     const onDismiss = vi.fn()
