@@ -1,4 +1,4 @@
-import { config } from '../../lib/config.js'
+import { config, isLanHost } from '../../lib/config.js'
 
 describe('config', () => {
   test('port defaults to 3001', () => {
@@ -9,6 +9,10 @@ describe('config', () => {
     // Loopback-only bind by default — no LAN exposure out of the box.
     // Operators opt into wider binding via OVERSIGHT_HOST.
     expect(config.host).toBe('127.0.0.1')
+  })
+
+  test('lanMode defaults to false (loopback bind)', () => {
+    expect(config.lanMode).toBe(false)
   })
 
   test('logLevel defaults to info', () => {
@@ -29,5 +33,25 @@ describe('config', () => {
 
   test('rateLimit defaults to 100', () => {
     expect(config.rateLimit).toBe(100)
+  })
+})
+
+describe('isLanHost', () => {
+  test('loopback binds are NOT LAN', () => {
+    for (const h of ['127.0.0.1', '::1', 'localhost', '', '  ', undefined, null]) {
+      expect(isLanHost(h)).toBe(false)
+    }
+  })
+
+  test('0.0.0.0 (all interfaces) IS LAN', () => {
+    expect(isLanHost('0.0.0.0')).toBe(true)
+  })
+
+  test('a specific non-loopback address IS LAN', () => {
+    expect(isLanHost('192.168.1.50')).toBe(true)
+  })
+
+  test('is case- and whitespace-insensitive', () => {
+    expect(isLanHost(' LOCALHOST ')).toBe(false)
   })
 })

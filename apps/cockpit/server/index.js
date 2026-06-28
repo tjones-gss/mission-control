@@ -47,6 +47,7 @@ import { mountOpenApi } from './lib/openapi.js'
 import { startWatcher } from './watcher.js'
 import { startHookLogWatcher } from './lib/hook-receiver.js'
 import { startAnomalySweep, startApprovalTracking } from './intelligence/anomaly-detector.js'
+import { startDiscovery } from './lib/discovery.js'
 import { logger } from './lib/logger.js'
 import { fileURLToPath } from 'node:url'
 import { argv } from 'node:process'
@@ -181,6 +182,10 @@ export function start() {
 
   const server = app.listen(config.port, config.host, () => {
     logger.info(`Server → http://${config.host}:${config.port}`)
+    // LAN team-lead mode (Sprint 2-b): when bound beyond loopback, advertise the
+    // cockpit over mDNS so other machines on the LAN can find it without the IP.
+    // No-op on the localhost-first default (config.lanMode false).
+    startDiscovery({ port: config.port, lanMode: config.lanMode })
     const watcher = startWatcher()
     // V3 hook instrumentation (opt-in): watch server/data/hook-log/ for tool-call
     // events dropped by the hook bridge and relay each as a `tool_call` SSE event.
