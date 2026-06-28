@@ -142,6 +142,7 @@ JSON schemas in `schemas/`. `index.js` exports schema objects and `SCHEMA_VERSIO
 | `OVERSIGHT_FLEET_ACK_TIMEOUT_MS` | `15000` | Fleet session-ack timeout |
 | `OVERSIGHT_MDNS` | — | LAN mDNS/Bonjour advertisement. On by default in LAN mode; set `false` to opt out. No effect on a loopback bind |
 | `OVERSIGHT_MDNS_NAME` | `Mission Control` | Service name advertised over mDNS (disambiguates multiple leads on one LAN) |
+| `OVERSIGHT_SEAT` (header `X-Oversight-Seat`) | — | Multi-seat team-lead identity sent on approval requests; recorded as the audit `actor`. Request header, not an env var |
 
 ## ADRs
 

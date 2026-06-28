@@ -97,6 +97,10 @@ vi.mock('../../pty-session.js', () => ({
 vi.mock('../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
+vi.mock('../../lib/audit-log.js', () => ({
+  recordAuditEventSafe: vi.fn(),
+  recordAuditEvent: vi.fn(),
+}))
 
 import express from 'express'
 import request from 'supertest'
@@ -116,6 +120,7 @@ import {
 } from '../../pty-session.js'
 import { onEvent } from '../../sse.js'
 import { logger } from '../../lib/logger.js'
+import { recordAuditEventSafe } from '../../lib/audit-log.js'
 import { listSessions, isIndexReady } from '../../lib/db/session-index.js'
 import { isDbUnavailable } from '../../lib/db/connection.js'
 import { router, truncateForLog, parseStreamJsonStdout } from '../../routes/sessions.js'
@@ -897,6 +902,29 @@ describe('POST /:sessionId/tool-approval', () => {
       .post('/abc123/tool-approval')
       .send({ approvalId: 'x', decision: 'deny' })
     expect(res.status).toBe(404)
+  })
+
+  it('captures the X-Oversight-Seat header as the audit actor and echoes the seat', async () => {
+    resolveApproval.mockReturnValue(true)
+    const res = await request(app)
+      .post('/abc123/tool-approval')
+      .set('X-Oversight-Seat', 'Travis')
+      .send({ approvalId: 'x', decision: 'allow' })
+    expect(res.status).toBe(200)
+    expect(res.body.seat).toBe('Travis')
+    const evt = recordAuditEventSafe.mock.calls.at(-1)[0]
+    expect(evt).toMatchObject({ eventType: 'approval', actor: 'Travis' })
+  })
+
+  it('records actor null and seat null when no seat header is present', async () => {
+    resolveApproval.mockReturnValue(true)
+    const res = await request(app)
+      .post('/abc123/tool-approval')
+      .send({ approvalId: 'x', decision: 'allow' })
+    expect(res.status).toBe(200)
+    expect(res.body.seat).toBeNull()
+    const evt = recordAuditEventSafe.mock.calls.at(-1)[0]
+    expect(evt.actor).toBeNull()
   })
 })
 
