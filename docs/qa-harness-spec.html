@@ -1,0 +1,1799 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mission Control — Sonnet-Driven QA Harness Spec</title>
+<style>
+/* ============================================================
+   ROOT TOKENS — OPS CONSOLE AESTHETIC
+   ============================================================ */
+:root {
+  --bg:       #070b13;
+  --bg2:      #0c1422;
+  --bgcard:   #0f1829;
+  --bghov:    #152238;
+  --ink:      #d8e8f8;
+  --ink2:     #7a9cc0;
+  --muted:    #2e4462;
+  --accent:   #00c8ff;
+  --adim:     rgba(0,200,255,.10);
+  --amid:     rgba(0,200,255,.22);
+  --amber:    #f5a623;
+  --ambdim:   rgba(245,166,35,.10);
+  --green:    #22d3a0;
+  --gdim:     rgba(34,211,160,.10);
+  --red:      #f05454;
+  --rdim:     rgba(240,84,84,.10);
+  --purple:   #b98cff;
+  --pdim:     rgba(185,140,255,.10);
+  --line:     rgba(0,200,255,.08);
+  --linesub:  rgba(255,255,255,.04);
+  --display:  "Trebuchet MS","Lucida Grande","Lucida Sans Unicode",ui-sans-serif,sans-serif;
+  --body:     Georgia,"Iowan Old Style","Times New Roman",serif;
+  --mono:     ui-monospace,"SF Mono","Cascadia Code","Courier New",monospace;
+  --r:        6px;
+}
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--body);
+  font-size:1.06rem;
+  line-height:1.72;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  background-image:radial-gradient(ellipse 90% 55% at 50% 0%, #0f1e3a 0%, var(--bg) 68%);
+}
+h1,h2,h3,h4{font-family:var(--display);line-height:1.1;letter-spacing:-.025em}
+p{max-width:68ch}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+ul{padding-left:1.2rem}
+li{margin-bottom:.25rem}
+
+/* grid bg */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(0,200,255,.022) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,200,255,.022) 1px,transparent 1px);
+  background-size:52px 52px;
+}
+/* grain */
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:1;
+  opacity:.045;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.88' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.pw{position:relative;z-index:2}
+.si{max-width:920px;margin-inline:auto;padding:0 2rem}
+section{padding:5.5rem 0;border-bottom:1px solid var(--linesub)}
+section:last-child{border-bottom:none}
+
+/* ============================================================
+   SCROLLSPY NAV
+   ============================================================ */
+nav.toc{
+  position:fixed;top:50%;left:1.4rem;transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:.35rem;z-index:100
+}
+.tl{
+  font:600 .66rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);text-decoration:none;opacity:.5;transition:.22s;
+  border-left:2px solid transparent;padding-left:.6rem;white-space:nowrap
+}
+.tl:hover{opacity:.85;color:var(--ink2)}
+.tl.on{color:var(--accent);opacity:1;border-color:var(--accent)}
+@media(max-width:1120px){nav.toc{display:none}}
+
+/* ============================================================
+   SCROLL REVEAL
+   ============================================================ */
+.rev{opacity:0;transform:translateY(26px);transition:opacity .65s ease,transform .65s ease}
+.rev.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.rev{opacity:1;transform:none;transition:none}}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+#hero{
+  min-height:88vh;display:flex;align-items:center;padding:4rem 0;
+  border-bottom:1px solid var(--line);position:relative;overflow:hidden
+}
+.hero-inner{max-width:920px;margin-inline:auto;padding:0 2rem;position:relative;z-index:2}
+.heyebrow{
+  font:600 .7rem/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:1.6rem;
+  opacity:0;animation:fu .7s .1s ease forwards;
+  display:flex;align-items:center;gap:.8rem
+}
+.heyebrow::after{
+  content:'';flex:1;max-width:60px;height:1px;background:var(--accent);opacity:.4
+}
+.htitle{
+  font-size:clamp(2.6rem,7vw,5.5rem);font-weight:700;
+  line-height:.95;letter-spacing:-.04em;margin-bottom:1.5rem;
+  opacity:0;animation:fu .7s .2s ease forwards
+}
+.htitle .hl{color:var(--accent);display:block}
+.hsub{
+  font-size:1.08rem;color:var(--ink2);max-width:56ch;margin-bottom:2.5rem;
+  opacity:0;animation:fu .7s .38s ease forwards
+}
+.hbadges{
+  display:flex;gap:.7rem;flex-wrap:wrap;
+  opacity:0;animation:fu .7s .52s ease forwards
+}
+.badge{
+  font:600 .7rem/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:.38rem .9rem;border-radius:3px;border:1px solid
+}
+.bc{border-color:var(--accent);color:var(--accent);background:var(--adim)}
+.ba{border-color:var(--amber);color:var(--amber);background:var(--ambdim)}
+.bg{border-color:var(--green);color:var(--green);background:var(--gdim)}
+.bp{border-color:var(--purple);color:var(--purple);background:var(--pdim)}
+
+/* hero SVG bg element */
+.hero-ring{
+  position:absolute;right:-120px;top:50%;transform:translateY(-50%);
+  width:520px;height:520px;opacity:.06;pointer-events:none
+}
+
+@keyframes fu{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+
+/* ============================================================
+   SECTION HEADERS
+   ============================================================ */
+.snum{
+  font:700 .66rem/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.5rem
+}
+.stitle{font-size:clamp(1.5rem,3vw,2.2rem);margin-bottom:.7rem}
+.slead{color:var(--ink2);font-size:1.02rem;max-width:62ch;margin-bottom:2.5rem}
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+.card{
+  background:var(--bgcard);border:1px solid var(--line);
+  border-radius:var(--r);padding:1.4rem
+}
+.card-t{border-top:2px solid var(--accent)}
+
+/* ============================================================
+   CONCEPT SECTION — ANALOGY
+   ============================================================ */
+.analogy{
+  display:grid;grid-template-columns:1fr 48px 1fr;
+  align-items:center;gap:0;margin:2rem 0
+}
+.aside{
+  background:var(--bgcard);border:1px solid var(--line);
+  border-radius:var(--r);padding:1.25rem 1.4rem
+}
+.aside .alabel{
+  font:600 .66rem/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:.85rem
+}
+.aside ul{list-style:none;padding:0}
+.aside li{
+  padding:.35rem 0;font-size:.9rem;color:var(--ink2);
+  border-bottom:1px solid var(--linesub);display:flex;align-items:center;gap:.5rem
+}
+.aside li:last-child{border:none}
+.aside li::before{content:'›';color:var(--accent);font-weight:700}
+.aarrow{
+  display:flex;align-items:center;justify-content:center;
+  color:var(--accent);font-size:1.8rem
+}
+
+/* ============================================================
+   ARCHITECTURE SVG CONTAINER
+   ============================================================ */
+.arch-wrap{
+  background:var(--bgcard);border:1px solid var(--line);
+  border-radius:var(--r);padding:1.5rem;margin:1.5rem 0;overflow:hidden
+}
+.arch-title{
+  font:600 .66rem/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:1rem
+}
+
+/* ============================================================
+   PERSONA TABS
+   ============================================================ */
+.ptabs{
+  display:flex;gap:0;border-bottom:1px solid var(--line);
+  margin-bottom:0;overflow-x:auto
+}
+.ptab{
+  padding:.85rem 1.3rem;font:600 .84rem/1 var(--display);
+  letter-spacing:.03em;color:var(--ink2);cursor:pointer;
+  border:none;background:none;border-bottom:2px solid transparent;
+  margin-bottom:-1px;transition:.18s;white-space:nowrap;
+  display:flex;align-items:center;gap:.45rem
+}
+.ptab:hover{color:var(--ink)}
+.ptab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.ptnum{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:50%;
+  background:var(--muted);color:#fff;font-size:.68rem;
+  transition:background .18s;flex-shrink:0
+}
+.ptab.on .ptnum{background:var(--accent);color:var(--bg)}
+
+.ppanel{display:none;padding:2rem 0}
+.ppanel.on{display:block}
+
+.phead{
+  display:flex;align-items:flex-start;gap:1.4rem;
+  margin-bottom:2rem;padding-bottom:1.75rem;
+  border-bottom:1px solid var(--linesub)
+}
+.picon{
+  width:52px;height:52px;border-radius:50%;
+  border:2px solid var(--accent);background:var(--adim);
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.4rem;flex-shrink:0
+}
+.pmeta h3{font-size:1.35rem;margin-bottom:.2rem}
+.pmeta .ptag{color:var(--ink2);font-size:.9rem;font-style:italic}
+.ptrig{
+  margin-left:auto;font:.7rem var(--mono);letter-spacing:.08em;
+  text-transform:uppercase;padding:.3rem .7rem;border-radius:3px;
+  border:1px solid var(--muted);color:var(--muted);flex-shrink:0
+}
+
+.pgrid{
+  display:grid;grid-template-columns:1fr 1fr;gap:1.1rem
+}
+@media(max-width:680px){.pgrid{grid-template-columns:1fr}}
+
+.pblock{
+  background:var(--bgcard);border:1px solid var(--linesub);
+  border-radius:var(--r);padding:1.2rem
+}
+.pblock h4{
+  font:.66rem/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.9rem
+}
+
+/* success path */
+.spath{list-style:none;padding:0;counter-reset:s}
+.spath li{
+  counter-increment:s;position:relative;
+  padding:.35rem 0 .35rem 2rem;font-size:.9rem;color:var(--ink2);
+  border-bottom:1px solid var(--linesub)
+}
+.spath li:last-child{border:none}
+.spath li::before{
+  content:counter(s);position:absolute;left:0;top:.3rem;
+  width:1.35rem;height:1.35rem;border-radius:50%;
+  background:var(--gdim);border:1px solid var(--green);
+  color:var(--green);font:.65rem/1.35rem var(--mono);text-align:center
+}
+
+/* failure modes */
+.flist{list-style:none;padding:0}
+.flist li{
+  padding:.5rem 0;border-bottom:1px solid var(--linesub);
+  font-size:.88rem;display:flex;gap:.7rem;align-items:flex-start
+}
+.flist li:last-child{border:none}
+.sev{
+  display:inline-block;width:7px;height:7px;border-radius:50%;
+  flex-shrink:0;margin-top:.45rem
+}
+.s-bl{background:var(--red)}   /* blocker */
+.s-hi{background:var(--amber)} /* high */
+.s-md{background:#60a5fa}      /* medium */
+.sev-label{
+  font:.63rem var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  opacity:.7;flex-shrink:0;margin-top:.25rem
+}
+
+/* flows */
+.flows{list-style:none;padding:0}
+.flows li{
+  padding:.35rem 0;font:.85rem var(--mono);color:var(--accent);
+  border-bottom:1px solid var(--linesub);opacity:.9
+}
+.flows li:last-child{border:none}
+
+/* questions callout */
+.qcall{
+  background:var(--ambdim);border:1px solid rgba(245,166,35,.18);
+  border-radius:var(--r);padding:1.2rem;
+  grid-column:1/-1;margin-top:.15rem
+}
+.qcall h4{
+  font:.66rem/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--amber);margin-bottom:.75rem
+}
+.qlist{list-style:none;padding:0}
+.qlist li{
+  padding:.28rem 0;font-size:.88rem;color:var(--ink2);
+  border-bottom:1px solid rgba(245,166,35,.1)
+}
+.qlist li:last-child{border:none}
+.qlist li::before{content:"? ";color:var(--amber);font-weight:700}
+
+/* ============================================================
+   STEPPER — QA RUN
+   ============================================================ */
+.strack{
+  display:flex;align-items:center;gap:0;
+  margin-bottom:1.5rem;overflow:hidden
+}
+.sdot{
+  width:30px;height:30px;border-radius:50%;
+  border:2px solid var(--muted);background:var(--bgcard);
+  color:var(--muted);font:.75rem/28px var(--mono);text-align:center;
+  flex-shrink:0;transition:all .28s;cursor:pointer;z-index:1;
+  position:relative
+}
+.sdot.done{border-color:var(--green);background:var(--gdim);color:var(--green)}
+.sdot.cur{
+  border-color:var(--accent);background:var(--adim);color:var(--accent);
+  box-shadow:0 0 0 4px rgba(0,200,255,.13)
+}
+.sline{flex:1;height:2px;background:var(--linesub);transition:background .28s}
+.sline.done{background:var(--green)}
+
+.scontent{
+  background:var(--bgcard);border:1px solid var(--line);
+  border-radius:var(--r);padding:1.5rem;min-height:150px
+}
+.scontent h3{font-size:1.1rem;color:var(--accent);margin-bottom:.5rem}
+.scontent p{font-size:.93rem;color:var(--ink2);max-width:64ch}
+.scontent .scode{
+  margin-top:1rem;font:.82rem/1.6 var(--mono);
+  background:rgba(0,0,0,.3);border:1px solid var(--linesub);
+  border-radius:4px;padding:.75rem 1rem;color:var(--accent);
+  white-space:pre-wrap;overflow-x:auto
+}
+
+.sctrl{display:flex;align-items:center;gap:1rem;margin-top:1rem}
+.sbtn{
+  font:.78rem/1 var(--display);font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;padding:.48rem 1.1rem;
+  border:1px solid var(--accent);background:var(--adim);
+  color:var(--accent);border-radius:4px;cursor:pointer;transition:all .18s
+}
+.sbtn:hover{background:var(--amid)}
+.sbtn:disabled{opacity:.3;cursor:not-allowed}
+.slabel{font:.76rem var(--mono);color:var(--muted)}
+
+/* ============================================================
+   CODE BLOCKS
+   ============================================================ */
+.cb{
+  position:relative;margin:1.5rem 0;border-radius:var(--r);
+  overflow:hidden;background:#050a12;border:1px solid var(--line)
+}
+.cbh{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.55rem 1rem;background:rgba(0,200,255,.05);
+  border-bottom:1px solid var(--line);
+  font:.7rem var(--mono);color:var(--accent);letter-spacing:.1em
+}
+.cb pre{
+  margin:0;padding:1.2rem 1.1rem;overflow-x:auto;
+  font:.83rem/1.75 var(--mono);color:#b8d4f0
+}
+.cbtn{
+  font:.66rem var(--mono);padding:.2rem .5rem;
+  border:1px solid var(--muted);background:none;
+  color:var(--muted);border-radius:3px;cursor:pointer;transition:.18s
+}
+.cbtn:hover{border-color:var(--accent);color:var(--accent)}
+/* json colors */
+.jk{color:#7ec8e3}.js{color:#8fdf82}.jn{color:#ffb454}
+.jb{color:#c792ea}.jc{color:#2e4462;font-style:italic}
+
+/* ============================================================
+   CADENCE
+   ============================================================ */
+.cadgrid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:1.5rem 0
+}
+@media(max-width:660px){.cadgrid{grid-template-columns:1fr}}
+
+.cadcard{
+  background:var(--bgcard);border:1px solid var(--linesub);
+  border-radius:var(--r);padding:1.25rem;position:relative
+}
+.cadcard.pri{border-color:var(--accent);background:var(--adim)}
+.cadcard.warn{border-color:rgba(245,166,35,.3)}
+.cadfreq{font:700 1.75rem/1 var(--display);margin-bottom:.4rem}
+.pri .cadfreq{color:var(--accent)}
+.warn .cadfreq{color:var(--amber)}
+.cadcard:not(.pri):not(.warn) .cadfreq{color:var(--green)}
+.cadlabel{
+  font:.66rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:.7rem
+}
+.cadcard p{font-size:.88rem;color:var(--ink2);max-width:none;margin-bottom:.85rem}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem}
+.chip{
+  font:.66rem var(--mono);padding:.2rem .5rem;
+  border-radius:3px;border:1px solid
+}
+.ch1{border-color:#7ec8e3;color:#7ec8e3;background:rgba(126,200,227,.07)}
+.ch2{border-color:var(--green);color:var(--green);background:var(--gdim)}
+.ch3{border-color:var(--purple);color:var(--purple);background:var(--pdim)}
+.ch4{border-color:var(--amber);color:var(--amber);background:var(--ambdim)}
+
+/* ============================================================
+   IMPLEMENTATION
+   ============================================================ */
+.implgrid{
+  display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin:1.5rem 0
+}
+@media(max-width:660px){.implgrid{grid-template-columns:1fr}}
+
+.wkcard{
+  background:var(--bgcard);border:1px solid var(--linesub);
+  border-radius:var(--r);padding:1.25rem
+}
+.wkcard .wk{
+  font:.66rem/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.2rem
+}
+.wkcard h3{font-size:1rem;margin-bottom:.9rem;color:var(--ink)}
+.wkcard ul{list-style:none;padding:0}
+.wkcard li{
+  padding:.4rem 0;font-size:.88rem;color:var(--ink2);
+  border-bottom:1px solid var(--linesub);
+  display:flex;align-items:flex-start;gap:.55rem
+}
+.wkcard li:last-child{border:none}
+.ck{color:var(--green);font-size:.8rem;flex-shrink:0;margin-top:.2rem}
+.td{color:var(--muted);font-size:.8rem;flex-shrink:0;margin-top:.2rem}
+
+/* ============================================================
+   MISSING PERSONAS
+   ============================================================ */
+.mgrid{
+  display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.5rem 0
+}
+@media(max-width:660px){.mgrid{grid-template-columns:1fr}}
+
+.mcard{
+  background:var(--bgcard);border:1px solid var(--linesub);
+  border-left:3px solid var(--amber);
+  border-radius:0 var(--r) var(--r) 0;padding:1.2rem
+}
+.mcard h4{font-size:.98rem;margin-bottom:.35rem}
+.mcard p{font-size:.87rem;color:var(--ink2);max-width:none}
+.mcatch{
+  margin-top:.6rem;font:.78rem var(--mono);color:var(--amber);
+  display:flex;align-items:center;gap:.4rem
+}
+.mcatch::before{content:"↗";font-size:.9rem}
+
+/* ============================================================
+   SPEC TABLE
+   ============================================================ */
+.stable-wrap{overflow-x:auto;margin:1.5rem 0}
+.stable{
+  width:100%;border-collapse:collapse;font-size:.89rem
+}
+.stable th{
+  font:.66rem/1 var(--mono);letter-spacing:.15em;text-transform:uppercase;
+  color:var(--accent);padding:.7rem 1rem;text-align:left;
+  border-bottom:1px solid var(--accent);background:var(--adim);
+  white-space:nowrap
+}
+.stable td{
+  padding:.72rem 1rem;border-bottom:1px solid var(--linesub);
+  color:var(--ink2);vertical-align:top
+}
+.stable tr:hover td{background:rgba(255,255,255,.015)}
+.p1{background:var(--rdim);color:var(--red);border:1px solid var(--red)}
+.p2{background:var(--ambdim);color:var(--amber);border:1px solid var(--amber)}
+.p3{background:var(--gdim);color:var(--green);border:1px solid var(--green)}
+.pchip{
+  font:.63rem/1 var(--mono);letter-spacing:.07em;
+  padding:.2rem .5rem;border-radius:3px;text-transform:uppercase;
+  white-space:nowrap
+}
+
+/* ============================================================
+   COLLAPSIBLE DEEP DIVE
+   ============================================================ */
+details.dd{
+  border:1px solid var(--line);border-radius:var(--r);
+  margin:.85rem 0;background:rgba(0,200,255,.025)
+}
+details.dd summary{
+  cursor:pointer;padding:.8rem 1.1rem;
+  font:600 .88rem var(--display);color:var(--accent);
+  list-style:none;display:flex;align-items:center;gap:.5rem
+}
+details.dd summary::-webkit-details-marker{display:none}
+details.dd summary::before{
+  content:"▸";transition:transform .2s;display:inline-block;font-size:.78rem
+}
+details.dd[open] summary::before{transform:rotate(90deg)}
+.ddbody{
+  padding:0 1.1rem 1.1rem;font-size:.9rem;color:var(--ink2)
+}
+.ddbody p{margin-bottom:.6rem}
+
+/* ============================================================
+   CALLOUTS
+   ============================================================ */
+.call{
+  border-left:3px solid;border-radius:0 var(--r) var(--r) 0;
+  padding:.9rem 1.2rem;margin:1rem 0
+}
+.call-w{border-color:var(--amber);background:var(--ambdim)}
+.call-i{border-color:var(--accent);background:var(--adim)}
+.call-n{border-color:var(--green);background:var(--gdim)}
+.call p{font-size:.9rem;color:var(--ink2);max-width:none;margin:0}
+
+/* ============================================================
+   MISC
+   ============================================================ */
+.divider{border:none;border-top:1px solid var(--linesub);margin:2rem 0}
+.mono-label{
+  font:.7rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)
+}
+.two-col{
+  display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;align-items:start
+}
+@media(max-width:660px){.two-col{grid-template-columns:1fr}}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer{
+  max-width:920px;margin-inline:auto;padding:3rem 2rem;
+  font:.8rem var(--mono);color:var(--muted);
+  display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:1rem
+}
+</style>
+</head>
+<body>
+<div class="pw">
+
+<!-- ============================================================
+     SCROLLSPY NAV
+     ============================================================ -->
+<nav class="toc" aria-label="Page sections">
+  <a href="#hero"           class="tl">Overview</a>
+  <a href="#concept"        class="tl">Concept</a>
+  <a href="#architecture"   class="tl">Architecture</a>
+  <a href="#personas"       class="tl">Personas</a>
+  <a href="#run"            class="tl">QA Run</a>
+  <a href="#schema"         class="tl">Output Schema</a>
+  <a href="#cadence"        class="tl">Cadence</a>
+  <a href="#implementation" class="tl">Implementation</a>
+  <a href="#gaps"           class="tl">Gaps</a>
+  <a href="#spec"           class="tl">Sprint 2 Spec</a>
+</nav>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section id="hero" style="padding:0;border-bottom:1px solid var(--line)">
+  <div class="hero-inner">
+    <!-- background SVG ring -->
+    <svg class="hero-ring" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="200" cy="200" r="190" stroke="#00c8ff" stroke-width="1"/>
+      <circle cx="200" cy="200" r="150" stroke="#00c8ff" stroke-width="1" stroke-dasharray="8 12"/>
+      <circle cx="200" cy="200" r="110" stroke="#00c8ff" stroke-width="1"/>
+      <circle cx="200" cy="200" r="70"  stroke="#00c8ff" stroke-width="1" stroke-dasharray="4 8"/>
+      <line x1="10" y1="200" x2="390" y2="200" stroke="#00c8ff" stroke-width=".5" opacity=".5"/>
+      <line x1="200" y1="10" x2="200" y2="390" stroke="#00c8ff" stroke-width=".5" opacity=".5"/>
+      <circle cx="200" cy="10"  r="3" fill="#00c8ff"/>
+      <circle cx="200" cy="390" r="3" fill="#00c8ff"/>
+      <circle cx="10"  cy="200" r="3" fill="#00c8ff"/>
+      <circle cx="390" cy="200" r="3" fill="#00c8ff"/>
+    </svg>
+
+    <p class="heyebrow">Mission Control QA Harness <span style="color:var(--muted)">Sprint 2 Spec · v0.6</span></p>
+    <h1 class="htitle">
+      SONNET AS<br>
+      <span class="hl">YOUR WORST</span><br>
+      USER
+    </h1>
+    <p class="hsub">Four Sonnet personas that browse your live UI, break your flows, report what's missing, and give you a structured verdict — on every PR.</p>
+    <div class="hbadges">
+      <span class="badge bc">Claude Sonnet 4.6</span>
+      <span class="badge ba">Claude in Chrome MCP</span>
+      <span class="badge bg">4 Personas</span>
+      <span class="badge bp">JSON Reports</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CONCEPT
+     ============================================================ -->
+<section id="concept">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">01 — CONCEPT</p>
+      <h2 class="stitle">QA as an embedded field agent</h2>
+      <p class="slead">Every product has mental models: the story each user tells themselves about how to use it. The QA harness turns those mental models into runnable scripts — Sonnet adopts a persona, navigates the live UI with Chrome, and reports back where the story breaks.</p>
+    </div>
+
+    <div class="rev analogy">
+      <div class="aside">
+        <p class="alabel">Traditional QA</p>
+        <ul>
+          <li>Spec'd happy-path tests</li>
+          <li>Unit / integration coverage</li>
+          <li>Playwright / Cypress scripts</li>
+          <li>Human QA passes on feature complete</li>
+          <li>Finds regressions, misses UX gaps</li>
+        </ul>
+      </div>
+      <div class="aarrow">→</div>
+      <div class="aside" style="border-color:var(--accent)">
+        <p class="alabel" style="color:var(--accent)">Sonnet QA Harness</p>
+        <ul>
+          <li>Persona-driven: "I am a new user"</li>
+          <li>Browses the live UI like a real human</li>
+          <li>No scripts — Sonnet improvises the path</li>
+          <li>Runs on every PR automatically</li>
+          <li>Finds confusion, missing affordances, UX gaps</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rev">
+      <div class="call call-i">
+        <p><strong style="color:var(--accent)">The key insight:</strong> Playwright tests that your button works. Sonnet QA tests that your button makes sense to a human who just installed the thing.</p>
+      </div>
+    </div>
+
+    <div class="rev">
+      <details class="dd">
+        <summary>Go deeper: why LLM-as-user beats scripted automation for UX testing</summary>
+        <div class="ddbody">
+          <p>Scripted automation (Playwright, Cypress) verifies <em>what you built</em>. It does exactly what you tell it and confirms the button is clickable, the form submits, the 200 returns. It cannot tell you whether a first-time user would know to click the button, whether the empty state is paralyzing, or whether the approval modal makes any sense without prior context.</p>
+          <p>An LLM operating as a persona does something qualitatively different: it <em>interprets</em> the UI the way a human would. When it can't find the next step, that's signal. When it tries three wrong things before finding the right one, that's a friction report. When it navigates successfully but its "inner monologue" expresses confusion, that confusion is a finding.</p>
+          <p>For Mission Control v0.6 specifically, where the core UX is novel (AI agent oversight, real-time approval flows), scripted tests verify the mechanics. Sonnet personas verify the mental model — which is what will determine whether real users adopt it.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     ARCHITECTURE
+     ============================================================ -->
+<section id="architecture">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">02 — ARCHITECTURE</p>
+      <h2 class="stitle">The QA loop</h2>
+      <p class="slead">A CLI script loads a persona, hands it to a Sonnet session with Chrome MCP access, lets it navigate the live app, and collects a structured report. The whole loop takes 5–12 minutes per persona.</p>
+    </div>
+
+    <div class="rev arch-wrap">
+      <p class="arch-title">QA HARNESS DATA FLOW</p>
+      <svg viewBox="0 0 860 310" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:860px">
+        <!-- defs -->
+        <defs>
+          <marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0 0 L7 3 L0 6 Z" fill="#00c8ff" opacity=".7"/>
+          </marker>
+          <marker id="ahg" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0 0 L7 3 L0 6 Z" fill="#22d3a0" opacity=".7"/>
+          </marker>
+        </defs>
+
+        <!-- ── INPUT: Persona files ────────────────────────────── -->
+        <rect x="10" y="60" width="170" height="160" rx="5"
+              fill="#0f1829" stroke="rgba(0,200,255,.18)" stroke-width="1"/>
+        <text x="95" y="82" text-anchor="middle" font-family="'Trebuchet MS',sans-serif"
+              font-size="10" fill="#3d5472" letter-spacing="2" text-transform="uppercase">PERSONA PROMPTS</text>
+        <text x="25" y="108" font-family="'Courier New',monospace" font-size="11" fill="#7ec8e3">new-user.md</text>
+        <text x="25" y="128" font-family="'Courier New',monospace" font-size="11" fill="#7ec8e3">daily-driver.md</text>
+        <text x="25" y="148" font-family="'Courier New',monospace" font-size="11" fill="#7ec8e3">power-user.md</text>
+        <text x="25" y="168" font-family="'Courier New',monospace" font-size="11" fill="#7ec8e3">co-op-teams.md</text>
+        <text x="25" y="192" font-family="'Courier New',monospace" font-size="9" fill="#2e4462">qa/personas/</text>
+
+        <!-- arrow: personas → runner -->
+        <path d="M180 140 H235" stroke="#00c8ff" stroke-width="1.5" opacity=".6" marker-end="url(#ah)"/>
+
+        <!-- ── runner.js ─────────────────────────────────────── -->
+        <rect x="238" y="110" width="140" height="58" rx="5"
+              fill="#0f1829" stroke="rgba(0,200,255,.28)" stroke-width="1"/>
+        <text x="308" y="133" text-anchor="middle" font-family="'Trebuchet MS',sans-serif"
+              font-size="11" fill="#00c8ff" letter-spacing=".5">qa/runner.js</text>
+        <text x="308" y="153" text-anchor="middle" font-family="'Courier New',monospace"
+              font-size="10" fill="#3d5472">--persona  --url</text>
+
+        <!-- arrow: runner → sonnet -->
+        <path d="M378 140 H432" stroke="#00c8ff" stroke-width="1.5" opacity=".6" marker-end="url(#ah)"/>
+
+        <!-- ── Sonnet Driver ──────────────────────────────────── -->
+        <rect x="435" y="100" width="160" height="78" rx="5"
+              fill="rgba(0,200,255,.07)" stroke="#00c8ff" stroke-width="1.5"/>
+        <text x="515" y="126" text-anchor="middle" font-family="'Trebuchet MS',sans-serif"
+              font-size="12" fill="#00c8ff" letter-spacing=".5">Sonnet Driver</text>
+        <text x="515" y="145" text-anchor="middle" font-family="'Courier New',monospace"
+              font-size="10" fill="#7ec8e3">claude-sonnet-4-6</text>
+        <text x="515" y="162" text-anchor="middle" font-family="'Courier New',monospace"
+              font-size="10" fill="#3d5472">+ Chrome MCP</text>
+
+        <!-- arrow: sonnet ↓ to chrome -->
+        <path d="M515 178 V222" stroke="#00c8ff" stroke-width="1.5" opacity=".6" marker-end="url(#ah)"/>
+
+        <!-- ── Claude in Chrome ──────────────────────────────── -->
+        <rect x="435" y="225" width="160" height="58" rx="5"
+              fill="#0f1829" stroke="rgba(0,200,255,.18)" stroke-width="1"/>
+        <text x="515" y="248" text-anchor="middle" font-family="'Trebuchet MS',sans-serif"
+              font-size="11" fill="#b8d4f0" letter-spacing=".5">Claude in Chrome</text>
+        <text x="515" y="266" text-anchor="middle" font-family="'Courier New',monospace"
+              font-size="10" fill="#3d5472">navigate / read / interact</text>
+
+        <!-- arrow: chrome ↔ MC app (bidirectional) -->
+        <path d="M595 254 H640" stroke="#00c8ff" stroke-width="1.5" opacity=".6" marker-end="url(#ah)"/>
+        <path d="M640 262 H595" stroke="#00c8ff" stroke-width="1.5" opacity=".35" marker-end="url(#ah)"/>
+
+        <!-- ── MC App ─────────────────────────────────────────── -->
+        <rect x="643" y="200" width="200" height="112" rx="5"
+              fill="#0f1829" stroke="rgba(0,200,255,.15)" stroke-width="1"/>
+        <text x="743" y="222" text-anchor="middle" font-family="'Trebuchet MS',sans-serif"
+              font-size="11" fill="#b8d4f0" letter-spacing=".5">MC App</text>
+        <text x="658" y="244" font-family="'Courier New',monospace" font-size="10" fill="#3d5472">:5173  React/Vite UI</text>
+        <text x="658" y="262" font-family="'Courier New',monospace" font-size="10" fill="#3d5472">:3001  Node/Express API</text>
+        <text x="658" y="280" font-family="'Courier New',monospace" font-size="10" fill="#3d5472">SSE  real-time stream</text>
+        <text x="658" y="298" font-family="'Courier New',monospace" font-size="10" fill="#3d5472">Auth token gate</text>
+
+        <!-- arrow: sonnet → JSON report (left-going, below) -->
+        <path d="M435 148 H60 V260" stroke="#22d3a0" stroke-width="1.5" opacity=".5"
+              stroke-dasharray="6 4" marker-end="url(#ahg)"/>
+
+        <!-- ── JSON Report ────────────────────────────────────── -->
+        <rect x="10" y="262" width="170" height="40" rx="5"
+              fill="rgba(34,211,160,.07)" stroke="#22d3a0" stroke-width="1"/>
+        <text x="95" y="286" text-anchor="middle" font-family="'Trebuchet MS',sans-serif"
+              font-size="11" fill="#22d3a0" letter-spacing=".5">report.json + report.html</text>
+
+        <!-- label: report path -->
+        <text x="245" y="285" font-family="'Courier New',monospace" font-size="9" fill="#2e4462">→ CI check  → human review</text>
+      </svg>
+    </div>
+
+    <div class="rev two-col" style="margin-top:1.5rem">
+      <div class="card">
+        <p class="mono-label" style="margin-bottom:.7rem">Input contract</p>
+        <div class="cb" style="margin:0">
+          <div class="cbh">RUNNER INVOCATION</div>
+          <pre><span class="jc"># run one persona</span>
+node qa/runner.js \
+  --persona new-user \
+  --url http://localhost:5173 \
+  --token $MC_TEST_TOKEN
+
+<span class="jc"># run all personas</span>
+npm run qa:full</pre>
+        </div>
+      </div>
+      <div class="card">
+        <p class="mono-label" style="margin-bottom:.7rem">What Sonnet receives</p>
+        <ul style="font-size:.88rem;color:var(--ink2)">
+          <li><strong style="color:var(--ink)">System prompt:</strong> full persona identity, success path, adversarial instructions</li>
+          <li><strong style="color:var(--ink)">Tool access:</strong> Claude in Chrome MCP (navigate, read_page, interact)</li>
+          <li><strong style="color:var(--ink)">Output schema:</strong> the JSON report format it must populate</li>
+          <li><strong style="color:var(--ink)">Stop condition:</strong> success path complete, or all flows attempted</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PERSONAS
+     ============================================================ -->
+<section id="personas">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">03 — PERSONAS</p>
+      <h2 class="stitle">Four failure modes that cover the full user space</h2>
+      <p class="slead">Each persona is a specific mental model, not a demographic. They differ in context, speed, and what they'll try next when the obvious path fails.</p>
+    </div>
+
+    <div class="rev">
+      <!-- TABS -->
+      <div class="ptabs" role="tablist">
+        <button class="ptab on" data-p="p1" role="tab">
+          <span class="ptnum">1</span>New User
+        </button>
+        <button class="ptab" data-p="p2" role="tab">
+          <span class="ptnum">2</span>Daily Driver
+        </button>
+        <button class="ptab" data-p="p3" role="tab">
+          <span class="ptnum">3</span>Power User
+        </button>
+        <button class="ptab" data-p="p4" role="tab">
+          <span class="ptnum">4</span>Co-op Teams
+        </button>
+      </div>
+
+      <!-- ── PERSONA 1: New User ────────────────────────────── -->
+      <div id="p1" class="ppanel on">
+        <div class="phead">
+          <div class="picon">🆕</div>
+          <div class="pmeta">
+            <h3>New User — "Alex"</h3>
+            <p class="ptag">"I installed this 10 minutes ago from a blog post. I have no idea what a tool approval is."</p>
+          </div>
+          <span class="ptrig">BLOCKER RISK: HIGH</span>
+        </div>
+
+        <div class="pgrid">
+          <!-- success path -->
+          <div class="pblock">
+            <h4>Core Success Path — "it worked" looks like:</h4>
+            <ol class="spath">
+              <li><code>npx @mission-control/app</code> succeeds, browser opens</li>
+              <li>Auth token step completed — they knew what to enter</li>
+              <li>Dashboard loads; empty state makes sense</li>
+              <li>They find out <em>how</em> to connect a Claude Code agent</li>
+              <li>First agent appears in the dashboard</li>
+              <li>An approval request comes in; they understand what it wants</li>
+              <li>They approve or reject with confidence — not anxiety</li>
+            </ol>
+          </div>
+
+          <!-- failure modes -->
+          <div class="pblock">
+            <h4>Top Failure Modes</h4>
+            <ul class="flist">
+              <li>
+                <span class="sev s-bl"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Auth token: what kind? where?</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Token input has no label explaining what it is, its format, or how to generate one. No <code>npx mc token</code> hint. First real install blocker.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-hi"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Empty dashboard paralysis</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Post-auth, the dashboard is empty. There's no "now do this in your terminal" step. New user stares at a blank screen with no next action.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-hi"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Port 3001 silent failure</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">If the backend fails to start (port conflict, Node version), the UI loads but shows no data and no error. Looks working, is broken.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">No SSE connection indicator</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">No visible status showing whether the real-time stream is connected. New user can't tell if they're waiting for events or waiting for a broken connection.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Approval modal: cold start anxiety</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">First approval request appears with a technical tool call. No explanation of "this is asking permission to run a bash command." Approve or reject with no consequence stated.</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- UI flows -->
+          <div class="pblock">
+            <h4>UI Flows Exercised</h4>
+            <ul class="flows">
+              <li>/ → auth gate → token entry → submit</li>
+              <li>/dashboard → empty state → "connect agent" discovery</li>
+              <li>Backend health check (implicit — does anything load?)</li>
+              <li>SSE stream: does it connect, is it visible?</li>
+              <li>First approval modal → approve → confirmation</li>
+              <li>First approval modal → reject → agent behavior</li>
+            </ul>
+          </div>
+
+          <!-- questions -->
+          <div class="qcall">
+            <h4>Questions the UI should answer — but likely doesn't</h4>
+            <ul class="qlist">
+              <li>Where do I generate a Mission Control token? Is it my Anthropic API key?</li>
+              <li>The dashboard is empty — is this normal or is something broken?</li>
+              <li>How does my Claude Code project "talk to" Mission Control?</li>
+              <li>What does approving this do? What does rejecting it do?</li>
+              <li>Is the real-time connection working right now?</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PERSONA 2: Daily Driver ──────────────────────────── -->
+      <div id="p2" class="ppanel">
+        <div class="phead">
+          <div class="picon">⚡</div>
+          <div class="pmeta">
+            <h3>Daily Driver — "Sam"</h3>
+            <p class="ptag">"MC is open in my second monitor. I glance at it every few minutes. I need it to stay out of my way."</p>
+          </div>
+          <span class="ptrig">FRICTION RISK: HIGH</span>
+        </div>
+
+        <div class="pgrid">
+          <div class="pblock">
+            <h4>Core Success Path</h4>
+            <ol class="spath">
+              <li>Return to MC after closing the tab (session restores)</li>
+              <li>Dashboard shows 2-3 active agents at a glance</li>
+              <li>Pending approvals visible without scrolling</li>
+              <li>Triage queue: approve low-risk ops fast, inspect the risky ones</li>
+              <li>Jump to specific agent's history when something looks off</li>
+              <li>Back to coding within 90 seconds of opening the tab</li>
+            </ol>
+          </div>
+
+          <div class="pblock">
+            <h4>Top Failure Modes</h4>
+            <ul class="flist">
+              <li>
+                <span class="sev s-hi"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Approval queue buildup with no batch ops</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Away for 30 minutes: 12 approvals pending. No "approve all safe" or batch select. Must click through each one individually. This is a triage nightmare that will cause abandonment.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-hi"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Session restore: queue and agents still there?</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Close tab, reopen. Does auth persist? Do pending approvals survive? Does the agent list repopulate? If state isn't restored, daily drivers get a jarring empty start every morning.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Opaque approval queue: must click in to see what</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">The pending approval row doesn't show the operation type (bash, file_read, etc.) inline. Daily driver has to open each item to triage it. Kills the "glance and decide" workflow.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">No visual risk differentiation</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">A <code>bash:ls</code> and a <code>bash:rm -rf ./dist</code> look identical in the queue. No color, no icon, no risk label. Daily driver treats all approvals with equal attention they can't afford.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">No agent search or filter</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Running 4 agents. One is doing something weird. Can't type to filter the list. Must scroll and visually scan. At 8+ agents, this is untenable.</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="pblock">
+            <h4>UI Flows Exercised</h4>
+            <ul class="flows">
+              <li>Session restore: close tab → reopen → state check</li>
+              <li>Dashboard scan: 3 agents, 5 pending approvals</li>
+              <li>Queue triage: approve/reject × 5, timing measured</li>
+              <li>Agent-specific log view: click into one agent's history</li>
+              <li>Search/filter: try typing agent name in any search box</li>
+              <li>Return to dashboard: how fast is the path back?</li>
+            </ul>
+          </div>
+
+          <div class="qcall">
+            <h4>Questions the UI should answer — but likely doesn't</h4>
+            <ul class="qlist">
+              <li>Which of these approvals is actually risky vs. routine?</li>
+              <li>Can I approve all the file-read operations at once?</li>
+              <li>Where's the agent I was working with on the auth service?</li>
+              <li>What did my agent do while I was in the standup?</li>
+              <li>How do I set it so ls-type commands never need approval?</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PERSONA 3: Power User ────────────────────────────── -->
+      <div id="p3" class="ppanel">
+        <div class="phead">
+          <div class="picon">🔬</div>
+          <div class="pmeta">
+            <h3>Power User — "Jordan"</h3>
+            <p class="ptag">"I've used MC for six months. I'm going to find the race condition before your users do."</p>
+          </div>
+          <span class="ptrig">EDGE CASE RISK: HIGH</span>
+        </div>
+
+        <div class="pgrid">
+          <div class="pblock">
+            <h4>Core Success Path</h4>
+            <ol class="spath">
+              <li>Fleet view opens with all 6 active agents visible</li>
+              <li>Keyboard navigation: Tab/arrows work through the queue</li>
+              <li>Double-approval attempt handled gracefully (no silent duplicate)</li>
+              <li>SSE disconnect → reconnect: stream recovers, no missed events</li>
+              <li>Expired approval: UI shows it as stale, button disabled</li>
+              <li>Rapid approve × 5 without UI glitch or missed confirmation</li>
+            </ol>
+          </div>
+
+          <div class="pblock">
+            <h4>Top Failure Modes</h4>
+            <ul class="flist">
+              <li>
+                <span class="sev s-bl"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Race condition: double-approve in two tabs</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Two browser tabs open on same MC instance. Both show the same pending approval. User clicks in both within 200ms. Does the backend handle the duplicate? Does the UI reflect stale state? Most likely: silent inconsistency.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-hi"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">SSE stream doesn't auto-reconnect</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Toggle wifi off for 8 seconds, back on. Does the SSE stream recover, or does the dashboard silently stale? No reconnection indicator. Agent events during the gap may be lost.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-hi"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Expired approval not grayed out</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Agent times out waiting for approval, moves on. The approval request stays in the UI as if still actionable. User approves a stale request. Backend error is probably swallowed. No UI feedback.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Fleet view degrades past 6 agents</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Fleet view renders 8+ agents. Layout breaks, cards overflow, no pagination or virtualization. At 12+ agents it's a scroll wall.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Keyboard shortcuts: undiscoverable or nonexistent</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Power users expect keyboard-driven approval flows. No visible shortcut hints (like ⌘K or ?), no keyboard navigation through the queue. Mouse-only workflow at v0.6 is a power-user dealbreaker.</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="pblock">
+            <h4>UI Flows Exercised</h4>
+            <ul class="flows">
+              <li>Fleet view: load with 6+ mock agents</li>
+              <li>Keyboard nav: Tab through approval queue</li>
+              <li>Two-tab double-approval race test</li>
+              <li>SSE: disconnect Chrome network → reconnect → state check</li>
+              <li>Expired approval: wait for timeout → try to approve</li>
+              <li>Rapid-fire: approve 5 items as fast as possible</li>
+              <li>Press "?" or look for keyboard shortcut discovery UI</li>
+            </ul>
+          </div>
+
+          <div class="qcall">
+            <h4>Questions the UI should answer — but likely doesn't</h4>
+            <ul class="qlist">
+              <li>What keyboard shortcuts can I use here?</li>
+              <li>Why does this approval show as "pending" if the agent already moved on?</li>
+              <li>Is my real-time connection live right now? When did it last receive an event?</li>
+              <li>Can I see a raw event log for debugging purposes?</li>
+              <li>Can I set approval rules so I don't have to approve read-only ops?</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PERSONA 4: Co-op Teams ─────────────────────────── -->
+      <div id="p4" class="ppanel">
+        <div class="phead">
+          <div class="picon">👥</div>
+          <div class="pmeta">
+            <h3>Co-op Teams — "Alex + 3 contributors"</h3>
+            <p class="ptag">"We're sharing one MC instance. The team lead runs agents; contributors need visibility and sometimes approve."</p>
+          </div>
+          <span class="ptrig">CONFLICT RISK: HIGH</span>
+        </div>
+
+        <div class="pgrid">
+          <div class="pblock">
+            <h4>Core Success Path</h4>
+            <ol class="spath">
+              <li>Alex shares the LAN URL (192.168.x.x:5173) with contributors</li>
+              <li>Contributors open it, auth succeeds (with same token?)</li>
+              <li>Everyone sees the same agent states in real time</li>
+              <li>One contributor approves a request; all others see it update</li>
+              <li>No one approves the same request twice (conflict is prevented)</li>
+              <li>Team lead can see who did what (basic attribution)</li>
+            </ol>
+          </div>
+
+          <div class="pblock">
+            <h4>Top Failure Modes</h4>
+            <ul class="flist">
+              <li>
+                <span class="sev s-bl"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Concurrent approval conflict: both click at once</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Alex and Jamie both see the same pending approval. Both click Approve within 300ms of each other. The backend likely handles first-write-wins, but does the loser's UI update? Does it say "already approved by another user"? Almost certainly not — it probably silently fails or shows a stale state.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-hi"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">LAN setup is completely undocumented in UI</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">No "Share access" button. No instructions for CORS config. Contributor opening the LAN URL gets an auth wall with no guidance. The team lead has no way to invite contributors from within the UI.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-hi"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">Single-token auth model breaks team use</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">MC uses one shared auth token. All contributors use the same token. There's no user identity, no roles, no way to see "who is currently using this." Feels like sharing a root password.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">No attribution: who approved what?</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">The approval history shows what was approved and when, but not who approved it. Team leads need this for accountability. Audit trail missing entirely.</span>
+                </div>
+              </li>
+              <li>
+                <span class="sev s-md"></span>
+                <div>
+                  <strong style="color:var(--ink);font-size:.9rem">State sync latency on slow LAN</strong><br>
+                  <span style="color:var(--ink2);font-size:.85rem">Each client has its own SSE connection. When one person approves, how quickly do other clients update? If there's a 2-3 second lag, two people can see the same request as "pending" at the same time and both try to act.</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="pblock">
+            <h4>UI Flows Exercised</h4>
+            <ul class="flows">
+              <li>LAN URL entry from a second machine (or 2nd browser profile)</li>
+              <li>Auth: two browser sessions with same token</li>
+              <li>Concurrent approval: both sessions click within 500ms</li>
+              <li>State sync: approve in session A, check latency in session B</li>
+              <li>Attribution: check approval history for "who did this"</li>
+              <li>Any "Share access" or "Team" UI discovery</li>
+            </ul>
+          </div>
+
+          <div class="qcall">
+            <h4>Questions the UI should answer — but likely doesn't</h4>
+            <ul class="qlist">
+              <li>How do I share this with my team securely without giving everyone the same token?</li>
+              <li>Who approved that last operation 20 minutes ago?</li>
+              <li>Can I see who else is currently looking at this dashboard?</li>
+              <li>How do I prevent a contributor from approving destructive operations?</li>
+              <li>If two of us are watching, who should approve?</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end tabs -->
+
+    <div class="rev" style="margin-top:2rem">
+      <div class="call call-w">
+        <p><strong style="color:var(--amber)">Adversarial note:</strong> Each Sonnet persona run should be instructed to try at least one thing that "shouldn't" work — a wrong token format, a rapid double-click on approve, opening a second tab. The most revealing bugs in v0.6 live at the intersection of "normal user behavior" and "edge case the dev didn't think to test."</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     QA RUN
+     ============================================================ -->
+<section id="run">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">04 — A QA RUN IN PRACTICE</p>
+      <h2 class="stitle">Input: persona + URL. Output: structured report.</h2>
+      <p class="slead">A single run is a closed loop: Sonnet loads a persona, navigates the live app via Chrome, attempts the success path, logs what it finds, and exits with a verdict. No human in the loop during the run.</p>
+    </div>
+
+    <div class="rev">
+      <div class="stepper" id="qastepper">
+        <div class="strack">
+          <div class="sdot cur" data-i="0">1</div>
+          <div class="sline"></div>
+          <div class="sdot" data-i="1">2</div>
+          <div class="sline"></div>
+          <div class="sdot" data-i="2">3</div>
+          <div class="sline"></div>
+          <div class="sdot" data-i="3">4</div>
+          <div class="sline"></div>
+          <div class="sdot" data-i="4">5</div>
+          <div class="sline"></div>
+          <div class="sdot" data-i="5">6</div>
+          <div class="sline"></div>
+          <div class="sdot" data-i="6">7</div>
+          <div class="sline"></div>
+          <div class="sdot" data-i="7">8</div>
+        </div>
+
+        <div class="scontent" id="qastep-content">
+          <!-- filled by JS -->
+        </div>
+
+        <div class="sctrl">
+          <button class="sbtn" id="sprev" onclick="qaStep(-1)" disabled>← Back</button>
+          <button class="sbtn" id="snext" onclick="qaStep(1)">Next →</button>
+          <span class="slabel" id="spos">Step 1 of 8</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rev" style="margin-top:2rem">
+      <div class="two-col">
+        <div class="card">
+          <p class="mono-label" style="margin-bottom:.75rem">Typical run timing</p>
+          <ul style="font-size:.88rem;color:var(--ink2);list-style:none;padding:0">
+            <li style="padding:.3rem 0;border-bottom:1px solid var(--linesub);display:flex;justify-content:space-between"><span>New User</span><strong style="color:var(--ink)">5–8 min</strong></li>
+            <li style="padding:.3rem 0;border-bottom:1px solid var(--linesub);display:flex;justify-content:space-between"><span>Daily Driver</span><strong style="color:var(--ink)">6–9 min</strong></li>
+            <li style="padding:.3rem 0;border-bottom:1px solid var(--linesub);display:flex;justify-content:space-between"><span>Power User</span><strong style="color:var(--ink)">8–14 min</strong></li>
+            <li style="padding:.3rem 0;display:flex;justify-content:space-between"><span>Co-op Teams</span><strong style="color:var(--ink)">10–16 min</strong></li>
+          </ul>
+          <hr class="divider">
+          <p style="font-size:.85rem;color:var(--ink2)">All four in parallel: ~16 min. Sequentially: ~30 min.</p>
+        </div>
+        <div class="card">
+          <p class="mono-label" style="margin-bottom:.75rem">What Sonnet actually does</p>
+          <p style="font-size:.88rem;color:var(--ink2)">Sonnet uses Chrome MCP to navigate, read the page DOM, click elements, and fill inputs — exactly like a browser automation test, except the "test" is a language model interpreting the page the way a human would. It reports confusion in prose, not just pass/fail.</p>
+          <p style="font-size:.88rem;color:var(--ink2);margin-top:.75rem">For ambiguous UI states ("I see a spinner, I'll wait 5 seconds") it applies human-like patience rather than timing out immediately.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     OUTPUT SCHEMA
+     ============================================================ -->
+<section id="schema">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">05 — OUTPUT SCHEMA</p>
+      <h2 class="stitle">Structured enough to diff, human enough to act on</h2>
+      <p class="slead">Every run produces a JSON report with machine-parseable pass/fail and prose observations. The HTML viewer surfaces findings by severity so the team can triage in 2 minutes.</p>
+    </div>
+
+    <div class="rev">
+      <div class="cb">
+        <div class="cbh">
+          report.json — top-level structure
+          <button class="cbtn" onclick="copyCode(this)">copy</button>
+        </div>
+        <pre><span class="jc">// One file per run, stored at qa/reports/{date}/{persona}-{run_id}.json</span>
+{
+  <span class="jk">"run_id"</span>:       <span class="js">"mc-qa-20260627-new-user-001"</span>,
+  <span class="jk">"timestamp"</span>:    <span class="js">"2026-06-27T14:23:00Z"</span>,
+  <span class="jk">"persona"</span>:      <span class="js">"new-user"</span>,
+  <span class="jk">"app_version"</span>:  <span class="js">"v0.6"</span>,
+  <span class="jk">"app_url"</span>:      <span class="js">"http://localhost:5173"</span>,
+  <span class="jk">"duration_s"</span>:   <span class="jn">342</span>,
+  <span class="jk">"verdict"</span>:      <span class="js">"partial"</span>,   <span class="jc">// pass | partial | fail</span>
+  <span class="jk">"regression_risk"</span>: <span class="js">"high"</span>,      <span class="jc">// low | medium | high</span>
+
+  <span class="jk">"flows"</span>: [
+    {
+      <span class="jk">"flow_id"</span>:   <span class="js">"auth-setup"</span>,
+      <span class="jk">"status"</span>:    <span class="js">"partial"</span>,   <span class="jc">// passed | partial | failed | blocked</span>
+      <span class="jk">"severity"</span>:  <span class="js">"high"</span>,
+      <span class="jk">"steps"</span>: [
+        {
+          <span class="jk">"n"</span>:          <span class="jn">1</span>,
+          <span class="jk">"action"</span>:    <span class="js">"navigate to /"</span>,
+          <span class="jk">"observed"</span>:  <span class="js">"Auth token input shown with no label"</span>,
+          <span class="jk">"result"</span>:    <span class="js">"partial"</span>,
+          <span class="jk">"note"</span>:      <span class="js">"No explanation of token type or generation command"</span>
+        }
+      ]
+    }
+  ],
+
+  <span class="jk">"confusion_points"</span>: [
+    {
+      <span class="jk">"id"</span>:           <span class="js">"cp-001"</span>,
+      <span class="jk">"location"</span>:     <span class="js">"/"</span>,
+      <span class="jk">"component"</span>:    <span class="js">"AuthGate"</span>,
+      <span class="jk">"severity"</span>:     <span class="js">"blocker"</span>,
+      <span class="jk">"description"</span>:  <span class="js">"Token input has no label. Persona tried Anthropic API key first, then a random string. Succeeded on third attempt by guessing."</span>,
+      <span class="jk">"persona_q"</span>:    <span class="js">"What kind of token is this? Where do I generate it?"</span>,
+      <span class="jk">"suggestion"</span>:   <span class="js">"Add helper text: 'Generate with: npx mc token' or link to docs"</span>
+    }
+  ],
+
+  <span class="jk">"missing_affordances"</span>: [
+    {
+      <span class="jk">"id"</span>:         <span class="js">"ma-001"</span>,
+      <span class="jk">"description"</span>: <span class="js">"No backend health indicator — silent failure when :3001 is unreachable looks identical to 'no agents connected yet'"</span>,
+      <span class="jk">"impact"</span>:     <span class="js">"high"</span>,
+      <span class="jk">"fix"</span>:        <span class="js">"Status dot in header: green = API live, red = API unreachable"</span>
+    }
+  ],
+
+  <span class="jk">"passed_flows"</span>:  [<span class="js">"page-load"</span>, <span class="js">"token-entry"</span>],
+  <span class="jk">"failed_flows"</span>:  [<span class="js">"agent-connection-discovery"</span>],
+  <span class="jk">"blocked_flows"</span>: [],
+
+  <span class="jk">"summary"</span>:       <span class="js">"New user can auth and reach the dashboard, but has no path to connecting their first agent. The empty state provides no actionable next step. Recommend shipping empty-state guidance before broader distribution."</span>,
+
+  <span class="jk">"top_3"</span>: [
+    <span class="js">"Auth token input has no explanation — high bounce risk at first install"</span>,
+    <span class="js">"Empty dashboard has no connect-agent guidance"</span>,
+    <span class="js">"Backend health not surfaced — silent port failures indistinguishable from normal"</span>
+  ]
+}</pre>
+      </div>
+    </div>
+
+    <div class="rev">
+      <details class="dd">
+        <summary>Go deeper: CI integration and report diffing</summary>
+        <div class="ddbody">
+          <p>The JSON report is designed to be diffable between runs. A CI step can compare <code>confusion_points[].id</code> against the previous run's report to detect new findings. If a <code>severity: "blocker"</code> appears that wasn't in the baseline, the PR check fails.</p>
+          <p>Recommended CI behavior: run New User + Daily Driver on every PR. Fail the check if any new <code>blocker</code> or <code>high</code> severity confusion point is introduced. Emit the HTML report as a CI artifact for human review.</p>
+          <p>The <code>regression_risk</code> field is set by Sonnet based on its assessment of whether the changes it observed could break flows that were previously working — a heuristic judgment, not a precise measurement, but useful for prioritizing review.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CADENCE
+     ============================================================ -->
+<section id="cadence">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">06 — CADENCE</p>
+      <h2 class="stitle">When to run what</h2>
+      <p class="slead">Don't run all four personas on every PR — that's 30+ minutes of CI time. Run the right personas at the right moments based on what changed.</p>
+    </div>
+
+    <div class="rev cadgrid">
+      <div class="cadcard pri">
+        <div class="cadfreq">Per PR</div>
+        <div class="cadlabel">Automated · ~16 min</div>
+        <p>Runs on every pull request. Catches regressions in the two most common use cases before merge.</p>
+        <div class="chips">
+          <span class="chip ch1">New User</span>
+          <span class="chip ch2">Daily Driver</span>
+        </div>
+      </div>
+      <div class="cadcard warn">
+        <div class="cadfreq">Per Sprint</div>
+        <div class="cadlabel">Manual · ~30 min</div>
+        <p>Full four-persona run before each sprint release. Catches accumulating UX debt and edge cases.</p>
+        <div class="chips">
+          <span class="chip ch1">New User</span>
+          <span class="chip ch2">Daily Driver</span>
+          <span class="chip ch3">Power User</span>
+          <span class="chip ch4">Co-op Teams</span>
+        </div>
+      </div>
+      <div class="cadcard">
+        <div class="cadfreq">On Demand</div>
+        <div class="cadlabel">Targeted · ~8 min</div>
+        <p>Run a specific persona when related code changes. Auth change → New User. Fleet change → Power User.</p>
+        <div class="chips">
+          <span class="chip ch1">Targeted</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rev">
+      <div class="card" style="margin-top:.5rem">
+        <p class="mono-label" style="margin-bottom:.9rem">Targeted run decision matrix</p>
+        <table class="stable" style="margin:0">
+          <thead>
+            <tr>
+              <th>What changed</th>
+              <th>Run this persona</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Auth flow / token handling</td><td><span class="chip ch1">New User</span> <span class="chip ch4">Co-op</span></td><td style="color:var(--ink2)">Both personas hit auth first</td></tr>
+            <tr><td>SSE / real-time stream</td><td><span class="chip ch3">Power User</span></td><td style="color:var(--ink2)">Exercises disconnect + reconnect edge cases</td></tr>
+            <tr><td>Approval modal / flow</td><td><span class="chip ch1">New User</span> <span class="chip ch2">Daily Driver</span></td><td style="color:var(--ink2)">Core interaction for both personas</td></tr>
+            <tr><td>Fleet view / multi-agent</td><td><span class="chip ch3">Power User</span></td><td style="color:var(--ink2)">Fleet view load + keyboard nav tested here</td></tr>
+            <tr><td>LAN / sharing / network</td><td><span class="chip ch4">Co-op Teams</span></td><td style="color:var(--ink2)">Multi-session and attribution flows</td></tr>
+            <tr><td>Empty state / onboarding copy</td><td><span class="chip ch1">New User</span></td><td style="color:var(--ink2)">Full cold-start path, no prior context</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     IMPLEMENTATION
+     ============================================================ -->
+<section id="implementation">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">07 — IMPLEMENTATION</p>
+      <h2 class="stitle">Minimal viable harness using tools you already have</h2>
+      <p class="slead">The MVP is a Node script, four markdown files, and a GitHub Actions workflow. No new infrastructure, no dedicated QA server. Sonnet and Chrome MCP do the work.</p>
+    </div>
+
+    <div class="rev two-col">
+      <div class="card">
+        <p class="mono-label" style="margin-bottom:.8rem">File structure</p>
+        <div class="cb" style="margin:0">
+          <div class="cbh">qa/</div>
+          <pre><span class="jk">qa/</span>
+  <span class="jk">runner.js</span>          <span class="jc"># CLI entry point</span>
+  <span class="jk">personas/</span>
+    <span class="js">new-user.md</span>      <span class="jc"># Sonnet system prompt</span>
+    <span class="js">daily-driver.md</span>
+    <span class="js">power-user.md</span>
+    <span class="js">co-op-teams.md</span>
+  <span class="jk">schemas/</span>
+    <span class="js">report.json</span>      <span class="jc"># JSON Schema for output</span>
+  <span class="jk">reports/</span>           <span class="jc"># gitignored, CI artifact</span>
+  <span class="jk">viewer/</span>
+    <span class="js">index.html</span>       <span class="jc"># report HTML renderer</span>
+  <span class="jk">run-all.sh</span>         <span class="jc"># all 4 personas</span></pre>
+        </div>
+      </div>
+      <div class="card">
+        <p class="mono-label" style="margin-bottom:.8rem">Persona prompt anatomy</p>
+        <p style="font-size:.88rem;color:var(--ink2);margin-bottom:.75rem">Each <code>.md</code> persona file is the full Sonnet system prompt for that run. It contains:</p>
+        <ul style="font-size:.88rem;color:var(--ink2)">
+          <li><strong style="color:var(--ink)">Identity:</strong> Who you are, your technical background, your mental model of the app</li>
+          <li><strong style="color:var(--ink)">Success path:</strong> The ordered list of tasks to attempt</li>
+          <li><strong style="color:var(--ink)">Adversarial instructions:</strong> "Try this edge case. If you find a confusing moment, note it verbatim."</li>
+          <li><strong style="color:var(--ink)">Output format:</strong> The JSON schema the report must conform to</li>
+          <li><strong style="color:var(--ink)">Scoring rubric:</strong> What counts as blocker vs. friction vs. cosmetic</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rev implgrid" style="margin-top:1.25rem">
+      <div class="wkcard">
+        <p class="wk">Week 1</p>
+        <h3>Core harness + Personas 1 &amp; 2</h3>
+        <ul>
+          <li><span class="ck">→</span>Write <code>runner.js</code> CLI (persona + url args)</li>
+          <li><span class="ck">→</span>Write <code>new-user.md</code> persona prompt</li>
+          <li><span class="ck">→</span>Write <code>daily-driver.md</code> persona prompt</li>
+          <li><span class="ck">→</span>Define <code>report.json</code> schema</li>
+          <li><span class="ck">→</span>Wire up Claude in Chrome MCP in runner</li>
+          <li><span class="ck">→</span>First manual end-to-end run against local MC</li>
+          <li><span class="ck">→</span>Basic HTML report viewer</li>
+        </ul>
+      </div>
+      <div class="wkcard" style="border-color:rgba(245,166,35,.2)">
+        <p class="wk" style="color:var(--amber)">Week 2</p>
+        <h3>CI integration + remaining personas</h3>
+        <ul>
+          <li><span class="td">→</span>GitHub Actions workflow (per PR)</li>
+          <li><span class="td">→</span>Write <code>power-user.md</code> persona prompt</li>
+          <li><span class="td">→</span>Write <code>co-op-teams.md</code> persona prompt</li>
+          <li><span class="td">→</span>Report diff: new vs. baseline findings</li>
+          <li><span class="td">→</span>PR check: fail on new blocker/high severity</li>
+          <li><span class="td">→</span>Attach HTML report as CI artifact</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rev">
+      <div class="call call-n">
+        <p><strong style="color:var(--green)">MVP shortcut:</strong> For the first working run, skip GitHub Actions entirely. A <code>npm run qa:new-user</code> that Sonnet can trigger manually and outputs a JSON file to <code>qa/reports/</code> is sufficient to validate the concept and get your first real findings in Week 1.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     GAPS — MISSING PERSONAS
+     ============================================================ -->
+<section id="gaps">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">08 — GAPS</p>
+      <h2 class="stitle">Five personas the four above won't catch</h2>
+      <p class="slead">The defined personas cover the planned usage space. These gaps cover <em>failure modes outside the happy path</em> — situations where real users break things the core four personas wouldn't reach.</p>
+    </div>
+
+    <div class="rev mgrid">
+      <div class="mcard">
+        <h4>The Frustrated Returner</h4>
+        <p>Used MC 6 weeks ago, hasn't touched it since. Returns after a version bump. Tests whether UI changes are discoverable, whether muscle memory still works, and whether any "what's new" guidance exists.</p>
+        <p class="mcatch">Catches: silent deprecations, moved UI elements, missing changelogs, broken saved state from old versions</p>
+      </div>
+      <div class="mcard">
+        <h4>The Setup Debugger</h4>
+        <p>Follows the new user path but hits a real error: wrong Node version, port 3001 in use, missing env var, corporate firewall blocking SSE. Tests whether error messages are actionable and recovery paths exist.</p>
+        <p class="mcatch">Catches: cryptic error messages, missing diagnostic tools, no "common issues" page, error states that look like success states</p>
+      </div>
+      <div class="mcard">
+        <h4>The Passive Observer</h4>
+        <p>Doesn't want to approve or reject — just wants to watch what agents are doing for oversight and audit purposes. Tests whether MC has value in read-only mode and whether the event stream is readable without acting on it.</p>
+        <p class="mcatch">Catches: missing read-only access model, audit log gaps, no way to follow an agent without being in the approval loop</p>
+      </div>
+      <div class="mcard">
+        <h4>The Interrupted User</h4>
+        <p>Opens MC with 3 active agents, gets pulled into a 45-minute meeting, returns to the tab. Tests session expiry, queue persistence, SSE reconnection, and whether the "pick up where I left off" path works.</p>
+        <p class="mcatch">Catches: session expiry without warning, lost queued approvals, stale agent status indicators, zombie SSE connections</p>
+      </div>
+      <div class="mcard">
+        <h4>The Security Skeptic</h4>
+        <p>Evaluates MC for team use and scrutinizes: what data is logged, what the auth model actually enforces, whether the API responds without auth, what's in the network tab. Tests trust-building and security posture.</p>
+        <p class="mcatch">Catches: unauthenticated endpoints, data retention surprises, missing security documentation, misleading auth UI</p>
+      </div>
+    </div>
+
+    <div class="rev">
+      <div class="call call-i">
+        <p><strong style="color:var(--accent)">Sprint 3 recommendation:</strong> Prioritize the Setup Debugger — it will be the most common first-run experience for new users who encounter any friction. It catches a class of bugs (error states) that the New User persona won't reach because Sonnet will typically be able to resolve issues that a real confused user might bounce on.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SPRINT 2 SPEC
+     ============================================================ -->
+<section id="spec">
+  <div class="si">
+    <div class="rev">
+      <p class="snum">09 — SPRINT 2 SPEC</p>
+      <h2 class="stitle">What ships, who owns it, what "done" means</h2>
+      <p class="slead">Eight deliverables. P1 is the working harness; P2 is CI integration; P3 is full persona coverage. Ship P1 in Week 1 to get the first real findings before the sprint ends.</p>
+    </div>
+
+    <div class="rev stable-wrap">
+      <table class="stable">
+        <thead>
+          <tr>
+            <th>Priority</th>
+            <th>Deliverable</th>
+            <th>Description</th>
+            <th>Acceptance Criteria</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="pchip p1">P1</span></td>
+            <td><code>qa/runner.js</code></td>
+            <td>CLI script: <code>--persona</code> + <code>--url</code> → JSON report via Sonnet + Chrome MCP</td>
+            <td>Runs headlessly, exits with valid JSON matching the report schema, handles Chrome MCP errors gracefully</td>
+          </tr>
+          <tr>
+            <td><span class="pchip p1">P1</span></td>
+            <td>Persona: New User</td>
+            <td><code>qa/personas/new-user.md</code> — complete system prompt covering cold-start auth, empty state, first agent, first approval</td>
+            <td>Sonnet successfully navigates the success path on a clean MC install AND finds the 3 documented failure modes on v0.6</td>
+          </tr>
+          <tr>
+            <td><span class="pchip p1">P1</span></td>
+            <td>Persona: Daily Driver</td>
+            <td><code>qa/personas/daily-driver.md</code> — return visit, queue triage, session restore</td>
+            <td>Sonnet attempts all 6 flows; correctly identifies the queue buildup and opaque approval row as friction points</td>
+          </tr>
+          <tr>
+            <td><span class="pchip p1">P1</span></td>
+            <td>Report JSON Schema</td>
+            <td>Formal JSON Schema for the output report; runner validates output before saving</td>
+            <td>Schema covers all fields; invalid reports rejected with a useful error message</td>
+          </tr>
+          <tr>
+            <td><span class="pchip p2">P2</span></td>
+            <td>HTML Report Viewer</td>
+            <td>Single-file HTML renderer for <code>report.json</code> — shows pass/fail/friction by severity</td>
+            <td>Opens from file system, renders all finding types, sortable by severity</td>
+          </tr>
+          <tr>
+            <td><span class="pchip p2">P2</span></td>
+            <td>GitHub Actions workflow</td>
+            <td>Per-PR CI run: New User + Daily Driver; fails on new blocker/high-severity findings vs. baseline</td>
+            <td>Runs in &lt;20 min; attaches HTML report as artifact; does not fail on pre-existing findings</td>
+          </tr>
+          <tr>
+            <td><span class="pchip p3">P3</span></td>
+            <td>Persona: Power User</td>
+            <td><code>qa/personas/power-user.md</code> — Fleet view, keyboard shortcuts, edge cases, race conditions</td>
+            <td>Sonnet attempts double-approval race, SSE disconnect, expired approval, rapid-fire queue</td>
+          </tr>
+          <tr>
+            <td><span class="pchip p3">P3</span></td>
+            <td>Persona: Co-op Teams</td>
+            <td><code>qa/personas/co-op-teams.md</code> — two-session setup, concurrent approvals, attribution</td>
+            <td>Runner supports <code>--sessions 2</code> flag; concurrent approval conflict scenario documented in report</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="rev" style="margin-top:2rem">
+      <div class="two-col">
+        <div class="card">
+          <p class="mono-label" style="margin-bottom:.8rem">Definition of "done" for the harness</p>
+          <ul style="font-size:.88rem;color:var(--ink2)">
+            <li>Runs without human intervention from <code>npm run qa:new-user</code></li>
+            <li>Produces a valid JSON report every time (even on Sonnet error)</li>
+            <li>Finds at least 3 of the 5 documented v0.6 failure modes per persona</li>
+            <li>Does not require changes to the MC app itself to run</li>
+            <li>Report is readable by a developer who wasn't in the room</li>
+          </ul>
+        </div>
+        <div class="card">
+          <p class="mono-label" style="margin-bottom:.8rem">Out of scope for Sprint 2</p>
+          <ul style="font-size:.88rem;color:var(--ink2)">
+            <li>Mobile / responsive persona runs</li>
+            <li>Missing personas (Returner, Setup Debugger, etc.)</li>
+            <li>Auto-remediation suggestions beyond prose notes</li>
+            <li>Performance benchmarking (load times, SSE latency)</li>
+            <li>Accessibility testing (separate Playwright audit)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="rev" style="margin-top:1.5rem">
+      <div class="call call-w">
+        <p><strong style="color:var(--amber)">The first run will be humbling.</strong> Schedule 30 minutes with the team after the first New User persona run against v0.6. The findings will be real, specific, and actionable — and there will be more of them than expected. That's the point. Better from Sonnet at 9am than from a real new user at 9pm.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer>
+  <span>Mission Control QA Harness Spec · v0.6 · Sprint 2</span>
+  <span style="color:var(--muted)">Generated by Claude Sonnet · 2026-06-27</span>
+</footer>
+
+</div><!-- .pw -->
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+/* ── scrollspy ─────────────────────────────────────────────── */
+(()=>{
+  const links=[...document.querySelectorAll('.tl')];
+  const obs=new IntersectionObserver(es=>es.forEach(e=>{
+    if(e.isIntersecting){
+      const id='#'+e.target.id;
+      links.forEach(l=>l.classList.toggle('on',l.getAttribute('href')===id));
+    }
+  }),{rootMargin:'-40% 0px -45% 0px'});
+  document.querySelectorAll('section[id]').forEach(s=>obs.observe(s));
+})();
+
+/* ── reveal on scroll ──────────────────────────────────────── */
+(()=>{
+  const rv=new IntersectionObserver(es=>es.forEach(e=>{
+    if(e.isIntersecting){e.target.classList.add('in');rv.unobserve(e.target);}
+  }),{threshold:.12});
+  document.querySelectorAll('.rev').forEach(el=>rv.observe(el));
+})();
+
+/* ── persona tabs ──────────────────────────────────────────── */
+(()=>{
+  document.querySelectorAll('.ptab').forEach(tab=>{
+    tab.addEventListener('click',()=>{
+      const target=tab.dataset.p;
+      document.querySelectorAll('.ptab').forEach(t=>t.classList.toggle('on',t===tab));
+      document.querySelectorAll('.ppanel').forEach(p=>p.classList.toggle('on',p.id===target));
+    });
+  });
+})();
+
+/* ── QA run stepper ────────────────────────────────────────── */
+const QA_STEPS=[
+  {
+    title:'1 · INIT — Load persona context',
+    body:'Sonnet receives the full persona system prompt (e.g., <code>new-user.md</code>), the app URL, and the report JSON schema it must populate. It knows: who it is, what success looks like, what to try when stuck, and how to structure its output.',
+    code:'node qa/runner.js --persona new-user --url http://localhost:5173'
+  },
+  {
+    title:'2 · NAVIGATE — Open the app in Chrome',
+    body:'Claude in Chrome MCP navigates to the app URL. Sonnet reads the initial DOM — what\'s visible, what\'s interactive, what the page title says. This is the first observation: "What does a person see when they first arrive?"',
+    code:'// Chrome MCP call\nmcp__Claude_in_Chrome__navigate({ url: "http://localhost:5173" })\nmcp__Claude_in_Chrome__read_page()'
+  },
+  {
+    title:'3 · OBSERVE — Assess initial state vs. persona expectations',
+    body:'Sonnet compares what it sees against what its persona would expect. For the New User: "I see a token input with no label. I don\'t know what kind of token this is." That delta — expectation vs. reality — is the first confusion point candidate.',
+    code:'// Sonnet inner monologue logged to report\n{ "observation": "Auth gate shown. No hint about token type.", "matches_expectation": false }'
+  },
+  {
+    title:'4 · EXECUTE — Attempt the next success path step',
+    body:'Sonnet attempts the step using Chrome MCP interactions: navigate, click, type, read. It applies human-like patience — if a spinner is showing, it waits. If a button is disabled, it notes why before trying an alternative.',
+    code:'mcp__Claude_in_Chrome__form_input({ selector: "#token", value: testToken })\nmcp__Claude_in_Chrome__find({ text: "Connect" })'
+  },
+  {
+    title:'5 · LOG — Record result and move on',
+    body:'Each step gets a result: <strong style="color:var(--green)">passed</strong>, <strong style="color:var(--amber)">partial</strong> (succeeded but with friction), or <strong style="color:var(--red)">failed</strong> (blocked). Confusion and missing affordances are logged inline. Sonnet continues through all steps regardless of failures — it\'s documenting, not stopping.',
+    code:'steps.push({ n: 2, action: "Enter auth token", result: "partial",\n  note: "Succeeded on third attempt; token type not labeled" })'
+  },
+  {
+    title:'6 · ITERATE — Continue + try the adversarial moves',
+    body:'After the success path, Sonnet attempts the adversarial moves defined in the persona prompt: double-click the approve button, open a second tab, try to navigate to <code>/dashboard</code> without auth. These are the moves that expose the v0.6 edge cases.',
+    code:'// Power user adversarial example\n// Two tabs, same approval, both click within 200ms'
+  },
+  {
+    title:'7 · REPORT — Generate the structured JSON output',
+    body:'Sonnet assembles the full report: all flows with step-level results, all confusion points with severity and suggestions, missing affordances, a plain-English summary, and the top 3 findings. The runner validates the output against the schema.',
+    code:'// runner.js\nconst report = JSON.parse(sonnetOutput);\nvalidateSchema(report, reportSchema);\nfs.writeFileSync(`qa/reports/${date}/${persona}-${runId}.json`, JSON.stringify(report))'
+  },
+  {
+    title:'8 · REVIEW — Human triages findings in < 2 minutes',
+    body:'The HTML report viewer renders the JSON: blockers in red at the top, friction in amber, cosmetic issues below. A developer can scan the top 3 findings, decide which to fix before merge, and file the rest as issues. Total human time: 2–5 minutes per run.',
+    code:'// open the report viewer\nopen qa/reports/2026-06-27/new-user-001.html'
+  }
+];
+
+let qaPos=0;
+
+function renderQAStep(){
+  const step=QA_STEPS[qaPos];
+  const dots=[...document.querySelectorAll('#qastepper .sdot')];
+  const lines=[...document.querySelectorAll('#qastepper .sline')];
+  dots.forEach((d,i)=>{
+    d.classList.toggle('done',i<qaPos);
+    d.classList.toggle('cur',i===qaPos);
+  });
+  lines.forEach((l,i)=>l.classList.toggle('done',i<qaPos));
+
+  document.getElementById('qastep-content').innerHTML=`
+    <h3>${step.title}</h3>
+    <p>${step.body}</p>
+    <div class="scode">${step.code}</div>
+  `;
+  document.getElementById('sprev').disabled=qaPos===0;
+  document.getElementById('snext').disabled=qaPos===QA_STEPS.length-1;
+  document.getElementById('spos').textContent=`Step ${qaPos+1} of ${QA_STEPS.length}`;
+}
+
+function qaStep(dir){
+  qaPos=Math.max(0,Math.min(QA_STEPS.length-1,qaPos+dir));
+  renderQAStep();
+}
+
+renderQAStep();
+
+/* ── copy code ─────────────────────────────────────────────── */
+function copyCode(btn){
+  const code=btn.closest('.cb').querySelector('pre').innerText;
+  navigator.clipboard.writeText(code).then(()=>{
+    const orig=btn.textContent;
+    btn.textContent='copied!';
+    setTimeout(()=>btn.textContent=orig,1800);
+  });
+}
+</script>
+</body>
+</html>
