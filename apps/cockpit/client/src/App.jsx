@@ -64,14 +64,17 @@ import { useTheme } from './hooks/useTheme.js'
 // never sibling tabs (SCOPE.md freeze rule + ADR-0006).
 export const CORE_TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
-  { id: 'mesh', label: 'Mesh', icon: Network },
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
   { id: 'runs', label: 'Runs', icon: Gauge },
   { id: 'fleet', label: 'Fleet', icon: Boxes },
   { id: 'history', label: 'History', icon: History },
 ]
 
+// Mesh is a live packet-flow debug graph — EXPERIMENTAL per SCOPE.md, not a
+// daily operational surface. It lives behind the Advanced toggle so the default
+// navigation is the five CORE governance tabs.
 export const ADVANCED_TABS = [
+  { id: 'mesh', label: 'Mesh', icon: Network },
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
   { id: 'teams', label: 'Teams', icon: Users },

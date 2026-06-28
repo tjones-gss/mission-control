@@ -29,6 +29,7 @@ classified**. This keeps the manifest complete without enumerating all ~52 compo
 | Overlapping orchestration UIs | Conductor vs MissionControl vs Runs (`ConductorTab.jsx`, `MissionControlTab/`, `RunsTab/`) — collapse target: **Runs is the surface, "Pipeline" the mode vocabulary** (see IA ruling below) |
 | Three "executable things" paradigms | Workflows vs Skills vs Commands (`WorkflowsPanel.jsx`, `SkillsPanel.jsx`) — collapse target: the canonical phase model (ADR-0006) |
 | Agent views (3 modes of Agents) | `TriageView.jsx` (default), `KanbanBoard.jsx` (Board), `AgentTree.jsx` (Detail) — Triage is the hero; Board/Detail retained |
+| Mesh | `components/MeshView/` — live packet-flow debug graph (V3 hook instrumentation); behind the Advanced toggle, not a CORE tab |
 | Dispatch | **Folded into the Triage multi-select** (`TriageView/SelectionBar.jsx`) — the standalone `DispatchDrawer.jsx`/`DispatchSignal.jsx` surface was retired; the verb lives on the SelectionBar |
 | Metadata viewers | `MemoryViewer.jsx`, `ConfigViewer.jsx`, `HooksPanel.jsx` |
 | Large components flagged for split | `ConversationView.jsx` (~920 LOC), `FleetTab.jsx` (~1049 LOC) — split before adding to them |
