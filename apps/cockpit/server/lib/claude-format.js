@@ -58,13 +58,26 @@ export function isDegraded(value) {
 // to announce a given (parser, reason) transition once per process, the same
 // way the old one-shot console.warn behaved — but as a persistent, structured
 // signal instead of a single line buried in stdout.
-const announced = new Set()
+//
+// Keyed by `${parser}:${reason}`; the value is the {parser, reason} pair so the
+// same registry that dedupes the SSE event also serves as the source of truth
+// for active degraded signals (exposed on GET /api/health as schema_warnings).
+const announced = new Map()
 
 /**
  * Reset the dedupe set. Test-only seam.
  */
 export function _resetDegradedDedupe() {
   announced.clear()
+}
+
+/**
+ * The set of currently-active degraded-parser signals, one {parser, reason} per
+ * distinct (parser, reason) that has degraded this process. Returns [] when no
+ * parser has degraded. Consumed by GET /api/health as schema_warnings.
+ */
+export function getDegradedSignals() {
+  return Array.from(announced.values())
 }
 
 /**
@@ -76,7 +89,7 @@ export function signalDegraded(parser, reason, detail = {}) {
   const key = `${parser}:${reason}`
   const marker = makeDegraded(parser, reason, detail)
   if (announced.has(key)) return marker
-  announced.add(key)
+  announced.set(key, { parser, reason })
   logger.warn(
     { parser, reason, ...detail },
     'parser_degraded — Claude data present but unparseable (Claude Code may have updated)',

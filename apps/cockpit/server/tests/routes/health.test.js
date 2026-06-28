@@ -1,5 +1,6 @@
 import express from 'express'
 import { router, setHealthReady } from '../../routes/health.js'
+import { signalDegraded, _resetDegradedDedupe } from '../../lib/claude-format.js'
 import request from 'supertest'
 
 function createApp() {
@@ -50,6 +51,29 @@ describe('health routes', () => {
     } else {
       expect(res.body.harness.python).toBeNull()
     }
+  })
+
+  test('GET / returns schema_warnings: [] when no parser is degraded', async () => {
+    // Graceful-degrade surface: with all parsers healthy, health must report an
+    // explicit empty list — never omit the field — so the client can trust it.
+    _resetDegradedDedupe()
+    const app = createApp()
+    const res = await request(app).get('/api/health')
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveProperty('schema_warnings')
+    expect(res.body.schema_warnings).toEqual([])
+  })
+
+  test('GET / surfaces active degraded signals as schema_warnings', async () => {
+    // When a parser degrades, its {parser, reason} pair appears on health —
+    // the same registry that dedupes the parser_degraded SSE event.
+    _resetDegradedDedupe()
+    signalDegraded('sessions', 'format-change', { filePath: '/x' })
+    const app = createApp()
+    const res = await request(app).get('/api/health')
+    expect(res.status).toBe(200)
+    expect(res.body.schema_warnings).toEqual([{ parser: 'sessions', reason: 'format-change' }])
+    _resetDegradedDedupe()
   })
 
   test('GET /live returns ok and uptime', async () => {
