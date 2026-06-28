@@ -62,7 +62,7 @@ function SelectCheckbox({ label, checked, onToggle, className = '' }) {
       className={`shrink-0 rounded transition-opacity ${
         checked
           ? 'text-[var(--mc-accent)] opacity-100'
-          : 'text-[var(--mc-fg-4)] opacity-0 hover:text-[var(--mc-fg-2)] group-hover:opacity-100'
+          : 'text-[var(--mc-fg-4)] opacity-0 hover:text-[var(--mc-fg-2)] group-hover:opacity-100 focus-visible:opacity-100'
       } ${className}`}
     >
       {checked ? <CheckSquare size={16} /> : <Square size={16} />}

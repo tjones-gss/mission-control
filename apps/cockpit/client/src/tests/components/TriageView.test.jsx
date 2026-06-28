@@ -40,6 +40,14 @@ describe('TriageView — meta build banner (S1)', () => {
   })
 })
 
+describe('TriageView — checkbox focus visibility (WCAG 2.4.7)', () => {
+  it('test_checkbox_visible_on_focus', () => {
+    renderView([makeSession('a', { needsInput: true })])
+    const checkbox = screen.getByRole('checkbox', { name: /select a/i })
+    expect(checkbox.className).toContain('focus-visible:opacity-100')
+  })
+})
+
 describe('TriageView — grouping', () => {
   it('puts needsInput sessions under "Needs you" with a count', () => {
     renderView([
