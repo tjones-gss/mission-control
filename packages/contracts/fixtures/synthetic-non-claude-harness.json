@@ -1,0 +1,111 @@
+{
+  "vendor": "openai-codex",
+  "version": {
+    "harness": "5.3.0",
+    "contract": 9,
+    "agent_runtime": "codex-cli/1.4.2"
+  },
+  "project": {
+    "name": "billing-reconciler",
+    "mode": "feature-development",
+    "stage": "build-mission",
+    "owner": "payments-platform",
+    "created_at": "2026-06-22"
+  },
+  "stack": {
+    "frontend": "none",
+    "backend": "go",
+    "database": "postgres",
+    "auth": "oidc",
+    "hosting": "fly.io",
+    "package_manager": "go-modules",
+    "test_runner": "go-test",
+    "e2e_runner": "none"
+  },
+  "pipeline": {
+    "active": "feature-development-loop",
+    "phase": "implement",
+    "gate": "tests_pass_and_coverage_holds",
+    "last_completed_phase": "plan",
+    "next_phase": "review",
+    "plan_status": "approved",
+    "goal": "Reconcile settlement batches against the ledger and flag drift over $0.01",
+    "strategy": "Stream batches in windows, diff against ledger snapshots, emit a drift report per window",
+    "transitioned_at": "2026-06-28T09:14:32Z"
+  },
+  "plans": {
+    "PLAN-014-batch-reconciliation": {
+      "status": "approved",
+      "file": "runs/plans/PLAN-014-batch-reconciliation.md",
+      "approved_by": "payments-platform",
+      "approved_at": "2026-06-27T18:02:11Z",
+      "missions": [
+        "MISSION-031-window-streamer",
+        "MISSION-032-ledger-diff",
+        "MISSION-033-drift-report"
+      ]
+    }
+  },
+  "missions": {
+    "MISSION-031-window-streamer": {
+      "status": "complete",
+      "priority": "high",
+      "file": "runs/missions/MISSION-031-window-streamer.md",
+      "adr": "docs/adr/0009-windowed-streaming.md",
+      "spec": "runs/specs/SPEC-031.md",
+      "validation": "passed",
+      "review": "approved",
+      "session_note": "Window streamer merged; backpressure handled via bounded channel."
+    },
+    "MISSION-032-ledger-diff": {
+      "status": "in-progress",
+      "priority": "high",
+      "file": "runs/missions/MISSION-032-ledger-diff.md",
+      "adr": "docs/adr/0010-ledger-snapshot-diff.md",
+      "spec": "runs/specs/SPEC-032.md",
+      "validation": "pending",
+      "review": "pending",
+      "session_note": null
+    },
+    "MISSION-033-drift-report": {
+      "status": "ready",
+      "priority": "medium",
+      "file": "runs/missions/MISSION-033-drift-report.md",
+      "adr": "",
+      "spec": "runs/specs/SPEC-033.md",
+      "validation": "pending",
+      "review": "pending",
+      "session_note": null
+    }
+  },
+  "sessions": [
+    {
+      "id": "codex-7f3a9c12",
+      "agent": "codex-implementer",
+      "status": "running",
+      "mission": "MISSION-032-ledger-diff",
+      "phase": "implement",
+      "started_at": "2026-06-28T09:14:40Z",
+      "model": "codex-large"
+    },
+    {
+      "id": "codex-2b81de44",
+      "agent": "codex-reviewer",
+      "status": "idle",
+      "mission": null,
+      "phase": "review",
+      "started_at": "2026-06-28T08:51:03Z",
+      "model": "codex-large"
+    }
+  ],
+  "readiness_overall": {
+    "score": 0.62,
+    "mvp_ready": false
+  },
+  "next": {
+    "recommended_agent": "codex-implementer",
+    "recommended_action": "finish MISSION-032-ledger-diff: snapshot diff against ledger windows",
+    "blocked": false,
+    "blocker": null
+  }
+}

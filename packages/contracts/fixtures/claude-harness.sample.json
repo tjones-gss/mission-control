@@ -1,0 +1,47 @@
+{
+  "project": {
+    "name": "adaptive-agentic-engineering-harness-v5.3.0",
+    "mode": "feature-development",
+    "stage": "classify-feature",
+    "owner": "unset",
+    "created_at": "2026-05-26"
+  },
+  "stack": {
+    "frontend": "unknown",
+    "backend": "unknown",
+    "database": "unknown",
+    "auth": "unknown",
+    "hosting": "unknown",
+    "package_manager": "unknown",
+    "test_runner": "unknown",
+    "e2e_runner": "unknown",
+    "ci": "unknown"
+  },
+  "pipeline": {
+    "active": "next-mission-loop",
+    "phase": "session-memory",
+    "gate": "session_note_written_if_meaningful_work_occurred",
+    "last_completed_phase": null,
+    "next_phase": null
+  },
+  "missions": {
+    "MISSION-001-example-adapt-harness": {
+      "status": "ready",
+      "priority": "high",
+      "file": "runs/missions/MISSION-001-example-adapt-harness.md",
+      "validation": "pending",
+      "review": "pending",
+      "session_note": null
+    }
+  },
+  "readiness_overall": {
+    "score": 0,
+    "mvp_ready": false
+  },
+  "next": {
+    "recommended_agent": "product-analyst",
+    "recommended_action": "begin classify-feature phase",
+    "blocked": false,
+    "blocker": null
+  }
+}
