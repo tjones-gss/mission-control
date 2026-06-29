@@ -33,6 +33,17 @@ classified**. This keeps the manifest complete without enumerating all ~52 compo
 | Metadata viewers | `MemoryViewer.jsx`, `ConfigViewer.jsx`, `HooksPanel.jsx` |
 | Large components flagged for split | `ConversationView.jsx` (~920 LOC), `FleetTab.jsx` (~1049 LOC) — split before adding to them |
 
+### Provisioning — loop-architecture skills (planned, EXPERIMENTAL)
+
+Per [ADR-0009](docs/adr/0009-loop-architecture-skills.md). Not yet built; EXPERIMENTAL on
+arrival (exempt from L2/L3 until proven). Loop-deployment skills (**bossman**,
+**nethum-protocol**, **steven**, **johndavis**) scaffold a loop design into a target
+project and register it with Fleet, turning MC from observer into provisioner. Three
+surfaces: loop-deployment **Skills**, per-architecture **Fleet templates** (wave structure
++ child caps), and multi-phase **Workflow definitions** (steven's 5-stage pipeline). The
+Fleet hard caps (`MAX_FLEET_CHILDREN` / `HARD_REFUSE_CHILDREN`) remain inviolable, and no
+new top-level tab is introduced — these compose the existing Skills/Fleet/Runs surfaces.
+
 ## Overlap → owning workstream (collapse targets)
 
 | Overlap | Target | Phase |

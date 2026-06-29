@@ -85,6 +85,31 @@ The last loop executed:
 
 No `BLOCKER.md`. No uncommitted work.
 
+## Loop Architecture Skills
+
+New strategic direction (see [ADR-0009](docs/adr/0009-loop-architecture-skills.md)):
+the loop-engineering repo (GSS R&D) holds four proven loop architectures —
+**bossman**, **nethum-protocol**, **steven**, **johndavis** — that define how agents
+are staffed, gated, and orchestrated. Each becomes an **installable MC skill** that
+scaffolds the loop's config into a target project (CLAUDE.md hooks, roster/state files,
+skill catalog, cron schedule) and registers it with Fleet. This turns MC from a passive
+observer into an active provisioner of agent projects.
+
+Three integration surfaces:
+
+- **Skills (loop-deployment)** — each loop design becomes a skill that provisions the
+  loop into a target project, rather than performing a one-off task.
+- **Fleet templates (wave orchestration)** — pre-configured wave structure and child
+  caps per architecture (within the hard `MAX_FLEET_CHILDREN` / `HARD_REFUSE_CHILDREN`
+  ceilings); the canonical way to provision a new agent project.
+- **Workflow definitions (multi-phase pipelines)** — steven's 5-stage pipeline
+  (Scope → Gather → Plan → Work → Verify) becomes the first real multi-phase Workflow
+  (previously degenerate single-phase per ADR-0006).
+
+- **Status:** Planned.
+- **Next step:** Spec + proof of concept with **bossman** — most operator-friendly
+  (Node engine, daily/weekly crons).
+
 ## Phase to execute next run
 
 Release wrap-up only (tag + optional screenshots). All feature phases are done.

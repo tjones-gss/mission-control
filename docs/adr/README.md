@@ -35,6 +35,7 @@ vocabulary: `Proposed · Accepted · Rejected · Deprecated · Superseded`. Ever
 | [0006](0006-canonical-orchestration-model.md) | Canonical orchestration model (pipeline = spine) | Accepted |
 | [0007](0007-core-vs-experimental-scope.md) | Core vs experimental scope + surface freeze | Accepted |
 | [0008](0008-sqlite-derived-read-cache.md) | SQLite derived read-cache for session index and Fleet state | Accepted |
+| [0009](0009-loop-architecture-skills.md) | Loop-architecture skills — installable loop designs | Proposed |
 
 ## Grandfathered per-package ADRs (indexed, not moved)
 
