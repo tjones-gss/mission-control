@@ -52,19 +52,14 @@ export function QuickActions({
           with one tap; never sent automatically. Accent-toned to stand apart from
           the generic chips. Uses --mc-* tokens per the client style rule. */}
       {suggestion && (
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           title={suggestion}
+          disabled={sending !== null}
           onClick={() => {
             if (sending === null) send(suggestion)
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && sending === null) send(suggestion)
-          }}
-          className={`px-1.5 py-0.5 rounded text-[10px] max-w-[260px] truncate transition-colors cursor-pointer ${
-            sending !== null ? 'opacity-30 pointer-events-none' : ''
-          }`}
+          className="px-1.5 py-0.5 rounded text-[10px] max-w-[260px] truncate transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
           style={
             error === suggestion
               ? { color: 'var(--mc-danger)', backgroundColor: 'var(--mc-danger-soft)' }
@@ -72,40 +67,35 @@ export function QuickActions({
           }
         >
           {sending === suggestion ? '...' : error === suggestion ? 'failed' : `✨ ${suggestion}`}
-        </span>
+        </button>
       )}
       {replies.map((msg) => (
-        <span
+        <button
           key={msg}
-          role="button"
-          tabIndex={0}
+          type="button"
+          disabled={sending !== null}
           onClick={() => {
             if (sending === null) send(msg)
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && sending === null) send(msg)
-          }}
-          className={`px-1.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer ${
+          className="px-1.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
+          style={
             error === msg
-              ? 'bg-red-900/50 text-red-300'
-              : 'bg-amber-900/40 text-amber-300 hover:bg-amber-800/60'
-          } ${sending !== null ? 'opacity-30 pointer-events-none' : ''}`}
+              ? { color: 'var(--mc-danger)', backgroundColor: 'var(--mc-danger-soft)' }
+              : { color: 'var(--mc-warn)', backgroundColor: 'var(--mc-warn-soft)' }
+          }
         >
           {sending === msg ? '...' : error === msg ? 'failed' : msg}
-        </span>
+        </button>
       ))}
       {onReply && (
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           onClick={() => onReply(sessionId)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onReply(sessionId)
-          }}
-          className="px-1.5 py-0.5 rounded bg-indigo-900/40 text-indigo-300 text-[10px] hover:bg-indigo-800/60 transition-colors flex items-center gap-0.5 cursor-pointer"
+          className="px-1.5 py-0.5 rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer"
+          style={{ color: 'var(--mc-accent)', backgroundColor: 'var(--mc-accent-soft)' }}
         >
           <MessageSquare size={8} /> reply
-        </span>
+        </button>
       )}
     </div>
   )

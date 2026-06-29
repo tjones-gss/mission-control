@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server.js'
 import { TriageView } from '../../components/TriageView/TriageView.jsx'
@@ -182,6 +183,21 @@ describe('TriageView — multi-select + SelectionBar', () => {
     renderView([makeSession('a', { needsInput: true })], { onSelect })
     fireEvent.click(screen.getByRole('checkbox', { name: /select a/i }))
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('toggles the selection via Space key (keyboard accessible)', async () => {
+    renderView([makeSession('a', { needsInput: true })])
+    screen.getByRole('checkbox', { name: /select a/i }).focus()
+    await userEvent.keyboard('[Space]')
+    expect(screen.getByText('1 session selected')).toBeInTheDocument()
+  })
+
+  it('reveals the multi-select checkbox on keyboard focus (focus-visible)', () => {
+    renderView([makeSession('a', { needsInput: true })])
+    const checkbox = screen.getByRole('checkbox', { name: /select a/i })
+    // Hidden (opacity-0) until hover, but keyboard focus must reveal it so a
+    // tabbing user can see what they're about to toggle — not just hover.
+    expect(checkbox.className).toMatch(/focus-visible:opacity-100/)
   })
 })
 
