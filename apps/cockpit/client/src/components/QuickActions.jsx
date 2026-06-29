@@ -52,15 +52,12 @@ export function QuickActions({
           with one tap; never sent automatically. Accent-toned to stand apart from
           the generic chips. Uses --mc-* tokens per the client style rule. */}
       {suggestion && (
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
+          aria-label={suggestion}
           title={suggestion}
           onClick={() => {
             if (sending === null) send(suggestion)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && sending === null) send(suggestion)
           }}
           className={`px-1.5 py-0.5 rounded text-[10px] max-w-[260px] truncate transition-colors cursor-pointer ${
             sending !== null ? 'opacity-30 pointer-events-none' : ''
@@ -72,18 +69,15 @@ export function QuickActions({
           }
         >
           {sending === suggestion ? '...' : error === suggestion ? 'failed' : `✨ ${suggestion}`}
-        </span>
+        </button>
       )}
       {replies.map((msg) => (
-        <span
+        <button
           key={msg}
-          role="button"
-          tabIndex={0}
+          type="button"
+          aria-label={msg.charAt(0).toUpperCase() + msg.slice(1)}
           onClick={() => {
             if (sending === null) send(msg)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && sending === null) send(msg)
           }}
           className={`px-1.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer ${
             error === msg
@@ -92,20 +86,17 @@ export function QuickActions({
           } ${sending !== null ? 'opacity-30 pointer-events-none' : ''}`}
         >
           {sending === msg ? '...' : error === msg ? 'failed' : msg}
-        </span>
+        </button>
       ))}
       {onReply && (
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
+          aria-label="Reply"
           onClick={() => onReply(sessionId)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onReply(sessionId)
-          }}
           className="px-1.5 py-0.5 rounded bg-indigo-900/40 text-indigo-300 text-[10px] hover:bg-indigo-800/60 transition-colors flex items-center gap-0.5 cursor-pointer"
         >
           <MessageSquare size={8} /> reply
-        </span>
+        </button>
       )}
     </div>
   )

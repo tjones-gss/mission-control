@@ -111,6 +111,36 @@ describe('QuickActions', () => {
     expect(screen.getByText('yes')).toBeInTheDocument()
   })
 
+  // WCAG 4.1.2 (Name, Role, Value): the chips must be real <button> elements,
+  // not <span role="button">, so they get native keyboard semantics and an
+  // accessible name. See docs/ux/TASK-LIST.md H1-1.
+  it('test_approve_button_is_real_button', () => {
+    render(<QuickActions sessionId="s1" />)
+    expect(screen.getByText('approve').tagName).toBe('BUTTON')
+  })
+
+  it('test_approve_button_has_aria_label', () => {
+    render(<QuickActions sessionId="s1" />)
+    expect(screen.getByLabelText('Approve')).toBeInTheDocument()
+  })
+
+  it('test_approve_button_activatable_by_space', async () => {
+    let capturedBody = null
+    server.use(
+      http.post('/api/sessions/:sessionId/message', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
+      }),
+    )
+    render(<QuickActions sessionId="s1" />)
+    screen.getByText('approve').focus()
+    await userEvent.keyboard(' ')
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy()
+      expect(capturedBody.message).toBe('approve')
+    })
+  })
+
   it('clears error after 3s', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     server.use(

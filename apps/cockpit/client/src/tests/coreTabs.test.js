@@ -31,4 +31,15 @@ describe('top-level tab manifest', () => {
     expect(ids).not.toContain('pipeline')
     expect(labels).not.toContain('pipeline')
   })
+
+  // Mesh is a live packet-flow debug graph, EXPERIMENTAL per SCOPE.md — it must
+  // not sit in the default core navigation (H3-5). Pinning the exact CORE
+  // manifest catches any future re-promotion of a debug surface to CORE.
+  it('test_mesh_not_in_core_tabs', () => {
+    expect(CORE_TABS.map((t) => t.id)).toEqual(['agents', 'tasks', 'runs', 'fleet', 'history'])
+  })
+
+  it('test_mesh_appears_in_advanced_mode', () => {
+    expect(ADVANCED_TABS.map((t) => t.id)).toContain('mesh')
+  })
 })
