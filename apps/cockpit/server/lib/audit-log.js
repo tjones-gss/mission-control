@@ -29,6 +29,7 @@ import { dirname, join } from 'path'
 import { fileURLToPath } from 'node:url'
 import { SCHEMA_VERSION, auditEventSchema } from '@mission-control/contracts'
 import { logger } from './logger.js'
+import { startSpan, endSpan } from './otel.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -223,6 +224,20 @@ export async function recordAuditEvent(event = {}) {
   assertValid(rec)
   await appendLine(JSON.stringify(rec))
   lastSeq = rec.seq
+  // OTel (env-gated, OFF by default): a human approval decision is a span tagged
+  // with who decided and what they decided. Emitting it here covers EVERY approval
+  // site (tool, harness, fleet, trust) in one seam. No-op when tracing is disabled
+  // — startSpan returns null and endSpan ignores it. `actor` holds the resolving
+  // seat identity (see the audit-event schema), so actor and seat derive from it.
+  if (rec.eventType === 'approval') {
+    const span = startSpan('approval', {
+      'approval.decision': rec.decision || 'unknown',
+      'approval.actor': rec.actor || 'unknown',
+      'approval.seat': rec.actor || 'unknown',
+      'approval.source': rec.source,
+    })
+    endSpan(span)
+  }
   return rec
 }
 

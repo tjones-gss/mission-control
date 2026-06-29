@@ -30,6 +30,7 @@ import { getQueryStatus, resolveApproval } from '../pty-session.js'
 import { getSessionById } from '../parsers/sessions.js'
 import { emit } from '../sse.js'
 import { logger } from '../lib/logger.js'
+import { startSpan, endSpan } from '../lib/otel.js'
 
 // Persisted runs live alongside the server (server/data/fleet), resolved
 // relative to this module so it stays correct regardless of cwd.
@@ -89,6 +90,11 @@ const finalized = new Set()
 // RESERVE an estimate for in-flight-but-not-yet-costed children. A WeakSet so it
 // never leaks into the persisted state and is GC'd with the run. NOT persisted.
 const spawnedChildren = new WeakSet()
+// fleetId -> the in-flight OTel span for the whole run. A span is a live object
+// (it can't live in the persisted JSON state), so we key it here the same way
+// cancels/finalized are keyed. Empty unless OTEL_ENABLED is set — startSpan
+// returns null when tracing is off, so this stays a no-op on the default path.
+const fleetSpans = new Map()
 
 // GLOBAL HARD KILL-SWITCH. A single module-level boolean, deliberately NOT keyed
 // off any run id or the in-memory registries, so it remains reachable and
@@ -125,6 +131,21 @@ export function __resetFleet() {
   inFlight.clear()
   cancels.clear()
   finalized.clear()
+  fleetSpans.clear()
+}
+
+// End the run's OTel span (if one was opened) with its terminal status, then drop
+// the handle. Called once from maybeFinalize after the run settles, so the span
+// envelopes the whole lifecycle (opened at startFleetRun, closed here). No-op when
+// tracing is off (no span was stored) or already ended.
+function endFleetRunSpan(state) {
+  const span = fleetSpans.get(state.id)
+  if (!span) return
+  fleetSpans.delete(state.id)
+  endSpan(span, {
+    'fleet.status': state.status,
+    'fleet.child_count': state.children.filter((c) => c.childKind !== 'verifier').length,
+  })
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -553,6 +574,17 @@ export async function startFleetRun({ goal, children, policy } = {}) {
     logger.warn({ detail: err.message, id }, 'fleet_persist_initial_failed')
     return { ok: false, status: 502, error: err.message }
   }
+
+  // OTel (env-gated, OFF by default): open the run span BEFORE any child spawns so
+  // it envelopes the full lifecycle; maybeFinalize closes it on the terminal state.
+  // startSpan returns null when tracing is disabled — skip storing it so the map
+  // stays empty (and pays nothing) on the default localhost path.
+  const runSpan = startSpan('fleet.run', {
+    'fleet.run_id': id,
+    'fleet.child_count': state.children.length,
+    'fleet.goal': state.goal,
+  })
+  if (runSpan) fleetSpans.set(id, runSpan)
 
   // Spawn each child. spawnChild never throws synchronously to the caller — a
   // synchronous spawn failure (or a budget refusal) is recorded on the child and
@@ -1039,9 +1071,11 @@ function maybeFinalize(state, lockKey) {
   if (finalized.has(state.id)) return
   finalized.add(state.id)
   release(lockKey)
-  onAllChildrenSettled(state).catch((err) =>
-    logger.warn({ detail: err.message, id: state.id }, 'fleet_synthesis_failed'),
-  )
+  onAllChildrenSettled(state)
+    .catch((err) => logger.warn({ detail: err.message, id: state.id }, 'fleet_synthesis_failed'))
+    // Close the run span once the terminal state (incl. synthesis) is resolved, so
+    // span end ≥ run end. Runs into the .finally regardless of synthesis success.
+    .finally(() => endFleetRunSpan(state))
 }
 
 // After all children settle: set the derived run status, then spawn ONE synthesis

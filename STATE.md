@@ -58,6 +58,15 @@ PROGRESS.md for the per-phase log and FULL_BUILD_SUMMARY.md for the final summar
 
 The last loop executed:
 
+- **Sprint 2-c — OTel trace export** (this loop): fleshed out the env-gated `lib/otel.js`
+  scaffold into real span instrumentation. Added `startSpan`/`endSpan` primitives (pure
+  no-ops when `OTEL_ENABLED` is unset — the production default pays nothing), a
+  `fleet.run` span wrapping the whole fleet lifecycle (opened in `startFleetRun`, closed
+  in `maybeFinalize` with the terminal status + child count), and an `approval` span
+  emitted from the single `recordAuditEvent` seam (covers every approval site — tool,
+  harness, fleet, trust) tagged with actor/seat/decision. TDD-first in
+  `tests/lib/otel.test.js`; provability stays in-process via the `InMemorySpanExporter`
+  (no external collector). OTLP/network exporter remains a deliberate later opt-in.
 - **Sprint 2-b — LAN team-lead mode** (`ce12ec0`, #23): `lib/discovery.js` advertises the
   cockpit over mDNS when bound beyond loopback (`OVERSIGHT_HOST=0.0.0.0` → `config.lanMode`),
   and `lib/seat.js` maps the `X-Oversight-Seat` header to the audit `actor` on tool approvals.
@@ -75,6 +84,31 @@ The last loop executed:
 - **Screenshots** — `docs/screenshots/` capture deferred to a loop that runs `npm run up` + Playwright.
 
 No `BLOCKER.md`. No uncommitted work.
+
+## Loop Architecture Skills
+
+New strategic direction (see [ADR-0009](docs/adr/0009-loop-architecture-skills.md)):
+the loop-engineering repo (GSS R&D) holds four proven loop architectures —
+**bossman**, **nethum-protocol**, **steven**, **johndavis** — that define how agents
+are staffed, gated, and orchestrated. Each becomes an **installable MC skill** that
+scaffolds the loop's config into a target project (CLAUDE.md hooks, roster/state files,
+skill catalog, cron schedule) and registers it with Fleet. This turns MC from a passive
+observer into an active provisioner of agent projects.
+
+Three integration surfaces:
+
+- **Skills (loop-deployment)** — each loop design becomes a skill that provisions the
+  loop into a target project, rather than performing a one-off task.
+- **Fleet templates (wave orchestration)** — pre-configured wave structure and child
+  caps per architecture (within the hard `MAX_FLEET_CHILDREN` / `HARD_REFUSE_CHILDREN`
+  ceilings); the canonical way to provision a new agent project.
+- **Workflow definitions (multi-phase pipelines)** — steven's 5-stage pipeline
+  (Scope → Gather → Plan → Work → Verify) becomes the first real multi-phase Workflow
+  (previously degenerate single-phase per ADR-0006).
+
+- **Status:** Planned.
+- **Next step:** Spec + proof of concept with **bossman** — most operator-friendly
+  (Node engine, daily/weekly crons).
 
 ## Phase to execute next run
 
