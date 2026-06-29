@@ -76,6 +76,31 @@ export async function shutdownOtel() {
   }
 }
 
+// Generic span primitives for instrumenting discrete operations off the HTTP path
+// — a full fleet-run lifecycle, a single approval decision. They are the seam the
+// fleet runner and the audit writer call, deliberately tiny (this is instrumentation,
+// not a tracing framework). When tracing is OFF both are pure no-ops: startSpan
+// returns null and endSpan ignores a null handle, so a call site pays nothing on the
+// default localhost path and never has to guard the return value itself.
+export function startSpan(name, attributes = {}) {
+  if (!isOtelEnabled() || !provider) return null
+  const tracer = trace.getTracer(TRACER_NAME)
+  return tracer.startSpan(name, { attributes })
+}
+
+// End a span started by startSpan, optionally stamping the attributes known only at
+// completion (e.g. a fleet run's terminal status). No-op when span is null (the
+// disabled path), so callers pass the startSpan result straight through.
+export function endSpan(span, finalAttributes = {}) {
+  if (!span) return
+  if (finalAttributes && typeof finalAttributes === 'object') {
+    for (const [key, value] of Object.entries(finalAttributes)) {
+      if (value !== undefined && value !== null) span.setAttribute(key, value)
+    }
+  }
+  span.end()
+}
+
 // Per-request span middleware. When tracing is OFF it is a pure pass-through (no
 // span, no overhead). When ON it opens a server span named "METHOD route", runs the
 // rest of the stack inside that span's context, and ends it on response finish with

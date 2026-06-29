@@ -58,6 +58,15 @@ PROGRESS.md for the per-phase log and FULL_BUILD_SUMMARY.md for the final summar
 
 The last loop executed:
 
+- **Sprint 2-c — OTel trace export** (this loop): fleshed out the env-gated `lib/otel.js`
+  scaffold into real span instrumentation. Added `startSpan`/`endSpan` primitives (pure
+  no-ops when `OTEL_ENABLED` is unset — the production default pays nothing), a
+  `fleet.run` span wrapping the whole fleet lifecycle (opened in `startFleetRun`, closed
+  in `maybeFinalize` with the terminal status + child count), and an `approval` span
+  emitted from the single `recordAuditEvent` seam (covers every approval site — tool,
+  harness, fleet, trust) tagged with actor/seat/decision. TDD-first in
+  `tests/lib/otel.test.js`; provability stays in-process via the `InMemorySpanExporter`
+  (no external collector). OTLP/network exporter remains a deliberate later opt-in.
 - **Sprint 2-b — LAN team-lead mode** (`ce12ec0`, #23): `lib/discovery.js` advertises the
   cockpit over mDNS when bound beyond loopback (`OVERSIGHT_HOST=0.0.0.0` → `config.lanMode`),
   and `lib/seat.js` maps the `X-Oversight-Seat` header to the audit `actor` on tool approvals.
