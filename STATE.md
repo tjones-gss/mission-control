@@ -58,6 +58,16 @@ PROGRESS.md for the per-phase log and FULL_BUILD_SUMMARY.md for the final summar
 
 The last loop executed:
 
+- **Sprint 2-d — cross-vendor harness contract** (`feat/xvendor-harness-demo`): proves
+  ADR-0005 asset (b) — the versioned vendor-neutral `harness status` contract — is executably
+  cross-vendor. `packages/contracts/fixtures/synthetic-non-claude-harness.json` is a realistic
+  `vendor: "openai-codex"` `harness status --json` payload (running pipeline, sessions, missions);
+  `packages/contracts/tests/xvendor-contract.test.js` (`node --test` + ajv, the contracts package
+  is now independently testable) asserts it validates against the shared schema with zero errors,
+  that a real Claude payload still validates (regression guard), that the schema pins no
+  claude-only vendor, and that structural/type drift is still caught. The consumer side —
+  `apps/cockpit/server/tests/contracts/xvendor-harness.contract.test.js` — proves the cockpit
+  parser ingests the non-Claude payload without throwing. Completes Sprint 2.
 - **Sprint 2-b — LAN team-lead mode** (`ce12ec0`, #23): `lib/discovery.js` advertises the
   cockpit over mDNS when bound beyond loopback (`OVERSIGHT_HOST=0.0.0.0` → `config.lanMode`),
   and `lib/seat.js` maps the `X-Oversight-Seat` header to the audit `actor` on tool approvals.
