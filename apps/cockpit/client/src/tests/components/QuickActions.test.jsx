@@ -111,6 +111,66 @@ describe('QuickActions', () => {
     expect(screen.getByText('yes')).toBeInTheDocument()
   })
 
+  it('renders reply chips as real <button> elements (keyboard + screen-reader accessible)', () => {
+    render(<QuickActions sessionId="s1" />)
+    expect(screen.getByText('yes').tagName).toBe('BUTTON')
+    expect(screen.getByText('continue').tagName).toBe('BUTTON')
+    expect(screen.getByText('approve').tagName).toBe('BUTTON')
+  })
+
+  it('renders the suggestion chip as a real <button>', () => {
+    render(<QuickActions sessionId="s1" suggestion="Approved — go ahead." />)
+    expect(screen.getByText(/Approved — go ahead\./).tagName).toBe('BUTTON')
+  })
+
+  it('renders the reply trigger as a real <button>', () => {
+    render(<QuickActions sessionId="s1" onReply={vi.fn()} />)
+    expect(screen.getByText('reply').closest('button')).not.toBeNull()
+    expect(screen.getByText('reply').tagName).toBe('BUTTON')
+  })
+
+  it('activates a reply on Space key (native button semantics)', async () => {
+    let capturedBody = null
+    server.use(
+      http.post('/api/sessions/:sessionId/message', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
+      }),
+    )
+    render(<QuickActions sessionId="s1" />)
+    screen.getByText('yes').focus()
+    await userEvent.keyboard('[Space]')
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy()
+      expect(capturedBody.message).toBe('yes')
+    })
+  })
+
+  it('activates the suggestion chip on Space key', async () => {
+    let capturedBody = null
+    server.use(
+      http.post('/api/sessions/:sessionId/message', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
+      }),
+    )
+    render(<QuickActions sessionId="s1" suggestion="Approved — go ahead." />)
+    screen.getByText(/Approved — go ahead\./).focus()
+    await userEvent.keyboard('[Space]')
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy()
+      expect(capturedBody.message).toBe('Approved — go ahead.')
+    })
+  })
+
+  it('fires onReply on Space key', async () => {
+    const onReply = vi.fn()
+    render(<QuickActions sessionId="s1" onReply={onReply} />)
+    screen.getByText('reply').focus()
+    await userEvent.keyboard('[Space]')
+    expect(onReply).toHaveBeenCalledWith('s1')
+  })
+
   it('clears error after 3s', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     server.use(
