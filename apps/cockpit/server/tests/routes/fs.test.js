@@ -84,7 +84,10 @@ describe('POST /api/fs/pick-directory', () => {
   })
 
   test('204 when the native picker is cancelled', async () => {
-    mockPickerProcess({ code: 2 })
+    // The cancel exit code is per-platform (Windows script: 2; osascript/
+    // zenity: 1) and the route resolves it from the HOST platform, so this
+    // test must too — a hardcoded 2 passes on Windows and fails on CI's Linux.
+    mockPickerProcess({ code: process.platform === 'win32' ? 2 : 1 })
     const res = await request(createApp()).post('/api/fs/pick-directory').send({})
 
     expect(res.status).toBe(204)

@@ -100,7 +100,7 @@ cd apps/cockpit/client && npm install
 - `KanbanBoard.jsx` — Board mode.
 - `AgentTree.jsx` — Detail mode with `InspectPanel` for `~/.claude` viewers.
 
-**Theme system:** `index.css` defines `--mc-*` CSS variables (the token layer). `useTheme.js` applies a `data-theme` attribute on `<html>`. Themes: `classic` (default), `calm`, `tron`, `warm`. New components should use `--mc-*` vars, not hardcoded Tailwind colors.
+**Theme system:** `index.css` defines `--mc-*` CSS variables (the token layer). `useTheme.js` applies a `data-theme` attribute on `<html>`. Themes: `calm` (default), `classic` (legacy cold-gray/indigo), `tron`, `warm`. New components should use `--mc-*` vars, not hardcoded Tailwind colors.
 
 **Real-time:** `useSSE.js` connects to `GET /api/stream`. The app uses version counters (`sessionsVersion`, `fleetVersion`, etc.) as `useApi` deps — incrementing the counter is how SSE events trigger a refetch.
 

@@ -18,6 +18,9 @@ import { logger } from '../lib/logger.js'
 import { parseSessionRecord, getAllSessions } from '../parsers/sessions.js'
 import { listSessions } from '../lib/db/session-index.js'
 import { isDbUnavailable } from '../lib/db/connection.js'
+import { isMetaSession } from './meta-session-detector.js'
+import { detectLoop } from './loop-detector.js'
+import { detectCostRunway } from './cost-runway.js'
 
 // Session source for the sweep: the SQLite index when healthy (cheap reads —
 // the old direct parser scan reparsed every transcript each 30s tick), with
@@ -28,9 +31,6 @@ function sweepSessions() {
   if (isDbUnavailable()) return getAllSessions() || []
   return listSessions() || []
 }
-import { isMetaSession } from './meta-session-detector.js'
-import { detectLoop } from './loop-detector.js'
-import { detectCostRunway } from './cost-runway.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
