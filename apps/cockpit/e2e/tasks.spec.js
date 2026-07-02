@@ -20,7 +20,7 @@ test.describe('tasks tab', () => {
   test('navigating to Tasks tab renders the TaskBoard root', async ({ page }) => {
     await goToTasks(page)
     // The tab button is highlighted.
-    await expect(page.getByRole('button', { name: 'Tasks' })).toHaveClass(/bg-gray-800/)
+    await expect(page.getByRole('button', { name: 'Tasks' })).toHaveClass(/--mc-surface-2/)
   })
 
   test('TaskBoard shows the uppercase "Tasks" section label', async ({ page }) => {
