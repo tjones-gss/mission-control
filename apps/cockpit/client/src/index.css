@@ -262,20 +262,28 @@
     @apply my-1.5;
   }
   .prose a {
-    @apply text-cyan-400 hover:text-cyan-300 no-underline;
+    @apply no-underline;
+    color: var(--mc-accent-2);
+  }
+  .prose a:hover {
+    color: var(--mc-accent);
   }
   .prose table {
-    @apply border-gray-800;
+    border-color: var(--mc-border);
   }
   .prose th,
   .prose td {
-    @apply border-gray-800;
+    border-color: var(--mc-border);
   }
   .prose code:not(pre code) {
-    @apply bg-gray-800 text-gray-300 px-1 py-0.5 rounded text-xs;
+    @apply px-1 py-0.5 rounded text-xs;
+    background-color: var(--mc-surface-2);
+    color: var(--mc-fg-2);
   }
   .prose pre {
-    @apply bg-gray-900 border border-gray-800;
+    @apply border;
+    background-color: var(--mc-surface);
+    border-color: var(--mc-border);
   }
 }
 
@@ -313,6 +321,74 @@
 
 .mc-panel-in {
   animation: mc-panel-in 100ms ease-out both;
+}
+
+/* Console-voice motion (Oversight design handoff). All three are covered by
+ * the global prefers-reduced-motion kill switch above. */
+@keyframes mc-fade {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.mc-fade {
+  animation: mc-fade 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes mc-slide-in-right {
+  from {
+    translate: 100% 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+.mc-slide-in-right {
+  animation: mc-slide-in-right 0.26s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes mc-slide-in-left {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+.mc-slide-in-left {
+  animation: mc-slide-in-left 0.26s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes mc-pop {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.mc-pop {
+  animation: mc-pop 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Eyebrow label — the design's uppercase, letter-spaced section voice
+ * (NEEDS YOU / RUNNING / LIVE FEED). Mono comes from the body font. */
+.mc-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--mc-fg-4);
 }
 
 /* Accessible keyboard focus ring (WCAG 2.4.7). A single themed indicator for
@@ -364,6 +440,6 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #374151;
+  background: var(--mc-border-3);
   border-radius: 2px;
 }

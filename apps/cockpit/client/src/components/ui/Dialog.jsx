@@ -146,11 +146,21 @@ export function Dialog({
     center: 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal',
   }[placement]
 
+  // Placement-appropriate entrance. The keyframes animate the independent
+  // `translate`/`scale` properties, so they compose with the Tailwind
+  // `transform`-based centering above; reduced-motion kills all of them.
+  const motionClass = {
+    bottom: 'mc-panel-in',
+    left: 'mc-slide-in-left',
+    right: 'mc-slide-in-right',
+    center: 'mc-pop',
+  }[placement]
+
   return createPortal(
     <>
       <div
         data-dialog-backdrop=""
-        className={`fixed inset-0 z-modalBackdrop ${backdropClassName || 'bg-black/60'}`}
+        className={`fixed inset-0 z-modalBackdrop ${backdropClassName || 'bg-black/60 backdrop-blur-sm'}`}
         onClick={() => dismissible && onClose?.()}
       />
       <div
@@ -160,7 +170,7 @@ export function Dialog({
         aria-label={labelledBy ? undefined : label}
         aria-labelledby={labelledBy}
         tabIndex={-1}
-        className={`${positionClasses} mc-panel-in ${className}`}
+        className={`${positionClasses} ${motionClass} ${className}`}
       >
         {children}
       </div>

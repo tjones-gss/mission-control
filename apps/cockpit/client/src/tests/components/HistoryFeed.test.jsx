@@ -31,9 +31,9 @@ const defaultProps = () => ({
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 describe('HistoryFeed — empty state', () => {
-  it('shows "No command history found" when entries is empty', () => {
+  it('shows the explain-and-point empty state when entries is empty', () => {
     render(<HistoryFeed entries={[]} grouped={false} onLoadMore={vi.fn()} hasMore={false} />)
-    expect(screen.getByText('No command history found')).toBeInTheDocument()
+    expect(screen.getByText(/no command history yet/i)).toBeInTheDocument()
   })
 })
 

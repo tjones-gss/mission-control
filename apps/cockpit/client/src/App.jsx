@@ -519,10 +519,8 @@ export default function App() {
   // once the user picks a session; the fixed sidebar passes nothing.
   const sessionsPanel = (onAfterSelect) => (
     <>
-      <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
-        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-          Sessions
-        </span>
+      <div className="h-10 shrink-0 px-3 border-b border-[var(--mc-border)] flex items-center">
+        <span className="mc-eyebrow">Sessions</span>
         {sessions && <span className="ml-2 text-xs text-gray-500">{sessions.length}</span>}
         <button
           onClick={() => setShowNewSession((s) => !s)}
@@ -563,7 +561,7 @@ export default function App() {
   )
 
   return (
-    <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
+    <div className="h-screen flex flex-col bg-[var(--mc-bg)] overflow-hidden">
       {/* Header */}
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--mc-border)] bg-[var(--mc-bg)] px-4 py-2 shrink-0">
         <button
@@ -705,7 +703,7 @@ export default function App() {
         onDismiss={acknowledgeAnomaly}
       />
       {showNewSession && (
-        <div className="md:hidden border-b border-gray-800 bg-gray-950/95">
+        <div className="md:hidden border-b border-[var(--mc-border)] bg-[var(--mc-glass)] backdrop-blur">
           <NewSessionForm
             sessions={sessions}
             onCreated={(arg) => {
@@ -719,14 +717,14 @@ export default function App() {
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden bg-gray-950 isolate" data-tab={activeTab}>
+      <div className="flex-1 flex overflow-hidden bg-[var(--mc-bg)] isolate" data-tab={activeTab}>
         {/* Left: Sessions list — fixed pane ≥lg, slide-in drawer below. */}
-        <aside className="hidden lg:flex w-64 shrink-0 border-r border-gray-800 overflow-hidden flex-col relative z-10 bg-gray-950">
+        <aside className="hidden lg:flex w-64 shrink-0 border-r border-[var(--mc-border)] overflow-hidden flex-col relative z-10 bg-[var(--mc-bg)]">
           {sessionsPanel()}
         </aside>
 
         {/* Center: Main panel */}
-        <main className="flex-1 min-w-0 overflow-hidden flex flex-col relative z-0 bg-gray-950">
+        <main className="flex-1 min-w-0 overflow-hidden flex flex-col relative z-0 bg-[var(--mc-bg)]">
           {activeTab !== 'runs' && <FeatureBrief surfaceId={activeTab} />}
           {activeTab === 'agents' && Array.isArray(sessions) && sessions.length === 0 && (
             // Empty front door (L2): a guided Welcome + one-click first agent instead
@@ -899,7 +897,7 @@ export default function App() {
           onClose={() => setShowSidebarDrawer(false)}
           placement="left"
           label="Sessions"
-          className="flex w-[min(20rem,85vw)] flex-col overflow-hidden border-r border-gray-800 bg-gray-950 shadow-2xl"
+          className="flex w-[min(20rem,85vw)] flex-col overflow-hidden border-r border-[var(--mc-glass-brd)] bg-[var(--mc-glass)] backdrop-blur-lg shadow-2xl"
         >
           {sessionsPanel(() => setShowSidebarDrawer(false))}
         </Dialog>
@@ -910,7 +908,7 @@ export default function App() {
           onClose={() => setShowActivityDrawer(false)}
           placement="right"
           label="Activity feed"
-          className="flex w-[min(20rem,85vw)] flex-col overflow-hidden border-l border-gray-800 bg-gray-950 shadow-2xl"
+          className="flex w-[min(20rem,85vw)] flex-col overflow-hidden border-l border-[var(--mc-glass-brd)] bg-[var(--mc-glass)] backdrop-blur-lg shadow-2xl"
         >
           <LiveFeed events={events} />
         </Dialog>

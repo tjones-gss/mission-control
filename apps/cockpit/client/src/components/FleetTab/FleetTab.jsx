@@ -206,9 +206,7 @@ export function FleetTab({ fleetVersion = 0, onOpenSession }) {
       {view === 'list' && (
         <div className="w-56 shrink-0 border-r border-[var(--mc-border)] flex flex-col overflow-hidden">
           <div className="h-10 shrink-0 px-3 border-b border-[var(--mc-border)] flex items-center">
-            <span className="text-xs font-semibold text-[var(--mc-fg-5)] uppercase tracking-wider">
-              Fleet Runs
-            </span>
+            <span className="mc-eyebrow">Fleet Runs</span>
             <button
               type="button"
               onClick={() => setShowLaunch(true)}

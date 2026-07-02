@@ -67,11 +67,9 @@ export function LiveFeed({ events }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-gray-800">
-        <Zap size={12} className="text-yellow-400" />
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-          Live Feed
-        </span>
+      <div className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-[var(--mc-border)]">
+        <Zap size={12} className="text-[var(--mc-warn)]" />
+        <span className="mc-eyebrow">Live Feed</span>
         {visible.length > 0 && (
           <span className="ml-auto text-xs text-gray-500">{visible.length} events</span>
         )}
@@ -83,7 +81,7 @@ export function LiveFeed({ events }) {
         {visible.map((evt, i) => {
           const color = EVENT_COLORS[evt.type] || 'text-gray-500'
           return (
-            <div key={i} className="flex items-baseline gap-2">
+            <div key={i} className="flex items-baseline gap-2 mc-fade">
               <span className="text-gray-500 shrink-0">{formatTime(evt.data.ts)}</span>
               <span className={`${color} shrink-0`}>{describeEvent(evt)}</span>
             </div>

@@ -118,7 +118,7 @@ function AttnCard({ session, onSelect, selected, onToggleSelect, focused, regist
       tabIndex={-1}
       role="listitem"
       data-focused={focused || undefined}
-      className={`group relative rounded-lg border bg-[var(--mc-surface)] p-4 transition-colors ${
+      className={`group relative rounded-lg border bg-[var(--mc-surface)] p-4 transition-colors mc-fade ${
         focused ? 'ring-2 ring-[var(--mc-accent)]' : ''
       }`}
       style={{ borderColor: danger ? 'var(--mc-danger)' : 'var(--mc-accent-line)' }}

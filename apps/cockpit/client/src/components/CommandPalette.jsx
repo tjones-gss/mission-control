@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react'
 import { Check, MessageSquare, Search, VolumeX, X } from 'lucide-react'
 import { Dialog } from './ui/Dialog.jsx'
 import { projectLabel } from '../utils/session.js'
@@ -228,9 +228,14 @@ export function CommandPalette({
     }
   }, [open, query, isActionMode])
 
+  // Defer the synchronous session filtering so typing stays responsive even
+  // with a large session list — the input updates at keystroke priority, the
+  // result list catches up (React 18 useDeferredValue; the /api/search fetch
+  // above is already debounced separately).
+  const deferredQuery = useDeferredValue(query)
   const sessionMatches = useMemo(
-    () => (isActionMode ? [] : matchSessions(sessions, query)),
-    [sessions, query, isActionMode],
+    () => (isActionMode ? [] : matchSessions(sessions, deferredQuery)),
+    [sessions, deferredQuery, isActionMode],
   )
   const actionTarget = useMemo(() => {
     const list = Array.isArray(sessions) ? sessions : []
@@ -382,7 +387,9 @@ export function CommandPalette({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder={isActionMode ? '> command...' : 'Search sessions and messages…'}
+          placeholder={
+            isActionMode ? '> command...' : 'Search sessions and messages… (> for actions)'
+          }
           className="flex-1 bg-transparent text-sm text-[var(--mc-fg)] outline-none placeholder:text-[var(--mc-fg-5)]"
         />
         {query && (
