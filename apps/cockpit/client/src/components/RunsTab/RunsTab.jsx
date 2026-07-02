@@ -4,7 +4,7 @@ import { ErrorBoundary } from '../ErrorBoundary.jsx'
 import { FeatureBrief } from '../FeatureBrief/FeatureBrief.jsx'
 import { MissionControlTab } from '../MissionControlTab/MissionControlTab.jsx'
 import { ConductorTab } from '../ConductorTab/ConductorTab.jsx'
-import { PipelineCanvas } from '../PipelineCanvas/index.js'
+import { PipelineView } from '../PipelineView/PipelineView.jsx'
 
 // Unified "drive a structured run" surface. Hosts the two existing surfaces
 // behind a mode switch instead of two separate top-level tabs:
@@ -58,7 +58,7 @@ export function RunsTab({ harnessVersion, conductorVersion, sessions }) {
         )}
         {mode === 'pipeline' && (
           <ErrorBoundary>
-            <PipelineCanvas />
+            <PipelineView harnessVersion={harnessVersion} />
           </ErrorBoundary>
         )}
       </div>
