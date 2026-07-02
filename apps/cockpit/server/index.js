@@ -53,6 +53,21 @@ import { fileURLToPath } from 'node:url'
 import { argv } from 'node:process'
 import './intelligence/triggers.js'
 
+function runBootJob(name, job) {
+  setTimeout(() => {
+    job().catch((err) => logger.warn({ detail: err?.message || err }, `${name}_failed`))
+  }, 2_000)
+}
+
+// Boot index rebuilds are ON by default: rebuildAll() is the ONLY path that
+// populates the ADR-0008 derived cache from cold (the watcher runs with
+// ignoreInitial, so pre-existing transcripts never fire events), and
+// "delete cockpit.db and restart" must always self-heal. OVERSIGHT_BOOT_REBUILD=0
+// is an explicit opt-OUT for scripted setups that manage the index themselves.
+function shouldRunBootRebuilds() {
+  return process.env.OVERSIGHT_BOOT_REBUILD !== '0'
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // App factory (Phase 4 / D-audit-otel). buildApp() is the SINGLE place the
 // middleware stack and routers are assembled, so cross-cutting concerns added
@@ -204,22 +219,24 @@ export function start() {
     // BOOT RECONCILER (item 1g) — symmetric to the lifecycle shutdown seam: on
     // start, reap any Fleet run left non-terminal by a previous crash/restart so no
     // run is wedged at 'running'. Fire-and-forget; a failure is logged, never fatal.
-    reconcileFleetRuns().catch((err) =>
-      logger.warn({ detail: err?.message || err }, 'fleet_boot_reconcile_failed'),
-    )
+    runBootJob('fleet_boot_reconcile', reconcileFleetRuns)
     // ADR-0008 boot rebuild — background, chunked with setImmediate, reparsing
     // only (mtime,size) diffs. Until it completes, GET /api/sessions serves the
     // direct parser scan; on failure the index simply stays not-ready (the
     // degraded mode is the pre-index behavior, never an outage).
-    rebuildAll().catch((err) =>
-      logger.warn({ detail: err?.message || err }, 'session_index_rebuild_failed'),
-    )
+    if (shouldRunBootRebuilds()) {
+      runBootJob('session_index_rebuild', () => rebuildAll())
+    } else {
+      logger.info('session index boot rebuild skipped (OVERSIGHT_BOOT_REBUILD=0)')
+    }
     // Phase 6: the knowledge lane of the same rebuild — project memory docs
     // into the search index. Same contract: background, failure is logged and
     // search simply lacks memory docs until the next boot.
-    rebuildMemoryIndex().catch((err) =>
-      logger.warn({ detail: err?.message || err }, 'memory_index_rebuild_failed'),
-    )
+    if (shouldRunBootRebuilds()) {
+      runBootJob('memory_index_rebuild', () => rebuildMemoryIndex())
+    } else {
+      logger.info('memory index boot rebuild skipped (OVERSIGHT_BOOT_REBUILD=0)')
+    }
   })
 
   return server

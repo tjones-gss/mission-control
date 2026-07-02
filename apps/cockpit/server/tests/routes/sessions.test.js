@@ -131,17 +131,21 @@ app.use('/', router)
 
 beforeEach(() => {
   vi.resetAllMocks()
-  // After resetAllMocks the db-index mocks return undefined → the route takes
-  // the degraded/fallback path (getAllSessions), which is what the legacy
-  // tests below exercise. Index-served tests opt in explicitly.
+  // Default: healthy db + completed boot rebuild, so the index serves the
+  // list. Degraded-path tests (db unavailable / cold index) opt in explicitly.
+  getAllSessions.mockReturnValue([])
+  listSessions.mockReturnValue([])
+  isDbUnavailable.mockReturnValue(false)
+  isIndexReady.mockReturnValue(true)
+  getQueryStatus.mockReturnValue({ active: false, pendingApprovals: [] })
 })
 
 // ─── GET / ──────────────────────────────────────────────────────────────────
 
 describe('GET /', () => {
-  it('returns getAllSessions() result with displayName + live-approval risk fields', async () => {
+  it('returns indexed sessions with displayName + live-approval risk fields', async () => {
     const sessions = [{ id: 'abc', messages: [] }]
-    getAllSessions.mockReturnValue(sessions)
+    listSessions.mockReturnValue(sessions)
     const res = await request(app).get('/')
     expect(res.status).toBe(200)
     expect(res.body).toEqual([
@@ -161,13 +165,13 @@ describe('GET /', () => {
   // Phase S1 — a session whose cwd is the Oversight repo root is `meta`: true,
   // so the Triage banner + tighter anomaly thresholds engage.
   it('tags a session in the Oversight repo root as meta', async () => {
-    getAllSessions.mockReturnValue([{ sessionId: 'sess-build', cwd: OVERSIGHT_REPO_ROOT }])
+    listSessions.mockReturnValue([{ sessionId: 'sess-build', cwd: OVERSIGHT_REPO_ROOT }])
     const res = await request(app).get('/')
     expect(res.body[0].meta).toBe(true)
   })
 
   it('returns empty array when no sessions', async () => {
-    getAllSessions.mockReturnValue([])
+    listSessions.mockReturnValue([])
     const res = await request(app).get('/')
     expect(res.status).toBe(200)
     expect(res.body).toEqual([])
@@ -178,7 +182,7 @@ describe('GET /', () => {
   // "needs you" — needsInput flips true even though the JSONL heuristic
   // (stateless, file-based) cannot see the in-memory PTY approval.
   it('surfaces the worst pending-approval risk + forces needsInput on the summary', async () => {
-    getAllSessions.mockReturnValue([{ sessionId: 'sess-risky', needsInput: false }])
+    listSessions.mockReturnValue([{ sessionId: 'sess-risky', needsInput: false }])
     getQueryStatus.mockReturnValue({
       active: true,
       pendingApprovals: [
@@ -203,7 +207,7 @@ describe('GET /', () => {
   })
 
   it('keeps risk fields null for sessions with no pending approvals', async () => {
-    getAllSessions.mockReturnValue([{ sessionId: 'sess-calm', needsInput: true }])
+    listSessions.mockReturnValue([{ sessionId: 'sess-calm', needsInput: true }])
     getQueryStatus.mockReturnValue({ active: false, pendingApprovals: [] })
     const res = await request(app).get('/')
     expect(res.body[0]).toMatchObject({
@@ -218,7 +222,7 @@ describe('GET /', () => {
 // ─── GET / — SQLite session index (ADR-0008) ────────────────────────────────
 // The 3s TTL cache is gone. When the db is healthy and the boot rebuild has
 // completed, the list is served from the index; the parser scan is the
-// degraded fallback only.
+// degraded fallback (db unavailable or cold index).
 
 describe('GET / — session index vs fallback', () => {
   it('serves from listSessions() when the db is available and the index is ready', async () => {

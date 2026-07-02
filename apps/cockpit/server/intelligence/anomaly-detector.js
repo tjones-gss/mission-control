@@ -16,6 +16,18 @@ import { fileURLToPath } from 'node:url'
 import { emit, onEvent } from '../sse.js'
 import { logger } from '../lib/logger.js'
 import { parseSessionRecord, getAllSessions } from '../parsers/sessions.js'
+import { listSessions } from '../lib/db/session-index.js'
+import { isDbUnavailable } from '../lib/db/connection.js'
+
+// Session source for the sweep: the SQLite index when healthy (cheap reads —
+// the old direct parser scan reparsed every transcript each 30s tick), with
+// the parser scan as the degraded fallback. listSessions() itself never
+// throws (it returns [] on any query error), so WITHOUT this guard a
+// db-unavailable server would silently detect nothing, forever.
+function sweepSessions() {
+  if (isDbUnavailable()) return getAllSessions() || []
+  return listSessions() || []
+}
 import { isMetaSession } from './meta-session-detector.js'
 import { detectLoop } from './loop-detector.js'
 import { detectCostRunway } from './cost-runway.js'
@@ -251,7 +263,7 @@ export function readAnomalyLog() {
 function computeRollingAvgCost(sessionId) {
   let sessions
   try {
-    sessions = getAllSessions() || []
+    sessions = sweepSessions()
   } catch {
     return null
   }
@@ -343,7 +355,7 @@ export function startAnomalySweep({ intervalMs = 30_000, budgetMax = 0 } = {}) {
   const tick = () => {
     let sessions
     try {
-      sessions = getAllSessions() || []
+      sessions = sweepSessions()
     } catch {
       return
     }
