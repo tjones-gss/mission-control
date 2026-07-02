@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { X, Home, ChevronUp, Folder } from 'lucide-react'
+import { X, Home, ChevronUp, Folder, Search } from 'lucide-react'
 import { Dialog } from './ui/Dialog.jsx'
 
 function joinPath(base, name, sep) {
@@ -16,6 +16,8 @@ export function FolderPicker({ onSelect, onClose, recentCwds = [] }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showHidden, setShowHidden] = useState(false)
+  const [query, setQuery] = useState('')
+  const [jumpPath, setJumpPath] = useState('')
 
   const loadPath = useCallback(async (target) => {
     setLoading(true)
@@ -29,6 +31,7 @@ export function FolderPicker({ onSelect, onClose, recentCwds = [] }) {
         return
       }
       setPath(data.path)
+      setJumpPath(data.path)
       setParent(data.parent)
       setSep(data.sep || '/')
       setEntries(data.entries || [])
@@ -61,7 +64,9 @@ export function FolderPicker({ onSelect, onClose, recentCwds = [] }) {
     goHome()
   }, [goHome])
 
-  const visibleEntries = showHidden ? entries : entries.filter((e) => !e.name.startsWith('.'))
+  const visibleEntries = (
+    showHidden ? entries : entries.filter((e) => !e.name.startsWith('.'))
+  ).filter((entry) => entry.name.toLowerCase().includes(query.trim().toLowerCase()))
 
   const handleSelect = (p) => {
     onSelect?.(p)
@@ -133,15 +138,53 @@ export function FolderPicker({ onSelect, onClose, recentCwds = [] }) {
         </label>
       </div>
 
-      <div className="px-4 py-1.5 border-b border-gray-800 text-xs font-mono text-gray-300 truncate">
-        {path || '\u00a0'}
+      <div className="space-y-2 px-4 py-2 border-b border-[var(--mc-border)]">
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (jumpPath.trim()) loadPath(jumpPath.trim())
+          }}
+        >
+          <input
+            value={jumpPath}
+            onChange={(e) => setJumpPath(e.target.value)}
+            aria-label="Folder path"
+            className="min-w-0 flex-1 rounded border border-[var(--mc-border-2)] bg-[var(--mc-bg)] px-2 py-1.5 font-mono text-xs text-[var(--mc-fg-2)] placeholder-[var(--mc-fg-5)] focus:outline-none focus:border-[var(--mc-accent)]"
+          />
+          <button
+            type="submit"
+            disabled={!jumpPath.trim() || loading}
+            className="rounded border border-[var(--mc-border-2)] px-2 py-1.5 text-xs text-[var(--mc-fg-2)] hover:bg-[var(--mc-surface-2)] disabled:opacity-40"
+          >
+            Go
+          </button>
+        </form>
+        <div className="truncate font-mono text-[11px] text-[var(--mc-fg-4)]">
+          {path || '\u00a0'}
+        </div>
+        <div className="relative">
+          <Search
+            size={12}
+            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--mc-fg-5)]"
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter folders in this directory..."
+            aria-label="Filter folders"
+            className="w-full rounded border border-[var(--mc-border)] bg-[var(--mc-bg)] pl-7 pr-2 py-1.5 text-xs text-[var(--mc-fg-2)] placeholder-[var(--mc-fg-5)] focus:outline-none focus:border-[var(--mc-accent)]"
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="px-4 py-6 text-xs text-gray-500">Loading...</div>}
         {!loading && error && <div className="px-4 py-6 text-xs text-red-400">{error}</div>}
         {!loading && !error && visibleEntries.length === 0 && (
-          <div className="px-4 py-6 text-xs text-gray-600">No subdirectories</div>
+          <div className="px-4 py-6 text-xs text-gray-600">
+            {query.trim() ? 'No matching folders' : 'No subdirectories'}
+          </div>
         )}
         {!loading && !error && visibleEntries.length > 0 && (
           <ul>

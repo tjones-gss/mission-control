@@ -20,6 +20,10 @@ import {
   Network,
   Menu,
   Activity,
+  Search,
+  AlertTriangle,
+  WifiOff,
+  CheckCircle2,
 } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
 import { useSSE } from './hooks/useSSE.js'
@@ -51,6 +55,7 @@ import { NewSessionForm } from './components/NewSessionForm.jsx'
 import { WelcomeHero } from './components/WelcomeHero.jsx'
 import { ParserDegradedBanner } from './components/ParserDegradedBanner.jsx'
 import { AnomalyToast } from './components/AnomalyToast.jsx'
+import { AnomalyPanel } from './components/AnomalyPanel.jsx'
 import { projectLabel } from './utils/session.js'
 import { useTheme } from './hooks/useTheme.js'
 
@@ -64,7 +69,6 @@ import { useTheme } from './hooks/useTheme.js'
 // never sibling tabs (SCOPE.md freeze rule + ADR-0006).
 export const CORE_TABS = [
   { id: 'agents', label: 'Agents', icon: Eye },
-  { id: 'mesh', label: 'Mesh', icon: Network },
   { id: 'tasks', label: 'Tasks', icon: ListTodo },
   { id: 'runs', label: 'Runs', icon: Gauge },
   { id: 'fleet', label: 'Fleet', icon: Boxes },
@@ -72,6 +76,7 @@ export const CORE_TABS = [
 ]
 
 export const ADVANCED_TABS = [
+  { id: 'mesh', label: 'Mesh', icon: Network },
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'skills', label: 'Skills', icon: Command },
   { id: 'teams', label: 'Teams', icon: Users },
@@ -119,9 +124,12 @@ async function sendQuickReply(sessionId, message) {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       console.warn(`Quick reply failed: ${data.detail || data.error || `HTTP ${res.status}`}`)
+      return false
     }
+    return true
   } catch (err) {
     console.warn('Quick reply failed:', err.message)
+    return false
   }
 }
 
@@ -171,6 +179,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
+  const [showAnomalyPanel, setShowAnomalyPanel] = useState(false)
   // Mobile-responsive drawers: below the relevant breakpoint the Sessions
   // sidebar (lg) and the LiveFeed activity panel (md) collapse to slide-in
   // drawers opened from header toggles. No effect on the desktop fixed panes.
@@ -267,8 +276,28 @@ export default function App() {
         }
         if (evt.type === 'anomaly' && evt.data) {
           const id = `an-${(anomalySeqRef.current += 1)}`
-          // Cap the visible stack so a noisy run can't bury the UI; oldest drop.
-          setAnomalies((prev) => [...prev.slice(-3), { id, ...evt.data }])
+          setAnomalies((prev) => {
+            const next = [...prev, { id, state: 'new', ts: Date.now(), ...evt.data }]
+            // Retention cap so a noisy long-running session can't grow the
+            // list (and the panel) without bound: evict settled entries
+            // (resolved first, then acknowledged) before ever dropping an
+            // unseen 'new' one; oldest go first within each state.
+            const MAX_ANOMALIES = 50
+            let overflow = next.length - MAX_ANOMALIES
+            if (overflow <= 0) return next
+            for (const state of ['resolved', 'acknowledged', 'new']) {
+              for (let i = 0; i < next.length && overflow > 0; ) {
+                if (next[i].state === state) {
+                  next.splice(i, 1)
+                  overflow -= 1
+                } else {
+                  i += 1
+                }
+              }
+              if (overflow <= 0) break
+            }
+            return next
+          })
         }
         if (evt.type === 'intelligence_update') {
           setIntelligenceVersion((v) => v + 1)
@@ -378,6 +407,22 @@ export default function App() {
   const { requestPermission, muteSession, mutedIds } = useNotifications(sessions, soundEngine)
   const needsInputSessions =
     sessions?.filter((s) => s.needsInput && !mutedIds.current.has(s.sessionId)) || []
+  const visibleAnomalies = anomalies.filter((a) => a.state === 'new').slice(-4)
+  const openAnomalyCount = anomalies.filter((a) => a.state !== 'resolved').length
+  const newAnomalyCount = anomalies.filter((a) => a.state === 'new').length
+  const acknowledgeAnomaly = useCallback((id) => {
+    setAnomalies((prev) =>
+      prev.map((a) => (a.id === id && a.state === 'new' ? { ...a, state: 'acknowledged' } : a)),
+    )
+  }, [])
+  const resolveAnomaly = useCallback((id) => {
+    setAnomalies((prev) => prev.map((a) => (a.id === id ? { ...a, state: 'resolved' } : a)))
+  }, [])
+  const openSessionFromAnomaly = useCallback((sessionId) => {
+    setActiveTab('agents')
+    setSelectedSessionId(sessionId)
+    setAgentView('detail')
+  }, [])
 
   // Keyboard shortcuts — use refs so handler identity is stable and keydown listener
   // doesn't churn on every session update
@@ -520,51 +565,68 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-gray-950 overflow-hidden">
       {/* Header */}
-      <header className="flex flex-wrap items-center px-4 py-2 border-b border-gray-800 shrink-0 gap-y-1">
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--mc-border)] bg-[var(--mc-bg)] px-4 py-2 shrink-0">
         <button
           onClick={() => setShowSidebarDrawer(true)}
-          className="lg:hidden -ml-1 mr-1 p-2 rounded text-gray-500 hover:text-gray-300 transition-colors"
+          className="lg:hidden -ml-1 mr-1 rounded p-2 text-[var(--mc-fg-4)] transition-colors hover:text-[var(--mc-fg)]"
           title="Sessions"
           aria-label="Open sessions"
         >
           <Menu size={18} />
         </button>
-        <span className="text-sm font-bold text-gray-200 tracking-tight">Oversight</span>
-        <span className="ml-2 text-xs text-gray-600 tracking-tight hidden sm:inline">
+        <span className="text-sm font-bold tracking-tight text-[var(--mc-fg)]">Oversight</span>
+        <span className="hidden text-xs tracking-tight text-[var(--mc-fg-5)] sm:inline">
           behind the agent curtain
         </span>
         {!connected && (
           <span
-            className="ml-3 flex items-center gap-1.5 text-xs text-red-400"
+            className="inline-flex items-center gap-1.5 rounded border border-[var(--mc-danger)] bg-[var(--mc-danger-soft)] px-2 py-1 text-xs text-[var(--mc-danger)]"
             title="Live connection lost — reconnecting..."
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+            <WifiOff size={12} />
             disconnected
           </span>
         )}
         {activeSessions.length > 0 && (
-          <span className="ml-3 flex items-center gap-1.5 text-xs text-green-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 rounded border border-[var(--mc-border)] bg-[var(--mc-surface)] px-2 py-1 text-xs text-[var(--mc-ok)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--mc-ok)] motion-safe:animate-pulse" />
             {activeSessions.length} active
           </span>
         )}
         {needsInputSessions.length > 0 && (
           <button
             onClick={requestPermission}
-            className="ml-3 flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded border border-[var(--mc-warn)] bg-[var(--mc-warn-soft)] px-2 py-1 text-xs text-[var(--mc-warn)] transition-colors hover:bg-[var(--mc-surface-2)]"
             title="Sessions waiting for input — click to enable desktop notifications"
           >
             <Bell size={12} />
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--mc-warn)] motion-safe:animate-ping" />
             {needsInputSessions.length} waiting
           </button>
         )}
+        {openAnomalyCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAnomalyPanel(true)}
+            className="inline-flex items-center gap-1.5 rounded border border-[var(--mc-warn)] bg-[var(--mc-surface)] px-2 py-1 text-xs text-[var(--mc-warn)] transition-colors hover:bg-[var(--mc-warn-soft)]"
+            title="Open anomalies"
+          >
+            <AlertTriangle size={12} />
+            {newAnomalyCount > 0 ? `${newAnomalyCount} new` : `${openAnomalyCount} open`}
+          </button>
+        )}
+        {connected && activeSessions.length === 0 && needsInputSessions.length === 0 && (
+          <span className="hidden items-center gap-1.5 rounded border border-[var(--mc-border)] bg-[var(--mc-surface)] px-2 py-1 text-xs text-[var(--mc-fg-4)] sm:inline-flex">
+            <CheckCircle2 size={12} />
+            quiet
+          </span>
+        )}
         <button
           onClick={() => setShowNewSession((s) => !s)}
-          className={`md:hidden ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+          className={`md:hidden ml-auto flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
             showNewSession
-              ? 'bg-indigo-600/20 text-indigo-200'
-              : 'text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30'
+              ? 'bg-[var(--mc-accent-soft)] text-[var(--mc-accent-2)]'
+              : 'text-[var(--mc-accent-2)] hover:bg-[var(--mc-accent-soft)]'
           }`}
           title="New session"
           aria-label="New session"
@@ -579,10 +641,10 @@ export default function App() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors ${
+                className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-xs transition-colors ${
                   activeTab === tab.id
-                    ? 'bg-gray-800 text-gray-100'
-                    : 'text-gray-500 hover:text-gray-300'
+                    ? 'bg-[var(--mc-surface-2)] text-[var(--mc-fg)]'
+                    : 'text-[var(--mc-fg-4)] hover:text-[var(--mc-fg-2)]'
                 }`}
               >
                 <Icon size={12} />
@@ -592,8 +654,10 @@ export default function App() {
           })}
           <button
             onClick={toggleAdvanced}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
-              showAdvanced ? 'bg-gray-800 text-gray-300' : 'text-gray-600 hover:text-gray-400'
+            className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs transition-colors ${
+              showAdvanced
+                ? 'bg-[var(--mc-surface-2)] text-[var(--mc-fg-2)]'
+                : 'text-[var(--mc-fg-5)] hover:text-[var(--mc-fg-3)]'
             }`}
             title={showAdvanced ? 'Hide advanced tabs' : 'Show advanced tabs'}
             aria-pressed={showAdvanced}
@@ -602,8 +666,17 @@ export default function App() {
             <span className="hidden md:inline">Advanced</span>
           </button>
           <button
+            onClick={() => setShowPalette(true)}
+            className="hidden items-center gap-1.5 rounded border border-[var(--mc-border)] bg-[var(--mc-surface)] px-2 py-1 text-xs text-[var(--mc-fg-4)] transition-colors hover:text-[var(--mc-fg)] md:flex"
+            title="Command palette (⌘K)"
+            aria-label="Open command palette"
+          >
+            <Search size={12} />
+            <kbd className="font-mono text-[10px] text-[var(--mc-fg-5)]">⌘K</kbd>
+          </button>
+          <button
             onClick={() => setShowActivityDrawer(true)}
-            className="md:hidden text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            className="rounded p-1 text-[var(--mc-fg-5)] transition-colors hover:text-[var(--mc-fg-3)] md:hidden"
             title="Activity feed"
             aria-label="Open activity feed"
           >
@@ -611,14 +684,14 @@ export default function App() {
           </button>
           <button
             onClick={() => setShowSettings(true)}
-            className="ml-1 text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            className="ml-1 rounded p-1 text-[var(--mc-fg-5)] transition-colors hover:text-[var(--mc-fg-3)]"
             title="Settings (,)"
           >
             <Settings size={14} />
           </button>
           <button
             onClick={() => setShowLegend(true)}
-            className="text-gray-600 hover:text-gray-400 transition-colors p-1 rounded"
+            className="rounded p-1 text-[var(--mc-fg-5)] transition-colors hover:text-[var(--mc-fg-3)]"
             title="Help"
           >
             <HelpCircle size={14} />
@@ -627,13 +700,9 @@ export default function App() {
       </header>
       <ParserDegradedBanner degraded={degradedParsers} />
       <AnomalyToast
-        anomalies={anomalies}
-        onOpen={(sessionId) => {
-          setActiveTab('agents')
-          setSelectedSessionId(sessionId)
-          setAgentView('detail')
-        }}
-        onDismiss={(id) => setAnomalies((prev) => prev.filter((a) => a.id !== id))}
+        anomalies={visibleAnomalies}
+        onOpen={openSessionFromAnomaly}
+        onDismiss={acknowledgeAnomaly}
       />
       {showNewSession && (
         <div className="md:hidden border-b border-gray-800 bg-gray-950/95">
@@ -707,6 +776,7 @@ export default function App() {
                 <TriageView
                   sessions={sessions || []}
                   selectedId={selectedSessionId}
+                  onQuickReply={sendQuickReply}
                   onSelect={(id) => {
                     setSelectedSessionId(id)
                     setAgentView('detail')
@@ -857,6 +927,18 @@ export default function App() {
           setSelectedSessionId(sessionId)
           setAgentView('detail')
         }}
+        onApprove={(sessionId) => sendQuickReply(sessionId, 'yes')}
+        onContinue={(sessionId) => sendQuickReply(sessionId, 'continue')}
+        onSteer={(sessionId, message) => sendQuickReply(sessionId, message)}
+        onMute={muteSession}
+      />
+      <AnomalyPanel
+        open={showAnomalyPanel}
+        anomalies={anomalies}
+        onClose={() => setShowAnomalyPanel(false)}
+        onOpenSession={openSessionFromAnomaly}
+        onAcknowledge={acknowledgeAnomaly}
+        onResolve={resolveAnomaly}
       />
       {showLegend && <LegendModal onClose={() => setShowLegend(false)} />}
       {showSettings && (

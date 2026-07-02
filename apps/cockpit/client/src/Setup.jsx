@@ -35,12 +35,17 @@ export default function Setup() {
           <h1 className="text-lg font-semibold">Mission Control — Set up access</h1>
         </div>
 
-        <p className="text-sm text-gray-400">
-          The cockpit API requires a local auth token. It was printed in your terminal on startup (
-          <code className="text-gray-300">🔑 Auth token: …</code>) and saved to{' '}
-          <code className="text-gray-300">server/data/.auth-token</code>. Paste it below to connect
-          this browser.
-        </p>
+        <div className="space-y-2 text-sm text-gray-400">
+          <p>
+            This token connects this browser to your local Mission Control API. It stops another
+            local webpage from casually reading or steering the cockpit through localhost; it is not
+            a project sandbox or an OS security boundary.
+          </p>
+          <p>
+            The token prints in the terminal on startup and is saved inside this app at{' '}
+            <code className="text-gray-300">apps/cockpit/server/data/.auth-token</code>.
+          </p>
+        </div>
 
         {existing && !saved && (
           <div className="flex items-center gap-2 text-xs text-emerald-400">

@@ -344,6 +344,50 @@ describe('CommandPalette — navigation', () => {
   })
 })
 
+describe('CommandPalette — action mode', () => {
+  it('runs > approve against the first waiting session', async () => {
+    const onApprove = vi.fn()
+    const sessions = [
+      { ...SESSIONS[0], needsInput: false },
+      { ...SESSIONS[1], needsInput: true },
+    ]
+    render(
+      <CommandPalette
+        open
+        sessions={sessions}
+        onNavigate={() => {}}
+        onClose={() => {}}
+        onApprove={onApprove}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: '> approve' } })
+    expect(screen.getByText('Actions', { selector: 'span' })).toBeInTheDocument()
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onApprove).toHaveBeenCalledWith('sess-other')
+  })
+
+  it('runs > steer with the typed message', () => {
+    const onSteer = vi.fn()
+    render(
+      <CommandPalette
+        open
+        sessions={[{ ...SESSIONS[0], needsInput: true }]}
+        onNavigate={() => {}}
+        onClose={() => {}}
+        onSteer={onSteer}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: '> steer check the failing spec' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSteer).toHaveBeenCalledWith('sess-local', 'check the failing spec')
+  })
+})
+
 describe('CommandPalette — states', () => {
   it('renders nothing when closed', () => {
     render(<CommandPalette open={false} sessions={[]} onNavigate={() => {}} onClose={() => {}} />)

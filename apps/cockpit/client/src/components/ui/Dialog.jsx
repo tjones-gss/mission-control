@@ -160,7 +160,7 @@ export function Dialog({
         aria-label={labelledBy ? undefined : label}
         aria-labelledby={labelledBy}
         tabIndex={-1}
-        className={`${positionClasses} ${className}`}
+        className={`${positionClasses} mc-panel-in ${className}`}
       >
         {children}
       </div>

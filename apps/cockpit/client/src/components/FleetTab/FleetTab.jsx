@@ -1,8 +1,19 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { Layers, Plus } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Grid2X2,
+  Layers,
+  List,
+  Plus,
+  ShieldCheck,
+} from 'lucide-react'
 import { useApi } from '../../hooks/useApi.js'
 import { LaunchDrawer } from './LaunchDrawer.jsx'
 import { RunDetail, RUN_STATUS } from './FleetRunDetail.jsx'
+import { formatCost } from '../../utils/cost.js'
+import { useRelativeTime } from '../../hooks/useRelativeTime.js'
 
 // Fleet UI — the power-user headline surface. Launch a fleet (a goal + N child
 // agents, each in its own git worktree/branch), then watch the children live as
@@ -21,9 +32,90 @@ import { RunDetail, RUN_STATUS } from './FleetRunDetail.jsx'
 // ──────────────────────────────────────────────────────────────────────────────
 // FleetTab — the surface itself.
 // ──────────────────────────────────────────────────────────────────────────────
+const FLEET_VIEW_KEY = 'mc.fleet.view'
+
+function readFleetView() {
+  try {
+    const raw = localStorage.getItem(FLEET_VIEW_KEY)
+    return raw === 'dashboard' ? 'dashboard' : 'list'
+  } catch {
+    return 'list'
+  }
+}
+
+function FleetDashboardCard({ run, selected, onSelect }) {
+  const meta = RUN_STATUS[run.status] || RUN_STATUS.running
+  const settled = run.settledCount || 0
+  const total = run.childCount || run.children?.length || 0
+  const pct = total > 0 ? Math.min(100, (settled / total) * 100) : 0
+  const elapsed = useRelativeTime(run.createdAt)
+  const escalationCount =
+    run.escalationCount ||
+    run.escalations?.length ||
+    run.children?.filter((c) => c.status === 'escalated').length ||
+    0
+  const cost =
+    typeof run.spentUsd === 'number'
+      ? run.spentUsd
+      : (run.children || []).reduce((sum, child) => sum + (child.cost?.totalCost || 0), 0)
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(run.id)}
+      className={`rounded-lg border bg-[var(--mc-surface)] p-3 text-left transition-colors hover:bg-[var(--mc-surface-2)] ${
+        selected
+          ? 'border-[var(--mc-accent-line)] ring-1 ring-[var(--mc-accent-line)]'
+          : 'border-[var(--mc-border)]'
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-[var(--mc-fg)]">{run.goal}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--mc-fg-4)]">
+            <span
+              className={`rounded bg-[var(--mc-surface-2)] px-1.5 py-0.5 uppercase ${meta.cls}`}
+            >
+              {run.status}
+            </span>
+            {run.policy?.verify && (
+              <span className="inline-flex items-center gap-1 rounded bg-[var(--mc-info-soft)] px-1.5 py-0.5 text-[var(--mc-info)]">
+                <ShieldCheck size={10} /> verify
+              </span>
+            )}
+            {escalationCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded bg-[var(--mc-warn-soft)] px-1.5 py-0.5 text-[var(--mc-warn)]">
+                <AlertTriangle size={10} /> {escalationCount}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3">
+        <div className="mb-1 flex items-center justify-between text-[10px] text-[var(--mc-fg-4)]">
+          <span>
+            {settled}/{total} children settled
+          </span>
+          <span>{Math.round(pct)}%</span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--mc-surface-2)]">
+          <div className="h-full rounded-full bg-[var(--mc-accent)]" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-[11px] text-[var(--mc-fg-4)]">
+        {cost > 0 && <span className="font-mono text-[var(--mc-ok)]">{formatCost(cost)}</span>}
+        <span className="ml-auto inline-flex items-center gap-1">
+          <Clock size={11} /> {elapsed || 'new'}
+        </span>
+      </div>
+    </button>
+  )
+}
+
 export function FleetTab({ fleetVersion = 0, onOpenSession }) {
   const [showLaunch, setShowLaunch] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
+  const [view, setView] = useState(readFleetView)
   // Optimistic runs added on launch before the first list refetch lands.
   const [optimistic, setOptimistic] = useState([])
 
@@ -84,6 +176,22 @@ export function FleetTab({ fleetVersion = 0, onOpenSession }) {
     setOptimistic((prev) => [run, ...prev.filter((r) => r.id !== run.id)])
     setSelectedId(run.id)
   }, [])
+  const setFleetView = useCallback((next) => {
+    setView(next)
+    try {
+      localStorage.setItem(FLEET_VIEW_KEY, next)
+    } catch {
+      /* ignore persistence failures */
+    }
+  }, [])
+
+  // Dashboard cards drill into the run detail. Uses the raw setter on purpose:
+  // navigating into a run is not a view-preference change, so the persisted
+  // dashboard default survives a reload.
+  const drillIntoRun = useCallback((id) => {
+    setSelectedId(id)
+    setView('list')
+  }, [])
 
   const onOpen = useCallback(
     (sessionId) => {
@@ -93,75 +201,123 @@ export function FleetTab({ fleetVersion = 0, onOpenSession }) {
   )
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex overflow-hidden bg-[var(--mc-bg)]">
       {/* Left: run list */}
-      <div className="w-56 shrink-0 border-r border-gray-800 flex flex-col overflow-hidden">
-        <div className="h-10 shrink-0 px-3 border-b border-gray-800 flex items-center">
-          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-            Fleet Runs
-          </span>
-          <button
-            type="button"
-            onClick={() => setShowLaunch(true)}
-            className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[11px] text-indigo-300 hover:text-indigo-200 hover:bg-indigo-900/30 transition-colors"
-            title="New Fleet Run"
-          >
-            <Plus size={12} /> New
-          </button>
+      {view === 'list' && (
+        <div className="w-56 shrink-0 border-r border-[var(--mc-border)] flex flex-col overflow-hidden">
+          <div className="h-10 shrink-0 px-3 border-b border-[var(--mc-border)] flex items-center">
+            <span className="text-xs font-semibold text-[var(--mc-fg-5)] uppercase tracking-wider">
+              Fleet Runs
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowLaunch(true)}
+              className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[11px] text-[var(--mc-accent-2)] hover:bg-[var(--mc-accent-soft)] transition-colors"
+              title="New Fleet Run"
+            >
+              <Plus size={12} /> New
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {runs.length === 0 ? (
+              <div className="text-[11px] text-[var(--mc-fg-5)] italic px-2 py-4 text-center">
+                No fleet runs yet. Launch one to fan a goal across worktrees.
+              </div>
+            ) : (
+              runs.map((run) => {
+                const meta = RUN_STATUS[run.status] || RUN_STATUS.running
+                return (
+                  <button
+                    key={run.id}
+                    type="button"
+                    onClick={() => setSelectedId(run.id)}
+                    className={[
+                      'w-full text-left rounded px-2 py-2 transition-colors min-w-0',
+                      selectedId === run.id
+                        ? 'bg-[var(--mc-accent-soft)] border border-[var(--mc-accent-line)]'
+                        : 'border border-transparent hover:bg-[var(--mc-surface-2)]',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />
+                      <span className="text-xs text-[var(--mc-fg)] truncate flex-1 min-w-0">
+                        {run.goal}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[var(--mc-fg-5)]">
+                      <span>{run.status}</span>
+                      <span>
+                        {run.settledCount}/{run.childCount}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {runs.length === 0 ? (
-            <div className="text-[11px] text-gray-600 italic px-2 py-4 text-center">
-              No fleet runs yet. Launch one to fan a goal across worktrees.
-            </div>
-          ) : (
-            runs.map((run) => {
-              const meta = RUN_STATUS[run.status] || RUN_STATUS.running
-              return (
-                <button
-                  key={run.id}
-                  type="button"
-                  onClick={() => setSelectedId(run.id)}
-                  className={[
-                    'w-full text-left rounded px-2 py-2 transition-colors min-w-0',
-                    selectedId === run.id
-                      ? 'bg-indigo-900/30 border border-indigo-700'
-                      : 'border border-transparent hover:bg-gray-800/60',
-                  ].join(' ')}
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />
-                    <span className="text-xs text-gray-200 truncate flex-1 min-w-0">
-                      {run.goal}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-[10px] text-gray-600">
-                    <span>{run.status}</span>
-                    <span>
-                      {run.settledCount}/{run.childCount}
-                    </span>
-                  </div>
-                </button>
-              )
-            })
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Right: selected run detail */}
       <div className="flex-1 min-w-0 overflow-y-auto">
-        {selectedId ? (
+        <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--mc-border)] bg-[var(--mc-bg)] px-3">
+          <div className="flex rounded border border-[var(--mc-border)] bg-[var(--mc-surface)] p-0.5">
+            <button
+              type="button"
+              onClick={() => setFleetView('list')}
+              aria-pressed={view === 'list'}
+              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] ${
+                view === 'list'
+                  ? 'bg-[var(--mc-surface-2)] text-[var(--mc-fg)]'
+                  : 'text-[var(--mc-fg-4)]'
+              }`}
+            >
+              <List size={12} /> List
+            </button>
+            <button
+              type="button"
+              onClick={() => setFleetView('dashboard')}
+              aria-pressed={view === 'dashboard'}
+              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] ${
+                view === 'dashboard'
+                  ? 'bg-[var(--mc-surface-2)] text-[var(--mc-fg)]'
+                  : 'text-[var(--mc-fg-4)]'
+              }`}
+            >
+              <Grid2X2 size={12} /> Dashboard
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowLaunch(true)}
+            className="ml-auto inline-flex items-center gap-1 rounded bg-[var(--mc-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--mc-on-accent)] transition-colors hover:opacity-90"
+          >
+            <Plus size={12} /> New run
+          </button>
+        </div>
+        {view === 'dashboard' && runs.length > 0 ? (
+          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {runs.map((run) => (
+              <FleetDashboardCard
+                key={run.id}
+                run={run}
+                selected={selectedId === run.id}
+                onSelect={drillIntoRun}
+              />
+            ))}
+          </div>
+        ) : selectedId ? (
           <RunDetail runId={selectedId} version={fleetVersion} onOpenSession={onOpen} />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center gap-4 p-6">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-900/30 border border-indigo-800/50">
-              <Layers size={26} className="text-indigo-400" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-[var(--mc-accent-soft)] border border-[var(--mc-accent-line)]">
+              <Layers size={26} className="text-[var(--mc-accent-2)]" />
             </div>
             <div className="space-y-1.5">
-              <h2 className="text-base font-semibold text-gray-100">
+              <h2 className="text-base font-semibold text-[var(--mc-fg)]">
                 {runs.length === 0 ? 'Launch your first fleet' : 'Pick a run to inspect'}
               </h2>
-              <p className="text-sm text-gray-500 max-w-sm">
+              <p className="text-sm text-[var(--mc-fg-4)] max-w-sm">
                 Fleet fans a single goal across multiple child agents, each in its own git
                 worktree/branch, then synthesizes the results.
               </p>
@@ -169,9 +325,9 @@ export function FleetTab({ fleetVersion = 0, onOpenSession }) {
             <button
               type="button"
               onClick={() => setShowLaunch(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-500 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--mc-accent)] text-[var(--mc-on-accent)] text-sm font-semibold hover:opacity-90 transition-colors"
             >
-              Start your first run <span aria-hidden="true">→</span>
+              Start your first run <span aria-hidden="true">-&gt;</span>
             </button>
           </div>
         )}

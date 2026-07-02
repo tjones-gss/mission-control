@@ -289,6 +289,32 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes mc-panel-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.mc-panel-in {
+  animation: mc-panel-in 100ms ease-out both;
+}
+
 /* Accessible keyboard focus ring (WCAG 2.4.7). A single themed indicator for
  * every interactive element on keyboard focus only (:focus-visible — mouse
  * clicks don't trigger it). !important is deliberate: many controls use

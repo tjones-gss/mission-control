@@ -1,6 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Folder } from 'lucide-react'
+import { Folder, Search } from 'lucide-react'
 import { FolderPicker } from './FolderPicker.jsx'
+
+function projectLabel(cwd) {
+  if (!cwd) return ''
+  const parts = String(cwd).split(/[\\/]/).filter(Boolean)
+  return parts[parts.length - 1] || cwd
+}
 
 export function NewSessionForm({ onCreated, sessions = [] }) {
   const [name, setName] = useState('')
@@ -10,8 +16,12 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
   const [mode, setMode] = useState('')
   const [worktree, setWorktree] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [nativePicking, setNativePicking] = useState(false)
   const [error, setError] = useState(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [cwdMenuOpen, setCwdMenuOpen] = useState(false)
+  // Roving highlight for the cwd suggestion popup (combobox keyboard support).
+  const [cwdActiveIdx, setCwdActiveIdx] = useState(-1)
 
   const safeSessions = Array.isArray(sessions) ? sessions : []
 
@@ -25,10 +35,24 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
         seen.add(c)
         return true
       })
-    return ordered.slice(0, 5)
+    return ordered.slice(0, 8)
   }, [safeSessions])
 
+  const cwdOptions = useMemo(() => {
+    const query = cwd.trim().toLowerCase()
+    const options = query
+      ? recentCwds.filter((candidate) => candidate.toLowerCase().includes(query))
+      : recentCwds
+    return options.slice(0, 6)
+  }, [cwd, recentCwds])
+
   const canSubmit = cwd.trim() && prompt.trim() && !creating
+
+  const chooseCwd = (next) => {
+    setCwd(next)
+    setCwdMenuOpen(false)
+    setCwdActiveIdx(-1)
+  }
 
   const reset = () => {
     setName('')
@@ -39,6 +63,36 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
     setWorktree(false)
     setError(null)
   }
+
+  const browseForFolder = useCallback(async () => {
+    setCwdMenuOpen(false)
+    setNativePicking(true)
+    try {
+      const res = await fetch('/api/fs/pick-directory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: cwd.trim() || recentCwds[0] || '' }),
+      })
+      if (res.status === 204) return
+      // 409: a native dialog is already open on this machine — don't stack
+      // the in-app fallback on top of it.
+      if (res.status === 409) return
+      if (res.status === 501) {
+        setPickerOpen(true)
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.path) {
+        setCwd(data.path)
+        return
+      }
+      setPickerOpen(true)
+    } catch {
+      setPickerOpen(true)
+    } finally {
+      setNativePicking(false)
+    }
+  }, [cwd, recentCwds])
 
   const submit = useCallback(async () => {
     if (!canSubmit) return
@@ -90,23 +144,115 @@ export function NewSessionForm({ onCreated, sessions = [] }) {
         placeholder="Session name (optional)..."
         className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
       />
-      <div className="relative">
-        <input
-          type="text"
-          value={cwd}
-          onChange={(e) => setCwd(e.target.value)}
-          placeholder="Working directory..."
-          className="w-full bg-gray-900 border border-gray-700 rounded pl-2 pr-7 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
-        />
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          aria-label="Browse for folder"
-          title="Browse for folder"
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 p-1 rounded"
-        >
-          <Folder size={12} />
-        </button>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] uppercase tracking-wide text-[var(--mc-fg-5)]">
+            Project path
+          </span>
+          {recentCwds.length > 0 && (
+            <span className="text-[10px] text-[var(--mc-fg-5)]">{recentCwds.length} recent</span>
+          )}
+        </div>
+        <div className="relative">
+          <Search
+            size={12}
+            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--mc-fg-5)]"
+          />
+          <input
+            type="text"
+            value={cwd}
+            onFocus={() => setCwdMenuOpen(true)}
+            onChange={(e) => {
+              setCwd(e.target.value)
+              setCwdMenuOpen(true)
+              setCwdActiveIdx(-1)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setCwdMenuOpen(false)
+                setCwdActiveIdx(-1)
+              } else if (e.key === 'ArrowDown' && cwdOptions.length > 0) {
+                e.preventDefault()
+                setCwdMenuOpen(true)
+                setCwdActiveIdx((i) => (i + 1) % cwdOptions.length)
+              } else if (e.key === 'ArrowUp' && cwdOptions.length > 0) {
+                e.preventDefault()
+                setCwdMenuOpen(true)
+                setCwdActiveIdx((i) => (i <= 0 ? cwdOptions.length - 1 : i - 1))
+              } else if (e.key === 'Enter' && cwdMenuOpen && cwdOptions.length > 0) {
+                // Pick the highlighted suggestion; with no highlight fall back
+                // to the first one, but only while there's no prompt yet so
+                // Enter still submits a fully filled form.
+                if (cwdActiveIdx >= 0) {
+                  e.preventDefault()
+                  chooseCwd(cwdOptions[cwdActiveIdx])
+                } else if (!prompt.trim()) {
+                  e.preventDefault()
+                  chooseCwd(cwdOptions[0])
+                }
+              }
+            }}
+            placeholder="Working directory: search recent projects or paste a path..."
+            role="combobox"
+            aria-label="Project path"
+            aria-expanded={cwdMenuOpen}
+            aria-controls="new-session-cwd-options"
+            aria-activedescendant={
+              cwdMenuOpen && cwdActiveIdx >= 0
+                ? `new-session-cwd-option-${cwdActiveIdx}`
+                : undefined
+            }
+            className="w-full bg-[var(--mc-surface)] border border-[var(--mc-border-2)] rounded pl-7 pr-8 py-1.5 text-xs text-[var(--mc-fg-2)] placeholder-[var(--mc-fg-5)] focus:outline-none focus:border-[var(--mc-accent)]"
+          />
+          <button
+            type="button"
+            onClick={browseForFolder}
+            disabled={nativePicking}
+            aria-label="Browse for folder"
+            title="Open file explorer"
+            className="absolute right-1 top-1/2 -translate-y-1/2 text-[var(--mc-fg-4)] hover:text-[var(--mc-fg-2)] p-1 rounded"
+          >
+            <Folder size={12} />
+          </button>
+          {cwdMenuOpen && cwdOptions.length > 0 && (
+            <div
+              id="new-session-cwd-options"
+              role="listbox"
+              aria-label="Recent project paths"
+              className="absolute left-0 right-0 top-full z-dropdown mt-1 max-h-48 overflow-y-auto rounded border border-[var(--mc-border-2)] bg-[var(--mc-bg)] shadow-xl"
+            >
+              {cwdOptions.map((option, idx) => (
+                <div
+                  key={option}
+                  id={`new-session-cwd-option-${idx}`}
+                  role="option"
+                  aria-selected={idx === cwdActiveIdx}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => chooseCwd(option)}
+                  className={`flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left hover:bg-[var(--mc-surface)] ${
+                    idx === cwdActiveIdx ? 'bg-[var(--mc-accent-soft)]' : ''
+                  }`}
+                  title={option}
+                >
+                  <Folder size={12} className="shrink-0 text-[var(--mc-fg-5)]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs text-[var(--mc-fg-2)]">
+                      {projectLabel(option)}
+                    </span>
+                    <span className="block truncate text-[10px] text-[var(--mc-fg-5)]">
+                      {option}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {recentCwds.length === 0 && (
+          <div className="text-[10px] text-[var(--mc-fg-5)]">
+            Start with a folder you already use for this project, or browse from Home.
+          </div>
+        )}
       </div>
       <input
         type="text"

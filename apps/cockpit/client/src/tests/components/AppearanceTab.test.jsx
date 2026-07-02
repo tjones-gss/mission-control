@@ -16,10 +16,10 @@ describe('AppearanceTab', () => {
     expect(screen.getByText('Calm')).toBeInTheDocument()
   })
 
-  it('marks the active theme as checked (classic by default)', () => {
+  it('marks the active theme as checked (calm by default)', () => {
     render(<AppearanceTab />)
-    const classic = screen.getByRole('radio', { name: /Classic/ })
-    expect(classic).toHaveAttribute('aria-checked', 'true')
+    const calm = screen.getByRole('radio', { name: /Calm/ })
+    expect(calm).toHaveAttribute('aria-checked', 'true')
   })
 
   it('selecting a theme persists it and applies it to the document', () => {

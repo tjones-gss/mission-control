@@ -5,6 +5,9 @@ import { NewSessionForm } from '../../components/NewSessionForm.jsx'
 
 function stubFsHome(path = '/Users/alice', sep = '/') {
   server.use(
+    http.post('/api/fs/pick-directory', () =>
+      HttpResponse.json({ error: 'native folder picker unavailable' }, { status: 501 }),
+    ),
     http.get('/api/fs/home', () => HttpResponse.json({ path, sep })),
     http.get('/api/fs/list', () => HttpResponse.json({ path, parent: null, sep, entries: [] })),
   )
@@ -304,7 +307,44 @@ describe('NewSessionForm — submit', () => {
 })
 
 describe('NewSessionForm — folder picker integration', () => {
-  it('clicking the folder icon opens the folder picker modal', async () => {
+  it('filters and selects recent project paths from the path combobox', () => {
+    const sessions = [
+      { sessionId: 's1', cwd: '/Users/alice/Projects/mission-control', lastModified: 3 },
+      { sessionId: 's2', cwd: '/Users/alice/Projects/brain', lastModified: 2 },
+      { sessionId: 's3', cwd: '/Users/alice/Projects/second-grader', lastModified: 1 },
+    ]
+    render(<NewSessionForm onCreated={vi.fn()} sessions={sessions} />)
+    const cwd = screen.getByRole('combobox', { name: /project path/i })
+
+    fireEvent.focus(cwd)
+    expect(screen.getByText('mission-control')).toBeInTheDocument()
+    expect(screen.getByText('brain')).toBeInTheDocument()
+
+    fireEvent.change(cwd, { target: { value: 'brain' } })
+    expect(screen.getByText('/Users/alice/Projects/brain')).toBeInTheDocument()
+    expect(screen.queryByText('/Users/alice/Projects/mission-control')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('brain'))
+    expect(cwd.value).toBe('/Users/alice/Projects/brain')
+  })
+
+  it('uses the native folder picker when available', async () => {
+    server.use(
+      http.post('/api/fs/pick-directory', () =>
+        HttpResponse.json({ path: '/Users/alice/Projects/native-picked' }),
+      ),
+    )
+    render(<NewSessionForm onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /browse for folder/i }))
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/working directory/i).value).toBe(
+        '/Users/alice/Projects/native-picked',
+      )
+    })
+    expect(screen.queryByRole('button', { name: /select this directory/i })).not.toBeInTheDocument()
+  })
+
+  it('falls back to the folder picker modal when native browsing is unavailable', async () => {
     stubFsHome()
     render(<NewSessionForm onCreated={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: /browse for folder/i }))

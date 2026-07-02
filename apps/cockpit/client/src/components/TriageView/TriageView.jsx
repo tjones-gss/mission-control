@@ -1,5 +1,15 @@
-import { useState, useMemo, useCallback } from 'react'
-import { Clock, Cpu, ChevronDown, ChevronRight, CheckSquare, Square } from 'lucide-react'
+import { useState, useMemo, useCallback, useRef } from 'react'
+import {
+  Clock,
+  Cpu,
+  ChevronDown,
+  ChevronRight,
+  CheckSquare,
+  Square,
+  ShieldAlert,
+  AlertTriangle,
+  CheckCircle2,
+} from 'lucide-react'
 import { QuickActions } from '../QuickActions.jsx'
 import { MetaBuildBanner } from './MetaBuildBanner.jsx'
 import { SelectionBar } from './SelectionBar.jsx'
@@ -7,6 +17,7 @@ import { useApi } from '../../hooks/useApi.js'
 import { projectLabel } from '../../utils/session.js'
 import { suggestReply } from '../../utils/suggestReply.js'
 import { formatCost } from '../../utils/cost.js'
+import { useRelativeTime } from '../../hooks/useRelativeTime.js'
 
 // The "Needs you" triage home (Oversight redesign). Instead of the equal-weight
 // Active/Idle/Done kanban, it ranks by ATTENTION: the few agents blocking on you
@@ -24,9 +35,17 @@ const ONE_HOUR = 3_600_000
 // Display labels for the classifier's risk levels. SAFE_READONLY/UNKNOWN render
 // no badge — they are not attention signals.
 const RISK_BADGES = {
-  DESTRUCTIVE: { label: 'Destructive', tone: 'danger' },
-  CODE_EXECUTION: { label: 'Runs code', tone: 'warn' },
-  REQUIRES_REVIEW: { label: 'Needs review', tone: 'warn' },
+  DESTRUCTIVE: { label: 'Destructive', tone: 'danger', Icon: ShieldAlert, rank: 0 },
+  CODE_EXECUTION: { label: 'Runs code', tone: 'warn', Icon: AlertTriangle, rank: 1 },
+  REQUIRES_REVIEW: { label: 'Needs review', tone: 'warn', Icon: AlertTriangle, rank: 2 },
+}
+
+async function defaultQuickReply(sessionId, message) {
+  await fetch(`/api/sessions/${sessionId}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
 }
 
 function RiskBadge({ riskLevel, riskDescription }) {
@@ -34,12 +53,14 @@ function RiskBadge({ riskLevel, riskDescription }) {
   if (!badge) return null
   const color = badge.tone === 'danger' ? 'var(--mc-danger)' : 'var(--mc-warn)'
   const bg = badge.tone === 'danger' ? 'var(--mc-danger-soft)' : 'var(--mc-warn-soft)'
+  const Icon = badge.Icon
   return (
     <span
       title={riskDescription || undefined}
-      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+      className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
       style={{ color, backgroundColor: bg }}
     >
+      <Icon size={11} />
       {badge.label}
     </span>
   )
@@ -79,9 +100,10 @@ function topTools(toolUseCounts, n = 2) {
 
 // A card for an agent that is blocking on the user. A DESTRUCTIVE pending
 // approval restyles the card's edge to the danger tone — real data only.
-function AttnCard({ session, onSelect, selected, onToggleSelect }) {
+function AttnCard({ session, onSelect, selected, onToggleSelect, focused, registerCard }) {
   const label = projectLabel(session)
   const danger = session.riskLevel === 'DESTRUCTIVE'
+  const waitLabel = useRelativeTime(session.lastModified, { prefix: 'waiting' })
   // Smart Triage reply: pull the tail of this blocked session's transcript and
   // derive a one-tap context-aware suggestion. Bounded — AttnCard renders only
   // for the (few) needs-input sessions. A failed/empty fetch yields null, so the
@@ -92,8 +114,15 @@ function AttnCard({ session, onSelect, selected, onToggleSelect }) {
   const suggestion = useMemo(() => suggestReply(msgData?.messages || []), [msgData])
   return (
     <div
-      className="group relative rounded-xl border bg-[var(--mc-surface)] p-4 transition-colors"
+      ref={registerCard}
+      tabIndex={-1}
+      role="listitem"
+      data-focused={focused || undefined}
+      className={`group relative rounded-lg border bg-[var(--mc-surface)] p-4 transition-colors ${
+        focused ? 'ring-2 ring-[var(--mc-accent)]' : ''
+      }`}
       style={{ borderColor: danger ? 'var(--mc-danger)' : 'var(--mc-accent-line)' }}
+      aria-label={`${label}${session.riskLevel ? `, ${RISK_BADGES[session.riskLevel]?.label}` : ''}`}
     >
       <span
         className="absolute left-0 top-4 bottom-4 w-[3px] rounded"
@@ -108,7 +137,7 @@ function AttnCard({ session, onSelect, selected, onToggleSelect }) {
         >
           <span className="relative flex h-2 w-2 shrink-0">
             <span
-              className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
+              className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full opacity-75"
               style={{ backgroundColor: danger ? 'var(--mc-danger)' : 'var(--mc-warn)' }}
             />
             <span
@@ -124,7 +153,7 @@ function AttnCard({ session, onSelect, selected, onToggleSelect }) {
             </span>
           )}
           <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] text-[var(--mc-fg-4)]">
-            <Clock size={12} /> waiting
+            <Clock size={12} /> {waitLabel || 'waiting'}
           </span>
         </button>
       </div>
@@ -152,6 +181,7 @@ function AttnCard({ session, onSelect, selected, onToggleSelect }) {
 function RunningTile({ session, onSelect, selected, onToggleSelect }) {
   const label = projectLabel(session)
   const tools = topTools(session.toolUseCounts)
+  const runLabel = useRelativeTime(session.lastModified, { prefix: 'running' })
   return (
     <div className="group relative">
       <SelectCheckbox
@@ -162,11 +192,11 @@ function RunningTile({ session, onSelect, selected, onToggleSelect }) {
       />
       <button
         onClick={() => onSelect(session.sessionId)}
-        className="flex w-full flex-col rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface)] p-3.5 text-left transition-colors hover:border-[var(--mc-border-2)] hover:bg-[var(--mc-surface-2)]"
+        className="flex w-full flex-col rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface)] p-3 text-left transition-colors hover:border-[var(--mc-border-2)] hover:bg-[var(--mc-surface-2)]"
       >
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--mc-ok)] opacity-75" />
+            <span className="absolute inline-flex h-full w-full motion-safe:animate-pulse rounded-full bg-[var(--mc-ok)] opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--mc-ok)]" />
           </span>
           <span className="truncate text-[13px] font-semibold text-[var(--mc-fg)]">{label}</span>
@@ -193,6 +223,9 @@ function RunningTile({ session, onSelect, selected, onToggleSelect }) {
             </span>
           )}
         </div>
+        {runLabel && (
+          <div className="mt-1.5 text-right text-[10px] text-[var(--mc-fg-4)]">{runLabel}</div>
+        )}
       </button>
     </div>
   )
@@ -219,7 +252,8 @@ function CalmRow({ session, onSelect, selected, onToggleSelect }) {
         </span>
         <span className="flex-1 truncate text-xs text-[var(--mc-fg-3)]">{session.lastText}</span>
         {done && (
-          <span className="shrink-0 rounded-full bg-[var(--mc-ok-soft)] px-2 py-0.5 text-[10px] text-[var(--mc-ok)]">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--mc-ok-soft)] px-2 py-0.5 text-[10px] text-[var(--mc-ok)]">
+            <CheckCircle2 size={10} />
             done
           </span>
         )}
@@ -244,11 +278,18 @@ function SectionHead({ children, count, color }) {
   )
 }
 
-export function TriageView({ sessions = [], selectedId, onSelect = () => {} }) {
+export function TriageView({
+  sessions = [],
+  selectedId,
+  onSelect = () => {},
+  onQuickReply = defaultQuickReply,
+}) {
   const [showCalm, setShowCalm] = useState(true)
   // Multi-select for the folded dispatch verb (SelectionBar). Tracks session ids
   // independently of the single-select `selectedId` used for navigation.
   const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [focusedIdx, setFocusedIdx] = useState(0)
+  const cardRefs = useRef(new Map())
   const list = Array.isArray(sessions) ? sessions : []
 
   const toggleSelect = useCallback((id) => {
@@ -261,10 +302,54 @@ export function TriageView({ sessions = [], selectedId, onSelect = () => {} }) {
   }, [])
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
-  const needs = list.filter((s) => s.needsInput)
+  const needs = list
+    .filter((s) => s.needsInput)
+    .sort((a, b) => {
+      const ar = RISK_BADGES[a.riskLevel]?.rank ?? 9
+      const br = RISK_BADGES[b.riskLevel]?.rank ?? 9
+      if (ar !== br) return ar - br
+      return (b.lastModified || 0) - (a.lastModified || 0)
+    })
   const running = list.filter((s) => s.isActive && !s.needsInput)
   const calm = list.filter((s) => !s.isActive && !s.needsInput)
   const metaCount = list.filter((s) => s.meta).length
+  const focusCard = useCallback(
+    (idx) => {
+      if (needs.length === 0) return
+      const next = Math.max(0, Math.min(idx, needs.length - 1))
+      setFocusedIdx(next)
+      window.requestAnimationFrame(() => {
+        cardRefs.current.get(needs[next]?.sessionId)?.focus()
+      })
+    },
+    [needs],
+  )
+  const handleNeedsKeyDown = useCallback(
+    (e) => {
+      if (needs.length === 0) return
+      const current = needs[focusedIdx] || needs[0]
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        focusCard(focusedIdx + 1)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        focusCard(focusedIdx - 1)
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        onSelect(current.sessionId)
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault()
+        toggleSelect(current.sessionId)
+      } else if (e.key.toLowerCase() === 'y') {
+        e.preventDefault()
+        onQuickReply(current.sessionId, 'yes')
+      } else if (e.key.toLowerCase() === 'c') {
+        e.preventDefault()
+        onQuickReply(current.sessionId, 'continue')
+      }
+    },
+    [needs, focusedIdx, focusCard, onSelect, onQuickReply, toggleSelect],
+  )
 
   return (
     <div className="flex-1 overflow-y-auto bg-[var(--mc-bg)]">
@@ -272,24 +357,42 @@ export function TriageView({ sessions = [], selectedId, onSelect = () => {} }) {
         {/* Phase S1 — Oversight is watching its own build. */}
         {metaCount > 0 && <MetaBuildBanner count={metaCount} />}
 
-        {/* Needs you */}
+        {/* Needs you. The queue is role=list (not listbox): the cards contain
+            real tabbable buttons (checkbox, open, quick actions), which the
+            ARIA listbox pattern forbids inside options. A focusable list with
+            roving arrow-key focus keeps keyboard nav AND coherent SR semantics. */}
         <section aria-label="Needs you">
           <SectionHead count={needs.length} color="var(--mc-warn)">
             Needs you
           </SectionHead>
           {needs.length === 0 ? (
-            <div className="rounded-xl border border-[var(--mc-border)] bg-[var(--mc-surface)] px-5 py-7 text-center text-sm text-[var(--mc-fg-3)]">
+            <div className="rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface)] px-5 py-7 text-center text-sm text-[var(--mc-fg-3)]">
               All clear — nothing waiting on you.
             </div>
           ) : (
-            <div className="grid gap-3.5">
-              {needs.map((s) => (
+            <div
+              className="grid gap-3.5"
+              tabIndex={0}
+              role="list"
+              aria-label="Needs you queue"
+              onFocus={() => {
+                if (!cardRefs.current.has(needs[focusedIdx]?.sessionId)) return
+                cardRefs.current.get(needs[focusedIdx]?.sessionId)?.focus()
+              }}
+              onKeyDown={handleNeedsKeyDown}
+            >
+              {needs.map((s, idx) => (
                 <AttnCard
                   key={s.sessionId}
                   session={s}
                   onSelect={onSelect}
                   selected={selectedIds.has(s.sessionId)}
                   onToggleSelect={() => toggleSelect(s.sessionId)}
+                  focused={idx === focusedIdx}
+                  registerCard={(node) => {
+                    if (node) cardRefs.current.set(s.sessionId, node)
+                    else cardRefs.current.delete(s.sessionId)
+                  }}
                 />
               ))}
             </div>
@@ -336,7 +439,7 @@ export function TriageView({ sessions = [], selectedId, onSelect = () => {} }) {
             </span>
           </button>
           {showCalm && calm.length > 0 && (
-            <div className="rounded-xl border border-[var(--mc-border)] bg-[var(--mc-surface)] p-1.5">
+            <div className="rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface)] p-1.5">
               {calm.map((s) => (
                 <CalmRow
                   key={s.sessionId}

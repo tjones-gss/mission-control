@@ -15,6 +15,11 @@ describe('top-level tab manifest', () => {
     expect(CORE_TABS.map((t) => t.id)).toContain('runs')
   })
 
+  it('keeps Mesh behind Advanced disclosure', () => {
+    expect(CORE_TABS.map((t) => t.id)).not.toContain('mesh')
+    expect(ADVANCED_TABS.map((t) => t.id)).toContain('mesh')
+  })
+
   it('does not expose Conductor as a standalone tab', () => {
     expect(ids).not.toContain('conductor')
     expect(labels).not.toContain('conductor')

@@ -140,6 +140,52 @@ describe('TriageView — needs-you cards', () => {
     renderView([makeSession('a', { needsInput: true })])
     await waitFor(() => expect(screen.getByText(/go ahead/i)).toBeInTheDocument())
   })
+
+  it('shows elapsed wait time and a risk icon on risky cards', () => {
+    renderView([
+      makeSession('danger', {
+        needsInput: true,
+        riskLevel: 'DESTRUCTIVE',
+        lastModified: Date.now() - 2 * HOUR,
+      }),
+    ])
+    expect(screen.getByText(/waiting 2h/i)).toBeInTheDocument()
+    expect(screen.getByText('Destructive').closest('span')?.querySelector('svg')).not.toBeNull()
+  })
+
+  it('sorts destructive approvals before lower-risk approvals', () => {
+    renderView([
+      makeSession('review', { needsInput: true, riskLevel: 'REQUIRES_REVIEW' }),
+      makeSession('danger', { needsInput: true, riskLevel: 'DESTRUCTIVE' }),
+    ])
+    const needs = screen.getByRole('region', { name: /needs you/i })
+    const cards = within(needs).getAllByText(/review|danger/)
+    expect(cards[0]).toHaveTextContent('danger')
+  })
+
+  it('supports keyboard approval and continue from the needs-you queue', () => {
+    const onQuickReply = vi.fn()
+    render(
+      <TriageView
+        sessions={[makeSession('a', { needsInput: true })]}
+        onQuickReply={onQuickReply}
+      />,
+    )
+    const queue = screen.getByRole('list', { name: /needs you queue/i })
+    fireEvent.keyDown(queue, { key: 'y' })
+    expect(onQuickReply).toHaveBeenCalledWith('a', 'yes')
+    fireEvent.keyDown(queue, { key: 'c' })
+    expect(onQuickReply).toHaveBeenCalledWith('a', 'continue')
+  })
+
+  it('uses Space to toggle the focused card selection', () => {
+    renderView([makeSession('a', { needsInput: true })])
+    fireEvent.keyDown(screen.getByRole('list', { name: /needs you queue/i }), {
+      key: ' ',
+      code: 'Space',
+    })
+    expect(screen.getByText('1 session selected')).toBeInTheDocument()
+  })
 })
 
 describe('TriageView — multi-select + SelectionBar', () => {
