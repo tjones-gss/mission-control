@@ -8,7 +8,7 @@ beforeEach(() => {
 })
 
 describe('THEMES catalog', () => {
-  it('exposes classic as the default-equivalent plus the design themes', () => {
+  it('exposes calm as the default plus classic and the design themes', () => {
     expect(THEME_IDS).toContain('classic')
     expect(THEME_IDS).toContain('calm')
     // every theme has an id + a human label
@@ -20,8 +20,8 @@ describe('THEMES catalog', () => {
 })
 
 describe('getTheme / setTheme', () => {
-  it('returns the classic default when localStorage is empty', () => {
-    expect(getTheme()).toBe('classic')
+  it('returns the calm default when localStorage is empty', () => {
+    expect(getTheme()).toBe('calm')
   })
 
   it('returns the stored theme after setTheme', () => {
@@ -29,16 +29,16 @@ describe('getTheme / setTheme', () => {
     expect(getTheme()).toBe('calm')
   })
 
-  it('falls back to classic when the stored value is not a known theme', () => {
+  it('falls back to calm when the stored value is not a known theme', () => {
     localStorage.setItem('oversight.theme', 'chartreuse')
-    expect(getTheme()).toBe('classic')
+    expect(getTheme()).toBe('calm')
   })
 
-  it('falls back to classic when localStorage throws', () => {
+  it('falls back to calm when localStorage throws', () => {
     const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked')
     })
-    expect(getTheme()).toBe('classic')
+    expect(getTheme()).toBe('calm')
     spy.mockRestore()
   })
 
@@ -56,14 +56,14 @@ describe('useTheme', () => {
     expect(document.documentElement.dataset.theme).toBe('calm')
   })
 
-  it('defaults the document to classic on mount when nothing is stored', () => {
+  it('defaults the document to calm on mount when nothing is stored', () => {
     renderHook(() => useTheme())
-    expect(document.documentElement.dataset.theme).toBe('classic')
+    expect(document.documentElement.dataset.theme).toBe('calm')
   })
 
   it('exposes the current theme and updates it when setTheme is called', () => {
     const { result } = renderHook(() => useTheme())
-    expect(result.current.theme).toBe('classic')
+    expect(result.current.theme).toBe('calm')
 
     act(() => {
       result.current.setTheme('calm')
@@ -79,6 +79,6 @@ describe('useTheme', () => {
     act(() => {
       result.current.setTheme('chartreuse')
     })
-    expect(result.current.theme).toBe('classic')
+    expect(result.current.theme).toBe('calm')
   })
 })

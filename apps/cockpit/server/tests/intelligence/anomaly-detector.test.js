@@ -26,6 +26,17 @@ vi.mock('../../parsers/sessions.js', () => ({
   getAllSessions: (...a) => getAllSessions(...a),
 }))
 
+// Mock the ADR-0008 index modules so the sweep's session source is
+// deterministic: index when the db is healthy, parser fallback when not.
+const listSessions = vi.fn(() => [])
+vi.mock('../../lib/db/session-index.js', () => ({
+  listSessions: (...a) => listSessions(...a),
+}))
+const isDbUnavailable = vi.fn(() => false)
+vi.mock('../../lib/db/connection.js', () => ({
+  isDbUnavailable: (...a) => isDbUnavailable(...a),
+}))
+
 import {
   detectAnomalies,
   buildSnapshot,
@@ -34,6 +45,7 @@ import {
   getPendingApprovalSince,
   scanSession,
   startApprovalTracking,
+  startAnomalySweep,
   setAnomalyLogPath,
   getAnomalyLogPath,
   readAnomalyLog,
@@ -402,5 +414,40 @@ describe('log path accessors', () => {
 
   it('exposes BUDGET_MULTIPLIER as a stable constant', () => {
     expect(BUDGET_MULTIPLIER).toBe(10)
+  })
+})
+
+// ADR-0008 degraded mode: the periodic sweep reads sessions from the SQLite
+// index when the db is healthy, and MUST fall back to the direct parser scan
+// when it is not — listSessions() never throws (it returns [] on error), so
+// without the explicit isDbUnavailable() guard a db-less server would silently
+// sweep zero sessions forever.
+describe('startAnomalySweep — session source', () => {
+  it('reads from the index when the db is healthy', () => {
+    vi.useFakeTimers()
+    try {
+      isDbUnavailable.mockReturnValue(false)
+      const timer = startAnomalySweep({ intervalMs: 1000 })
+      vi.advanceTimersByTime(1001)
+      clearInterval(timer)
+      expect(listSessions).toHaveBeenCalled()
+      expect(getAllSessions).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('falls back to the parser scan when the db is unavailable', () => {
+    vi.useFakeTimers()
+    try {
+      isDbUnavailable.mockReturnValue(true)
+      const timer = startAnomalySweep({ intervalMs: 1000 })
+      vi.advanceTimersByTime(1001)
+      clearInterval(timer)
+      expect(getAllSessions).toHaveBeenCalled()
+      expect(listSessions).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

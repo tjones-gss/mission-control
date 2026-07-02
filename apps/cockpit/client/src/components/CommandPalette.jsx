@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { Search, X } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react'
+import { Check, MessageSquare, Search, VolumeX, X } from 'lucide-react'
 import { Dialog } from './ui/Dialog.jsx'
 import { projectLabel } from '../utils/session.js'
 
@@ -108,7 +108,16 @@ function PaletteRow({ active, onSelect, children }) {
  * project) first, then message hits with snippets (debounced GET /api/search).
  * Enter/click navigates via onNavigate(sessionId); Escape closes.
  */
-export function CommandPalette({ open, onClose, sessions, onNavigate }) {
+export function CommandPalette({
+  open,
+  onClose,
+  sessions,
+  onNavigate,
+  onApprove,
+  onContinue,
+  onSteer,
+  onMute,
+}) {
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [hits, setHits] = useState([])
@@ -117,6 +126,8 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
   const [errorHint, setErrorHint] = useState(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef(null)
+  const isActionMode = query.trimStart().startsWith('>')
+  const actionQuery = isActionMode ? query.trimStart().slice(1).trim() : ''
 
   // Reset to a fresh palette whenever it closes, so reopening starts clean.
   useEffect(() => {
@@ -134,6 +145,12 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
   // Debounced full-text search; aborts in-flight fetches on retype/close.
   useEffect(() => {
     if (!open) return undefined
+    if (isActionMode) {
+      setHits([])
+      setStatus('idle')
+      setErrorHint(null)
+      return undefined
+    }
     if (!query.trim()) {
       setHits([])
       setStatus('idle')
@@ -174,13 +191,17 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [open, query, typeFilter])
+  }, [open, query, typeFilter, isActionMode])
 
   // Phase I2 — cross-session patterns matching the query. Separate, debounced
   // fetch (a pattern match is not a message hit); failures degrade silently to
   // no patterns so search is never blocked.
   useEffect(() => {
     if (!open) return undefined
+    if (isActionMode) {
+      setPatterns([])
+      return undefined
+    }
     if (!query.trim()) {
       setPatterns([])
       return undefined
@@ -205,9 +226,75 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [open, query])
+  }, [open, query, isActionMode])
 
-  const sessionMatches = useMemo(() => matchSessions(sessions, query), [sessions, query])
+  // Defer the synchronous session filtering so typing stays responsive even
+  // with a large session list — the input updates at keystroke priority, the
+  // result list catches up (React 18 useDeferredValue; the /api/search fetch
+  // above is already debounced separately).
+  const deferredQuery = useDeferredValue(query)
+  const sessionMatches = useMemo(
+    () => (isActionMode ? [] : matchSessions(sessions, deferredQuery)),
+    [sessions, deferredQuery, isActionMode],
+  )
+  const actionTarget = useMemo(() => {
+    const list = Array.isArray(sessions) ? sessions : []
+    const words = actionQuery.split(/\s+/).filter(Boolean)
+    const verb = words[0]?.toLowerCase() || ''
+    const qualifier = verb === 'steer' ? '' : words.slice(1).join(' ').toLowerCase()
+    const candidates = verb === 'mute' ? list : list.filter((s) => s.needsInput) || []
+    const filtered = qualifier
+      ? candidates.filter((s) =>
+          [s.displayName, s.slug, s.sessionId, projectLabel(s)]
+            .filter(Boolean)
+            .some((field) => String(field).toLowerCase().includes(qualifier)),
+        )
+      : candidates
+    return filtered[0] || candidates[0] || list.find((s) => s.isActive) || list[0] || null
+  }, [sessions, actionQuery])
+  const actionItems = useMemo(() => {
+    if (!isActionMode) return []
+    const q = actionQuery.toLowerCase()
+    const steerText = actionQuery.replace(/^steer\s*/i, '').trim()
+    const base = [
+      {
+        key: 'action-approve',
+        label: 'Approve',
+        hint: actionTarget ? projectLabel(actionTarget) : 'No waiting session',
+        Icon: Check,
+        disabled: !actionTarget,
+        run: () => onApprove?.(actionTarget.sessionId),
+      },
+      {
+        key: 'action-continue',
+        label: 'Continue',
+        hint: actionTarget ? projectLabel(actionTarget) : 'No waiting session',
+        Icon: Check,
+        disabled: !actionTarget,
+        run: () => onContinue?.(actionTarget.sessionId),
+      },
+      {
+        key: 'action-steer',
+        label: steerText ? `Steer: ${steerText}` : 'Steer session',
+        hint: actionTarget ? projectLabel(actionTarget) : 'No session available',
+        Icon: MessageSquare,
+        disabled: !actionTarget || !steerText,
+        run: () => onSteer?.(actionTarget.sessionId, steerText),
+      },
+      {
+        key: 'action-mute',
+        label: 'Mute session',
+        hint: actionTarget ? projectLabel(actionTarget) : 'No session available',
+        Icon: VolumeX,
+        disabled: !actionTarget,
+        run: () => onMute?.(actionTarget.sessionId),
+      },
+    ]
+    if (!q) return base
+    return base.filter(
+      (item) => item.label.toLowerCase().includes(q) || item.key.includes(q.split(/\s+/)[0]),
+    )
+  }, [isActionMode, actionQuery, actionTarget])
 
   // Raw transcript hits and knowledge docs (memory + summaries) render as two
   // distinct groups: Messages and Knowledge.
@@ -234,8 +321,9 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
         key: `p-${p.id}`,
         sessionId: p.example_session_ids?.[0],
       })),
+      ...actionItems,
     ],
-    [sessionMatches, messageHits, knowledgeHits, patterns],
+    [sessionMatches, messageHits, knowledgeHits, patterns, actionItems],
   )
   const msgOffset = sessionMatches.length
   const knowledgeOffset = msgOffset + messageHits.length
@@ -250,6 +338,12 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
 
   const select = (item) => {
     if (!item) return
+    if (item.run) {
+      if (item.disabled) return
+      item.run()
+      onClose()
+      return
+    }
     // Memory docs are knowledge files, not sessions — there is nothing to
     // navigate to (their sessionId is the synthetic 'memory:<path>' key). A
     // pattern with no example session likewise has nothing to open.
@@ -293,7 +387,9 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder="Search sessions and messages…"
+          placeholder={
+            isActionMode ? '> command...' : 'Search sessions and messages… (> for actions)'
+          }
           className="flex-1 bg-transparent text-sm text-[var(--mc-fg)] outline-none placeholder:text-[var(--mc-fg-5)]"
         />
         {query && (
@@ -315,33 +411,59 @@ export function CommandPalette({ open, onClose, sessions, onNavigate }) {
         </kbd>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-[var(--mc-border)] px-3 py-1.5">
-        {TYPE_FILTERS.map((t) => {
-          const active = typeFilter === t.id
-          return (
-            <button
-              key={t.id}
-              aria-pressed={active}
-              onClick={() => setTypeFilter(t.id)}
-              // Keep keyboard focus in the search input while clicking pills.
-              onMouseDown={(e) => e.preventDefault()}
-              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-                active
-                  ? 'border-[var(--mc-border-2)] bg-[var(--mc-surface-2)] text-[var(--mc-fg)]'
-                  : 'border-transparent text-[var(--mc-fg-4)] hover:text-[var(--mc-fg-2)]'
-              }`}
-            >
-              {t.label}
-            </button>
-          )
-        })}
-      </div>
+      {!isActionMode && (
+        <div className="flex items-center gap-1 border-b border-[var(--mc-border)] px-3 py-1.5">
+          {TYPE_FILTERS.map((t) => {
+            const active = typeFilter === t.id
+            return (
+              <button
+                key={t.id}
+                aria-pressed={active}
+                onClick={() => setTypeFilter(t.id)}
+                // Keep keyboard focus in the search input while clicking pills.
+                onMouseDown={(e) => e.preventDefault()}
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                  active
+                    ? 'border-[var(--mc-border-2)] bg-[var(--mc-surface-2)] text-[var(--mc-fg)]'
+                    : 'border-transparent text-[var(--mc-fg-4)] hover:text-[var(--mc-fg-2)]'
+                }`}
+              >
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="max-h-[50vh] overflow-y-auto pb-1.5" role="listbox" aria-label="Results">
         {!query.trim() && (
           <div className="px-3 py-6 text-center text-xs text-[var(--mc-fg-4)]">
-            Search sessions and everything your agents have ever said or done
+            Search sessions and everything your agents have ever said or done. Type &gt; for
+            actions.
           </div>
+        )}
+
+        {isActionMode && (
+          <>
+            <GroupHeading count={actionItems.length}>Actions</GroupHeading>
+            {actionItems.map((item, i) => {
+              const Icon = item.Icon
+              return (
+                <PaletteRow key={item.key} active={activeIndex === i} onSelect={() => select(item)}>
+                  <div className={`flex items-center gap-2 ${item.disabled ? 'opacity-45' : ''}`}>
+                    <Icon size={13} className="shrink-0 text-[var(--mc-accent-2)]" />
+                    <span className="truncate text-xs font-semibold text-[var(--mc-fg)]">
+                      {item.label}
+                    </span>
+                    <span className="flex-1" />
+                    <span className="shrink-0 truncate text-xs text-[var(--mc-fg-4)]">
+                      {item.hint}
+                    </span>
+                  </div>
+                </PaletteRow>
+              )
+            })}
+          </>
         )}
 
         {status === 'error' && (

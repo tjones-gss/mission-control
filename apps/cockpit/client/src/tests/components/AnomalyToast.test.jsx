@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 import { AnomalyToast } from '../../components/AnomalyToast.jsx'
+import { AnomalyPanel } from '../../components/AnomalyPanel.jsx'
 
 const mk = (over = {}) => ({
   id: 'a1',
@@ -91,5 +92,42 @@ describe('AnomalyToast', () => {
       vi.advanceTimersByTime(8000)
     })
     expect(onDismiss).toHaveBeenCalledWith('a1')
+  })
+})
+
+describe('AnomalyPanel', () => {
+  it('renders anomaly states and supports acknowledge then resolve callbacks', () => {
+    const onAcknowledge = vi.fn()
+    const onResolve = vi.fn()
+    render(
+      <AnomalyPanel
+        open
+        anomalies={[mk({ state: 'new' })]}
+        onClose={() => {}}
+        onAcknowledge={onAcknowledge}
+        onResolve={onResolve}
+      />,
+    )
+
+    expect(screen.getByText('new')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /acknowledge/i }))
+    expect(onAcknowledge).toHaveBeenCalledWith('a1')
+    fireEvent.click(screen.getByRole('button', { name: /resolve/i }))
+    expect(onResolve).toHaveBeenCalledWith('a1')
+  })
+
+  it('opens the related session from a row', () => {
+    const onOpenSession = vi.fn()
+    render(
+      <AnomalyPanel
+        open
+        anomalies={[mk({ state: 'acknowledged' })]}
+        onClose={() => {}}
+        onOpenSession={onOpenSession}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /open/i }))
+    expect(onOpenSession).toHaveBeenCalledWith('s1')
   })
 })

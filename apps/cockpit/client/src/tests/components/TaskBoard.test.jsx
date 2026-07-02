@@ -34,7 +34,7 @@ describe('TaskBoard', () => {
 
   it('shows empty state when tasks is empty array', () => {
     render(<TaskBoard tasks={[]} loading={false} sessionId="test-session" refetch={vi.fn()} />)
-    expect(screen.getByText('No tasks for this session')).toBeInTheDocument()
+    expect(screen.getByText(/no tasks for this session/i)).toBeInTheDocument()
   })
 
   it('shows an error state with a working Retry when the fetch failed', async () => {

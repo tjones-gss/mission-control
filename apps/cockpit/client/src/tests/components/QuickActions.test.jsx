@@ -116,6 +116,19 @@ describe('QuickActions', () => {
     expect(screen.getByText('yes').tagName).toBe('BUTTON')
     expect(screen.getByText('continue').tagName).toBe('BUTTON')
     expect(screen.getByText('approve').tagName).toBe('BUTTON')
+    expect(screen.getByText('yes')).toHaveAttribute('title', 'Approve (Y)')
+    expect(screen.getByText('continue')).toHaveAttribute('title', 'Continue (C)')
+  })
+
+  it('announces send status through an aria-live region', async () => {
+    server.use(
+      http.post('/api/sessions/:sessionId/message', () => {
+        return HttpResponse.json({ ok: true, streaming: true }, { status: 202 })
+      }),
+    )
+    render(<QuickActions sessionId="s1" />)
+    await userEvent.click(screen.getByText('yes'))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/sent yes/i))
   })
 
   it('renders the suggestion chip as a real <button>', () => {

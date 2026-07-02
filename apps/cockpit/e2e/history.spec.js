@@ -59,7 +59,7 @@ test.describe('history tab', () => {
     // message should appear. Previously this used .or(search) as a
     // fallback but Playwright's strict mode treats two visible matches
     // as a violation, and the search input is always visible.
-    await expect(page.getByText('No command history found')).toBeVisible()
+    await expect(page.getByText(/No command history yet/)).toBeVisible()
   })
 
   test('group toggle changes view mode', async ({ page }) => {

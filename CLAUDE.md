@@ -100,7 +100,7 @@ cd apps/cockpit/client && npm install
 - `KanbanBoard.jsx` — Board mode.
 - `AgentTree.jsx` — Detail mode with `InspectPanel` for `~/.claude` viewers.
 
-**Theme system:** `index.css` defines `--mc-*` CSS variables (the token layer). `useTheme.js` applies a `data-theme` attribute on `<html>`. Themes: `classic` (default), `calm`, `tron`, `warm`. New components should use `--mc-*` vars, not hardcoded Tailwind colors.
+**Theme system:** `index.css` defines `--mc-*` CSS variables (the token layer). `useTheme.js` applies a `data-theme` attribute on `<html>`. Themes: `calm` (default), `classic` (legacy cold-gray/indigo), `tron`, `warm`. New components should use `--mc-*` vars, not hardcoded Tailwind colors.
 
 **Real-time:** `useSSE.js` connects to `GET /api/stream`. The app uses version counters (`sessionsVersion`, `fleetVersion`, etc.) as `useApi` deps — incrementing the counter is how SSE events trigger a refetch.
 
@@ -139,6 +139,7 @@ JSON schemas in `schemas/`. `index.js` exports schema objects and `SCHEMA_VERSIO
 | `OTEL_ENABLED` | — | Enable OTel tracing |
 | `OVERSIGHT_WEBHOOK_URL` | — | AFK gate notifier: POST approval-pending events to this webhook (notify-only, no inbound path; unset = no-op) |
 | `OVERSIGHT_BUDGET_MAX` | `0` | Max USD budget (0 = unlimited) |
+| `OVERSIGHT_BOOT_REBUILD` | on | ADR-0008 boot index rebuilds (sessions + memory). Set `0` to skip — only for scripted setups that manage the index themselves; the boot rebuild is the ONLY cold-start path that populates `cockpit.db` |
 | `OVERSIGHT_FLEET_ACK_TIMEOUT_MS` | `15000` | Fleet session-ack timeout |
 | `OVERSIGHT_MDNS` | — | LAN mDNS/Bonjour advertisement. On by default in LAN mode; set `false` to opt out. No effect on a loopback bind |
 | `OVERSIGHT_MDNS_NAME` | `Mission Control` | Service name advertised over mDNS (disambiguates multiple leads on one LAN) |

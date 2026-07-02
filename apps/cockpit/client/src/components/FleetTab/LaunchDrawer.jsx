@@ -290,17 +290,17 @@ export function LaunchDrawer({
       dismissible={!submitting}
       label="New fleet run"
       initialFocusRef={goalRef}
-      backdropClassName="bg-black/40 backdrop-blur-sm"
-      className="w-[min(92vw,960px)] h-[min(78vh,700px)] bg-gray-950 border border-b-0 border-gray-800 rounded-t-xl shadow-2xl"
+      backdropClassName="bg-[var(--mc-bg)] opacity-70 backdrop-blur-sm"
+      className="w-[min(92vw,960px)] h-[min(78vh,700px)] bg-[var(--mc-bg)] border border-b-0 border-[var(--mc-border)] rounded-t-lg shadow-2xl"
     >
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-800">
-        <Layers size={16} className="text-indigo-400" />
-        <span className="text-sm font-semibold text-gray-100">New Fleet Run</span>
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--mc-border)]">
+        <Layers size={16} className="text-[var(--mc-accent-2)]" />
+        <span className="text-sm font-semibold text-[var(--mc-fg)]">New Fleet Run</span>
         <button
           type="button"
           onClick={onClose}
           disabled={submitting}
-          className="ml-auto text-gray-600 hover:text-gray-300 transition-colors p-1 rounded disabled:opacity-30"
+          className="ml-auto text-[var(--mc-fg-5)] hover:text-[var(--mc-fg-2)] transition-colors p-1 rounded disabled:opacity-30"
           title="Close (Esc)"
         >
           <X size={16} />
@@ -313,7 +313,7 @@ export function LaunchDrawer({
             <div>
               <label
                 htmlFor="fleet-template-picker"
-                className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1"
+                className="block text-[11px] uppercase tracking-wide text-[var(--mc-fg-4)] mb-1"
               >
                 Launch from template
               </label>
@@ -326,7 +326,7 @@ export function LaunchDrawer({
                   applyTemplate(tpl)
                   e.target.value = ''
                 }}
-                className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[var(--mc-surface)] border border-[var(--mc-border-2)] rounded px-2 py-1.5 text-xs text-[var(--mc-fg-2)] focus:outline-none focus:border-[var(--mc-accent)]"
               >
                 <option value="">— pick a saved template —</option>
                 {templateList.map((t) => (
@@ -339,7 +339,7 @@ export function LaunchDrawer({
           )}
 
           <div>
-            <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">
+            <label className="block text-[11px] uppercase tracking-wide text-[var(--mc-fg-4)] mb-1">
               Goal
             </label>
             <textarea
@@ -349,10 +349,10 @@ export function LaunchDrawer({
               rows={2}
               aria-invalid={fieldErrors.goal || undefined}
               placeholder="What should the fleet accomplish? (e.g. Add OAuth across all services)"
-              className={`w-full bg-gray-900 border rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none resize-none ${
+              className={`w-full bg-[var(--mc-surface)] border rounded px-3 py-2 text-sm text-[var(--mc-fg)] placeholder:text-[var(--mc-fg-5)] focus:outline-none resize-none ${
                 fieldErrors.goal
-                  ? 'border-red-500 focus:border-red-500'
-                  : 'border-gray-700 focus:border-indigo-500'
+                  ? 'border-[var(--mc-danger)] focus:border-[var(--mc-danger)]'
+                  : 'border-[var(--mc-border-2)] focus:border-[var(--mc-accent)]'
               }`}
             />
           </div>
@@ -363,12 +363,12 @@ export function LaunchDrawer({
             <div>
               <label
                 htmlFor="fleet-budget"
-                className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1"
+                className="block text-[11px] uppercase tracking-wide text-[var(--mc-fg-4)] mb-1"
               >
                 Budget (USD)
               </label>
-              <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 focus-within:border-indigo-500">
-                <DollarSign size={12} className="text-gray-600 shrink-0" />
+              <div className="flex items-center gap-1.5 bg-[var(--mc-surface)] border border-[var(--mc-border-2)] rounded px-2 py-1.5 focus-within:border-[var(--mc-accent)]">
+                <DollarSign size={12} className="text-[var(--mc-fg-5)] shrink-0" />
                 <input
                   id="fleet-budget"
                   type="number"
@@ -378,35 +378,37 @@ export function LaunchDrawer({
                   onChange={(e) => setBudget(e.target.value)}
                   placeholder="no cap"
                   aria-label="budget usd"
-                  className="w-24 bg-transparent text-xs text-gray-200 placeholder-gray-600 focus:outline-none font-mono"
+                  className="w-24 bg-transparent text-xs text-[var(--mc-fg)] placeholder:text-[var(--mc-fg-5)] focus:outline-none font-mono"
                 />
               </div>
             </div>
-            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer pb-1.5">
+            <label className="flex items-center gap-2 text-xs text-[var(--mc-fg-2)] cursor-pointer pb-1.5">
               <input
                 type="checkbox"
                 checked={verify}
                 onChange={(e) => setVerify(e.target.checked)}
                 aria-label="verify results"
-                className="accent-indigo-500"
+                className="accent-[var(--mc-accent)]"
               />
-              <ShieldCheck size={13} className="text-sky-400" />
+              <ShieldCheck size={13} className="text-[var(--mc-info)]" />
               Verify results (adversarial review)
             </label>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center">
-              <span className="text-[11px] uppercase tracking-wide text-gray-500">Children</span>
+              <span className="text-[11px] uppercase tracking-wide text-[var(--mc-fg-4)]">
+                Children
+              </span>
               <button
                 type="button"
                 onClick={addChild}
-                className="ml-auto flex items-center gap-1 text-[11px] text-indigo-300 hover:text-indigo-200 transition-colors"
+                className="ml-auto flex items-center gap-1 text-[11px] text-[var(--mc-accent-2)] hover:text-[var(--mc-accent)] transition-colors"
               >
                 <Plus size={12} /> Add child
               </button>
             </div>
-            <p className="text-[11px] text-gray-500">
+            <p className="text-[11px] text-[var(--mc-fg-4)]">
               Each child runs in its own isolated git worktree inside a fleet-ready project — a git
               repo with harness rails installed.
             </p>
@@ -414,13 +416,13 @@ export function LaunchDrawer({
             {rootList.length === 0 && (
               <div
                 data-testid="fleet-no-roots"
-                className="rounded-lg border border-amber-700/40 bg-amber-950/30 p-3 text-[11px] text-amber-200/90 space-y-1.5"
+                className="rounded-lg border border-[var(--mc-warn)] bg-[var(--mc-warn-soft)] p-3 text-[11px] text-[var(--mc-fg-2)] space-y-1.5"
               >
-                <div className="flex items-center gap-1.5 font-semibold text-amber-300">
+                <div className="flex items-center gap-1.5 font-semibold text-[var(--mc-warn)]">
                   <AlertTriangle size={12} /> No fleet-ready projects yet
                 </div>
                 <p>A project qualifies once it meets all three requirements:</p>
-                <ul className="list-disc pl-4 space-y-0.5 text-amber-200/80">
+                <ul className="list-disc pl-4 space-y-0.5 text-[var(--mc-fg-2)]">
                   <li>
                     it is a <span className="font-mono">git</span> repository (children run in
                     isolated git worktrees)
@@ -443,19 +445,21 @@ export function LaunchDrawer({
             {children.map((child, idx) => (
               <div
                 key={idx}
-                className="rounded-lg border border-gray-800 bg-gray-900/50 p-2.5 space-y-2"
+                className="rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface)] p-2.5 space-y-2"
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono text-gray-600 shrink-0">#{idx}</span>
+                  <span className="text-[10px] font-mono text-[var(--mc-fg-5)] shrink-0">
+                    #{idx}
+                  </span>
                   <select
                     value={child.cwd}
                     onChange={(e) => updateChild(idx, { cwd: e.target.value })}
                     aria-label={`child ${idx} working directory`}
                     aria-invalid={fieldErrors.children[idx]?.cwd || undefined}
-                    className={`flex-1 min-w-0 bg-gray-900 border rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none font-mono ${
+                    className={`flex-1 min-w-0 bg-[var(--mc-bg)] border rounded px-2 py-1.5 text-xs text-[var(--mc-fg)] focus:outline-none font-mono ${
                       fieldErrors.children[idx]?.cwd
-                        ? 'border-red-500 focus:border-red-500'
-                        : 'border-gray-700 focus:border-indigo-500'
+                        ? 'border-[var(--mc-danger)] focus:border-[var(--mc-danger)]'
+                        : 'border-[var(--mc-border-2)] focus:border-[var(--mc-accent)]'
                     }`}
                   >
                     <option value="">— pick a fleet-ready project —</option>
@@ -469,7 +473,7 @@ export function LaunchDrawer({
                     <button
                       type="button"
                       onClick={() => removeChild(idx)}
-                      className="shrink-0 text-gray-600 hover:text-red-400 transition-colors p-1"
+                      className="shrink-0 text-[var(--mc-fg-5)] hover:text-[var(--mc-danger)] transition-colors p-1"
                       title="Remove child"
                       aria-label={`remove child ${idx}`}
                     >
@@ -486,19 +490,19 @@ export function LaunchDrawer({
                     placeholder="Prompt for this child…"
                     aria-label={`child ${idx} prompt`}
                     aria-invalid={fieldErrors.children[idx]?.body || undefined}
-                    className={`flex-1 min-w-0 bg-gray-900 border rounded px-2 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none resize-none disabled:opacity-40 ${
+                    className={`flex-1 min-w-0 bg-[var(--mc-bg)] border rounded px-2 py-1.5 text-xs text-[var(--mc-fg)] placeholder:text-[var(--mc-fg-5)] focus:outline-none resize-none disabled:opacity-40 ${
                       fieldErrors.children[idx]?.body
-                        ? 'border-red-500 focus:border-red-500'
-                        : 'border-gray-700 focus:border-indigo-500'
+                        ? 'border-[var(--mc-danger)] focus:border-[var(--mc-danger)]'
+                        : 'border-[var(--mc-border-2)] focus:border-[var(--mc-accent)]'
                     }`}
                   />
                   <div className="flex flex-col gap-1 shrink-0 w-40">
-                    <span className="text-[10px] text-gray-600">or workflow</span>
+                    <span className="text-[10px] text-[var(--mc-fg-5)]">or workflow</span>
                     <select
                       value={child.workflow}
                       onChange={(e) => updateChild(idx, { workflow: e.target.value })}
                       aria-label={`child ${idx} workflow`}
-                      className="bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
+                      className="bg-[var(--mc-bg)] border border-[var(--mc-border-2)] rounded px-2 py-1.5 text-xs text-[var(--mc-fg-2)] focus:outline-none focus:border-[var(--mc-accent)]"
                     >
                       <option value="">— none —</option>
                       {workflowList.map((wf) => (
@@ -507,15 +511,15 @@ export function LaunchDrawer({
                         </option>
                       ))}
                     </select>
-                    <label className="flex items-center gap-1.5 text-[10px] text-gray-400 cursor-pointer mt-0.5">
+                    <label className="flex items-center gap-1.5 text-[10px] text-[var(--mc-fg-3)] cursor-pointer mt-0.5">
                       <input
                         type="checkbox"
                         checked={!!child.quarantine}
                         onChange={(e) => updateChild(idx, { quarantine: e.target.checked })}
                         aria-label={`child ${idx} quarantine`}
-                        className="accent-orange-500"
+                        className="accent-[var(--mc-warn)]"
                       />
-                      <Lock size={10} className="text-orange-400" />
+                      <Lock size={10} className="text-[var(--mc-warn)]" />
                       quarantine (read-only)
                     </label>
                   </div>
@@ -528,16 +532,16 @@ export function LaunchDrawer({
         {pendingConfirm ? (
           <div
             data-testid="fleet-launch-confirm"
-            className="border-t border-gray-800 px-4 py-3 bg-amber-950/20 flex flex-col gap-2.5"
+            className="border-t border-[var(--mc-border)] px-4 py-3 bg-[var(--mc-warn-soft)] flex flex-col gap-2.5"
           >
             <div className="flex items-start gap-2">
-              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+              <AlertTriangle size={15} className="mt-0.5 shrink-0 text-[var(--mc-warn)]" />
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-amber-100">
+                <div className="text-sm font-semibold text-[var(--mc-fg)]">
                   Launch {pendingConfirm.children.length} agent
                   {pendingConfirm.children.length === 1 ? '' : 's'}?
                 </div>
-                <div className="mt-0.5 text-[11px] text-gray-400">
+                <div className="mt-0.5 text-[11px] text-[var(--mc-fg-3)]">
                   {pendingConfirm.children.length} worktree
                   {pendingConfirm.children.length === 1 ? '' : 's'} ·{' '}
                   {typeof pendingConfirm.policy.budgetUsd === 'number'
@@ -550,7 +554,7 @@ export function LaunchDrawer({
             </div>
             <div className="flex items-center gap-3">
               {error && (
-                <span className="text-[11px] text-red-400 flex items-center gap-1.5">
+                <span className="text-[11px] text-[var(--mc-danger)] flex items-center gap-1.5">
                   <AlertTriangle size={12} /> {error}
                 </span>
               )}
@@ -558,7 +562,7 @@ export function LaunchDrawer({
                 type="button"
                 onClick={() => setPendingConfirm(null)}
                 disabled={submitting}
-                className="ml-auto px-3 py-2 rounded border border-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-800 hover:text-gray-100 disabled:opacity-30 transition-colors shrink-0"
+                className="ml-auto px-3 py-2 rounded border border-[var(--mc-border-2)] text-[var(--mc-fg-2)] text-sm font-medium hover:bg-[var(--mc-surface-2)] hover:text-[var(--mc-fg)] disabled:opacity-30 transition-colors shrink-0"
               >
                 Back
               </button>
@@ -566,7 +570,7 @@ export function LaunchDrawer({
                 type="button"
                 onClick={() => doLaunch(pendingConfirm)}
                 disabled={submitting}
-                className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+                className="px-4 py-2 rounded bg-[var(--mc-accent)] text-[var(--mc-on-accent)] text-sm font-medium hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
               >
                 {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 {submitting ? 'Launching…' : 'Confirm & launch'}
@@ -574,24 +578,25 @@ export function LaunchDrawer({
             </div>
           </div>
         ) : (
-          <div className="border-t border-gray-800 px-4 py-3 bg-gray-900/40 flex items-center gap-3">
+          <div className="border-t border-[var(--mc-border)] px-4 py-3 bg-[var(--mc-surface)] flex items-center gap-3">
             {error && (
-              <span className="text-[11px] text-red-400 flex items-center gap-1.5">
+              <span className="text-[11px] text-[var(--mc-danger)] flex items-center gap-1.5">
                 <AlertTriangle size={12} /> {error}
               </span>
             )}
             <span
               data-testid="fleet-cost-estimate"
-              className="text-[11px] text-gray-500 flex items-center gap-1"
+              className="text-[11px] text-[var(--mc-fg-4)] flex items-center gap-1"
               title="Rough pre-launch estimate based on child count and verification"
             >
-              <DollarSign size={11} className="text-gray-600" /> Est. {formatRange(estimate)}
+              <DollarSign size={11} className="text-[var(--mc-fg-5)]" /> Est.{' '}
+              {formatRange(estimate)}
             </span>
             <button
               type="button"
               onClick={saveTemplate}
               disabled={submitting}
-              className="ml-auto px-3 py-2 rounded border border-gray-700 text-gray-300 text-sm font-medium hover:bg-gray-800 hover:text-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+              className="ml-auto px-3 py-2 rounded border border-[var(--mc-border-2)] text-[var(--mc-fg-2)] text-sm font-medium hover:bg-[var(--mc-surface-2)] hover:text-[var(--mc-fg)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
             >
               <Save size={14} /> Save as template
             </button>
@@ -599,7 +604,7 @@ export function LaunchDrawer({
               type="button"
               onClick={submit}
               disabled={submitting}
-              className="px-4 py-2 rounded bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+              className="px-4 py-2 rounded bg-[var(--mc-accent)] text-[var(--mc-on-accent)] text-sm font-medium hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
             >
               {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
               {submitting ? 'Launching…' : 'Launch Fleet'}

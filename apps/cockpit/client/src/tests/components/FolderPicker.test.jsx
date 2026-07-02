@@ -273,6 +273,64 @@ describe('FolderPicker — hidden directories', () => {
   })
 })
 
+describe('FolderPicker — search and jump', () => {
+  it('filters directories in the current folder', async () => {
+    stubFs({
+      home: { path: '/Users/alice', sep: '/' },
+      lists: {
+        '/Users/alice': {
+          path: '/Users/alice',
+          parent: '/Users',
+          sep: '/',
+          entries: [
+            { name: 'mission-control', type: 'dir' },
+            { name: 'brain', type: 'dir' },
+            { name: 'second-grader', type: 'dir' },
+          ],
+        },
+      },
+    })
+    render(<FolderPicker onSelect={vi.fn()} onClose={vi.fn()} />)
+    expect(await screen.findByText('mission-control')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/filter folders/i), { target: { value: 'brain' } })
+
+    expect(screen.getByText('brain')).toBeInTheDocument()
+    expect(screen.queryByText('mission-control')).not.toBeInTheDocument()
+    expect(screen.queryByText('second-grader')).not.toBeInTheDocument()
+  })
+
+  it('jumps directly to an absolute folder path', async () => {
+    stubFs({
+      home: { path: '/Users/alice', sep: '/' },
+      lists: {
+        '/Users/alice': {
+          path: '/Users/alice',
+          parent: '/Users',
+          sep: '/',
+          entries: [{ name: 'Projects', type: 'dir' }],
+        },
+        '/Users/alice/Projects/mission-control': {
+          path: '/Users/alice/Projects/mission-control',
+          parent: '/Users/alice/Projects',
+          sep: '/',
+          entries: [{ name: 'apps', type: 'dir' }],
+        },
+      },
+    })
+    render(<FolderPicker onSelect={vi.fn()} onClose={vi.fn()} />)
+    await screen.findByText('/Users/alice')
+
+    fireEvent.change(screen.getByLabelText(/folder path/i), {
+      target: { value: '/Users/alice/Projects/mission-control' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^go$/i }))
+
+    expect(await screen.findByText('/Users/alice/Projects/mission-control')).toBeInTheDocument()
+    expect(screen.getByText('apps')).toBeInTheDocument()
+  })
+})
+
 describe('FolderPicker — Home button', () => {
   it('re-fetches /api/fs/home when Home is clicked', async () => {
     stubFs({

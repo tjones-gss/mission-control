@@ -7,12 +7,18 @@ import { ChildCard } from './FleetRunCard.jsx'
 
 // Run-level status pill styling.
 export const RUN_STATUS = {
-  running: { cls: 'bg-green-900/50 text-green-300', dot: 'bg-green-400' },
-  succeeded: { cls: 'bg-emerald-900/50 text-emerald-300', dot: 'bg-emerald-400' },
-  partial: { cls: 'bg-amber-900/50 text-amber-300', dot: 'bg-amber-400' },
-  failed: { cls: 'bg-red-900/50 text-red-300', dot: 'bg-red-400' },
-  cancelled: { cls: 'bg-gray-800 text-gray-400', dot: 'bg-gray-500' },
-  budget_exceeded: { cls: 'bg-orange-900/50 text-orange-300', dot: 'bg-orange-400' },
+  running: { cls: 'bg-[var(--mc-ok-soft)] text-[var(--mc-ok)]', dot: 'bg-[var(--mc-ok)]' },
+  succeeded: { cls: 'bg-[var(--mc-ok-soft)] text-[var(--mc-ok)]', dot: 'bg-[var(--mc-ok)]' },
+  partial: { cls: 'bg-[var(--mc-warn-soft)] text-[var(--mc-warn)]', dot: 'bg-[var(--mc-warn)]' },
+  failed: {
+    cls: 'bg-[var(--mc-danger-soft)] text-[var(--mc-danger)]',
+    dot: 'bg-[var(--mc-danger)]',
+  },
+  cancelled: { cls: 'bg-[var(--mc-surface-2)] text-[var(--mc-fg-4)]', dot: 'bg-[var(--mc-fg-5)]' },
+  budget_exceeded: {
+    cls: 'bg-[var(--mc-warn-soft)] text-[var(--mc-warn)]',
+    dot: 'bg-[var(--mc-warn)]',
+  },
 }
 
 // Lifecycle steps shown as a stepper in the run header — a clearer signal than
@@ -47,22 +53,28 @@ function FleetStepper({ run }) {
             <span
               className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${
                 active
-                  ? 'bg-indigo-900/50 text-indigo-200'
+                  ? 'bg-[var(--mc-accent-soft)] text-[var(--mc-accent-2)]'
                   : done
-                    ? 'text-emerald-400'
-                    : 'text-gray-600'
+                    ? 'text-[var(--mc-ok)]'
+                    : 'text-[var(--mc-fg-5)]'
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  active ? 'bg-indigo-400' : done ? 'bg-emerald-500' : 'bg-gray-700'
+                  active
+                    ? 'bg-[var(--mc-accent)]'
+                    : done
+                      ? 'bg-[var(--mc-ok)]'
+                      : 'bg-[var(--mc-border-2)]'
                 }`}
               />
               {label}
               {showCount ? ` ${settled}/${children.length}` : ''}
             </span>
             {i < STEPS.length - 1 && (
-              <span className={`h-px w-3 ${done ? 'bg-emerald-700' : 'bg-gray-800'}`} />
+              <span
+                className={`h-px w-3 ${done ? 'bg-[var(--mc-ok)]' : 'bg-[var(--mc-border)]'}`}
+              />
             )}
           </div>
         )
@@ -136,11 +148,11 @@ export function RunDetail({ runId, version, onOpenSession }) {
   )
 
   if (loading && !run) {
-    return <div className="text-xs text-gray-500 italic p-4">Loading run…</div>
+    return <div className="text-xs text-[var(--mc-fg-4)] italic p-4">Loading run…</div>
   }
   if (error) {
     return (
-      <div className="text-xs text-red-400 p-4 flex items-center gap-1.5">
+      <div className="text-xs text-[var(--mc-danger)] p-4 flex items-center gap-1.5">
         <AlertCircle size={12} /> {error}
       </div>
     )
@@ -178,10 +190,10 @@ export function RunDetail({ runId, version, onOpenSession }) {
   return (
     <div className="p-4 space-y-4">
       {/* Run header */}
-      <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+      <div className="rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface)] p-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <Layers size={15} className="text-indigo-400 shrink-0" />
-          <span className="text-sm font-semibold text-gray-100">{run.goal}</span>
+          <Layers size={15} className="text-[var(--mc-accent-2)] shrink-0" />
+          <span className="text-sm font-semibold text-[var(--mc-fg)]">{run.goal}</span>
           <span
             className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium ${statusMeta.cls}`}
           >
@@ -189,9 +201,13 @@ export function RunDetail({ runId, version, onOpenSession }) {
             {run.status}
           </span>
           {budgetUsd == null && totalCost > 0 && (
-            <span className="text-[11px] text-emerald-500 font-mono">{formatCost(totalCost)}</span>
+            <span className="text-[11px] text-[var(--mc-ok)] font-mono">
+              {formatCost(totalCost)}
+            </span>
           )}
-          <span className="ml-auto text-[10px] text-gray-600">{timeAgo(run.createdAt)}</span>
+          <span className="ml-auto text-[10px] text-[var(--mc-fg-5)]">
+            {timeAgo(run.createdAt)}
+          </span>
         </div>
 
         {/* Lifecycle stepper — Launch → Working → Synthesis → Done. */}
@@ -201,13 +217,21 @@ export function RunDetail({ runId, version, onOpenSession }) {
         {budgetUsd != null && (
           <div data-testid="fleet-budget-bar" className="mt-2.5">
             <div className="flex items-center justify-between text-[10px] mb-1">
-              <span className="text-gray-500">
+              <span className="text-[var(--mc-fg-4)]">
                 Budget{' '}
-                <span className={budgetOver ? 'text-orange-400 font-semibold' : 'text-gray-400'}>
+                <span
+                  className={
+                    budgetOver ? 'text-[var(--mc-warn)] font-semibold' : 'text-[var(--mc-fg-3)]'
+                  }
+                >
                   {formatCost(spentUsd)} / {formatCost(budgetUsd)}
                 </span>
               </span>
-              <span className={budgetOver ? 'text-orange-400 font-semibold' : 'text-gray-500'}>
+              <span
+                className={
+                  budgetOver ? 'text-[var(--mc-warn)] font-semibold' : 'text-[var(--mc-fg-4)]'
+                }
+              >
                 {budgetOver
                   ? 'budget exceeded'
                   : budgetRemaining != null
@@ -215,9 +239,9 @@ export function RunDetail({ runId, version, onOpenSession }) {
                     : ''}
               </span>
             </div>
-            <div className="h-1.5 rounded-full bg-gray-800 overflow-hidden">
+            <div className="h-1.5 rounded-full bg-[var(--mc-surface-2)] overflow-hidden">
               <div
-                className={`h-full rounded-full ${budgetOver ? 'bg-orange-500' : 'bg-emerald-500'}`}
+                className={`h-full rounded-full ${budgetOver ? 'bg-[var(--mc-warn)]' : 'bg-[var(--mc-ok)]'}`}
                 style={{ width: `${budgetPct}%` }}
               />
             </div>
@@ -239,12 +263,14 @@ export function RunDetail({ runId, version, onOpenSession }) {
       </div>
 
       {/* Synthesis report */}
-      <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+      <div className="rounded-lg border border-[var(--mc-border)] bg-[var(--mc-surface)] p-3">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] uppercase tracking-wide text-gray-500">Synthesis</span>
-          <span className="text-[10px] text-gray-500">{synthesis.status}</span>
+          <span className="text-[11px] uppercase tracking-wide text-[var(--mc-fg-4)]">
+            Synthesis
+          </span>
+          <span className="text-[10px] text-[var(--mc-fg-4)]">{synthesis.status}</span>
           {synthesis.status === 'running' && (
-            <Loader2 size={12} className="text-indigo-400 animate-spin" />
+            <Loader2 size={12} className="text-[var(--mc-accent-2)] animate-spin" />
           )}
         </div>
         {synthesis.status === 'done' && synthesis.summary ? (
@@ -252,11 +278,11 @@ export function RunDetail({ runId, version, onOpenSession }) {
             <Markdown>{synthesis.summary}</Markdown>
           </div>
         ) : synthesis.status === 'skipped' ? (
-          <div className="mt-2 text-[11px] text-gray-500 italic">
+          <div className="mt-2 text-[11px] text-[var(--mc-fg-4)] italic">
             {synthesis.summary || 'Synthesis skipped.'}
           </div>
         ) : (
-          <div className="mt-2 text-[11px] text-gray-600 italic">
+          <div className="mt-2 text-[11px] text-[var(--mc-fg-5)] italic">
             Synthesis runs once all children settle.
           </div>
         )}

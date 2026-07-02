@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
 
-// The cockpit's visual themes. `classic` is the historical cold-gray/indigo
-// look and is the default, so an existing user sees no change until they opt in.
-// `calm`, `tron`, and `warm` come from the Oversight design handoff and are
+// The cockpit's visual themes. `calm` is the premium default; `classic` keeps
+// the historical cold-gray/indigo look available for existing preference state.
+// `tron` and `warm` come from the Oversight design handoff and are
 // applied purely as a `data-theme` attribute on <html>; the token values live in
 // index.css. Adding a theme here is the only code change needed — the CSS layer
 // keys off the id. (ADR-0005: this rides the rails-backed redesign slice; on its
@@ -17,7 +17,7 @@ export const THEMES = [
 export const THEME_IDS = THEMES.map((t) => t.id)
 
 const STORAGE_KEY = 'oversight.theme'
-const DEFAULT_THEME = 'classic'
+const DEFAULT_THEME = 'calm'
 
 // Read the persisted theme. Guarded so a missing key, a throwing localStorage
 // (private mode / tests), or a stale/unknown value all degrade to the default

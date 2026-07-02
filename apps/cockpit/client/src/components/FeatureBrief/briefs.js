@@ -29,8 +29,8 @@ export const BRIEFS = {
   },
   'runs.pipeline': {
     title: 'Runs · Pipeline',
-    summary: 'Compose a pipeline on a canvas, then launch it as a Fleet run.',
-    body: 'Drag node types (trigger, agent, skill, condition, fan-out, merge, human gate) onto the canvas and wire them up. Save persists the canvas to server/data/pipelines; Run Pipeline serialises it to a Fleet batch and submits it through the existing fleet runner — no new execution path. Use it: drop an Agent node, set its goal, then Run.',
+    summary: "Watch a governed project's live pipeline — phases, the active gate, missions.",
+    body: 'Live renders the real harness pipeline from `harness status --json`: the completed → current → next phase window, the gate the run must clear, blockers, strategy, and mission counts. It is read-only — approvals and mission work stay in Runs · Missions. Compose keeps the canvas: drag nodes, wire them, Save, then Run Pipeline to submit it as a Fleet batch.',
   },
   fleet: {
     title: 'Fleet',

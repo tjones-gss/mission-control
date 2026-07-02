@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -126,6 +126,10 @@ function stubFleet({ runs = [], run = null, escalations = [], templates = [], pr
 }
 
 describe('FleetTab', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   it('renders the empty state when there are no runs', async () => {
     stubFleet({ runs: [] })
     render(<FleetTab fleetVersion={0} />)
@@ -688,5 +692,66 @@ describe('FleetTab', () => {
       expect(screen.getByRole('button', { name: /start your first run/i })).toBeInTheDocument(),
     )
     expect(screen.getByText(/launch your first fleet/i)).toBeInTheDocument()
+  })
+
+  it('switches to dashboard mode, persists it, and preserves the selected run', async () => {
+    stubFleet({
+      runs: [
+        {
+          id: 'add-oauth-2026',
+          goal: 'Add OAuth across services',
+          status: 'running',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          childCount: 2,
+          settledCount: 1,
+          policy: { verify: true },
+        },
+      ],
+      run: makeRun(),
+      escalations: [],
+    })
+    render(<FleetTab fleetVersion={0} />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /dashboard/i })).toBeInTheDocument(),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /dashboard/i }))
+
+    expect(localStorage.getItem('mc.fleet.view')).toBe('dashboard')
+    const card = screen.getByRole('button', { name: /add oauth across services/i })
+    expect(card).toHaveTextContent('1/2 children settled')
+    expect(card).toHaveTextContent('verify')
+  })
+
+  it('drills into the run detail when a dashboard card is clicked (without persisting list view)', async () => {
+    stubFleet({
+      runs: [
+        {
+          id: 'add-oauth-2026',
+          goal: 'Add OAuth across services',
+          status: 'running',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          childCount: 2,
+          settledCount: 1,
+          policy: { verify: true },
+        },
+      ],
+      run: makeRun(),
+      escalations: [],
+    })
+    render(<FleetTab fleetVersion={0} />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /dashboard/i })).toBeInTheDocument(),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /dashboard/i }))
+    await userEvent.click(screen.getByRole('button', { name: /add oauth across services/i }))
+
+    // The run detail actually appears (child rows from makeRun) …
+    await waitFor(() => expect(screen.getByTestId('fleet-child-0')).toBeInTheDocument())
+    // … and the drill-in did not overwrite the persisted dashboard preference.
+    expect(localStorage.getItem('mc.fleet.view')).toBe('dashboard')
   })
 })

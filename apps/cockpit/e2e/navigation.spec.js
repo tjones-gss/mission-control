@@ -22,10 +22,10 @@ test.describe('navigation', () => {
 
   test('Agents tab is active by default', async ({ page }) => {
     await page.goto('/')
-    // The active tab has bg-gray-800 applied; check it has the active class
+    // The active tab carries the themed active-surface class (token layer).
     const agentsBtn = page.getByRole('button', { name: 'Agents' })
     await expect(agentsBtn).toBeVisible()
-    await expect(agentsBtn).toHaveClass(/bg-gray-800/)
+    await expect(agentsBtn).toHaveClass(/--mc-surface-2/)
   })
 
   test('can switch to Workflows tab', async ({ page }) => {
@@ -33,7 +33,7 @@ test.describe('navigation', () => {
     await revealAdvanced(page)
     await page.getByRole('button', { name: 'Workflows' }).click()
     // The Workflows panel has a "Workflows" heading in its left sidebar
-    await expect(page.getByRole('button', { name: 'Workflows' })).toHaveClass(/bg-gray-800/)
+    await expect(page.getByRole('button', { name: 'Workflows' })).toHaveClass(/--mc-surface-2/)
     // WorkflowsPanel renders a "Workflows" label and a "New" button.
     // Use exact:true so we don't accidentally match the sidebar's
     // "New session" button which also contains "New".
@@ -44,7 +44,7 @@ test.describe('navigation', () => {
     await page.goto('/')
     await revealAdvanced(page)
     await page.getByRole('button', { name: 'Skills' }).click()
-    await expect(page.getByRole('button', { name: 'Skills' })).toHaveClass(/bg-gray-800/)
+    await expect(page.getByRole('button', { name: 'Skills' })).toHaveClass(/--mc-surface-2/)
     // SkillsPanel early-returns "Loading skills..." until /api/skills
     // resolves. The synchronous filesystem scan can take 5-30s under
     // parallel-worker load (see skills.spec.js goToSkills for details).
@@ -54,7 +54,7 @@ test.describe('navigation', () => {
   test('can switch to Tasks tab', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Tasks' }).click()
-    await expect(page.getByRole('button', { name: 'Tasks' })).toHaveClass(/bg-gray-800/)
+    await expect(page.getByRole('button', { name: 'Tasks' })).toHaveClass(/--mc-surface-2/)
   })
 
   test('can cycle through all tabs', async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe('navigation', () => {
       // "behind-the-agent-curtain") — strict-mode rejects multi-match.
       await page.getByRole('button', { name: tabName, exact: true }).click()
       await expect(page.getByRole('button', { name: tabName, exact: true })).toHaveClass(
-        /bg-gray-800/,
+        /--mc-surface-2/,
       )
     }
   })

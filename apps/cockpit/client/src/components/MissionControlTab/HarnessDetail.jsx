@@ -11,7 +11,9 @@ import {
 import { CompileRoadmapDialog } from './CompileRoadmapDialog.jsx'
 import { Toast } from './Toast.jsx'
 
-const STATUS_BADGE = {
+// Exported for reuse by PipelineView (Runs · Pipeline live view) — keep the
+// status vocabulary and normalization in one place.
+export const STATUS_BADGE = {
   done: 'bg-green-900/60 text-green-200',
   complete: 'bg-green-900/60 text-green-200',
   completed: 'bg-green-900/60 text-green-200',
@@ -76,7 +78,7 @@ const LIFECYCLE_STEPS = [
 
 // Lowercase + collapse underscores to hyphens so `in_progress` and `in-progress`
 // compare equal across the codebase and the canonical schema values.
-function normalizeStatus(value) {
+export function normalizeStatus(value) {
   return value == null ? '' : String(value).toLowerCase().replace(/_/g, '-')
 }
 
@@ -107,7 +109,7 @@ function StatusPill({ value, map }) {
 // The /api/harness/:projectKey response is the raw `harness status --json`
 // object (plus projectPath/projectLabel). Missions may live under a couple of
 // shapes — normalize to a list of { id, ...fields } so we can render uniformly.
-function normalizeMissions(status) {
+export function normalizeMissions(status) {
   const missions = status?.missions
   if (!missions) return []
   if (Array.isArray(missions)) {
@@ -124,7 +126,7 @@ function normalizeMissions(status) {
 
 // PRDs (phased plans) ride along in the raw status under `plans` (see
 // packages/contracts/schemas/harness-status.schema.json). Normalize to a list.
-function normalizePlans(status) {
+export function normalizePlans(status) {
   const plans = status?.plans
   if (!plans || typeof plans !== 'object') return []
   return Object.entries(plans).map(([id, p]) => ({

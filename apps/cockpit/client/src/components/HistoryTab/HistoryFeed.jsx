@@ -60,8 +60,9 @@ function GroupedView({ entries }) {
 export function HistoryFeed({ entries, grouped, onLoadMore, hasMore }) {
   if (!entries.length) {
     return (
-      <div className="flex-1 flex items-center justify-center text-xs text-gray-700">
-        No command history found
+      <div className="flex-1 flex items-center justify-center text-xs text-[var(--mc-fg-4)]">
+        No command history yet — every prompt you send from any Claude Code session lands here,
+        searchable across projects.
       </div>
     )
   }

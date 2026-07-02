@@ -262,7 +262,10 @@ export function TaskBoard({ tasks, loading, error, sessionId, refetch }) {
       )}
 
       {isEmpty && !showCreate && (
-        <div className="text-gray-700 text-xs">No tasks for this session</div>
+        <div className="text-xs text-[var(--mc-fg-4)]">
+          No tasks for this session — tasks the agent creates (or you add with + New Task) show up
+          here with live status.
+        </div>
       )}
 
       {groups.in_progress.length > 0 && (
