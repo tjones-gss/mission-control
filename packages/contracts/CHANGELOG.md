@@ -17,6 +17,23 @@ schema.
 
 ## `schemaVersion` (contract surface as a whole)
 
+### [10]
+
+- **Additive — pipeline canvas enrichment.** Extended `harness-status` with five
+  optional top-level fields so the cockpit can render a full pipeline canvas from
+  real harness data (no re-parsing of `.harness` YAML in the viewer):
+  `phases` (the ACTIVE pipeline definition's ordered phases — id/agent/strategy/
+  gate/goal/description/tier), `transitions` (the `allowed_transitions` /
+  `blocked_transitions` maps from `pipeline-state.yml`, passed through verbatim),
+  `guardrails` (a presence + counts/names summary of `danger-zone.yml` /
+  `quality-gates.yml` / `human-approval-policy.yml`, never a full policy dump),
+  `budget` (run cost ceiling + spend from the cost ledger, omitted when cost
+  tracking is unconfigured), and `gates` (a per-gate `auto` classification —
+  `true` when the gate name is a non-human evaluator in the harness gate
+  registry). All fields are optional and the schema stays permissive
+  (`additionalProperties: true`), so older harnesses that omit them still
+  validate. Purely additive, but a new consumable surface ⇒ sidecar bump.
+
 ### [9]
 
 - **Breaking — runtime governance (audit v2).** `audit-event` gains

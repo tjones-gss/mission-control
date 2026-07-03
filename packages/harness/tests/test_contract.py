@@ -162,6 +162,48 @@ class TestStatusJsonContract(unittest.TestCase):
         pipeline_schema = self.schema["properties"]["pipeline"]
         Draft202012Validator(pipeline_schema).validate(self.status["pipeline"])
 
+    def test_v10_canvas_fields_present_and_validate(self):
+        """The v10 pipeline-canvas enrichment must appear from the repo's own
+        .harness and validate against each field's schema slice.
+
+        The harness dir this CLI runs in has a real active pipeline, transition
+        maps, and all three guardrail configs, so phases / gates / transitions /
+        guardrails MUST be emitted. budget is opt-in (no cost policy or ledger in
+        this repo) so it is legitimately absent — asserted only if present.
+        """
+        props = self.schema["properties"]
+
+        for key in ("phases", "gates", "transitions", "guardrails"):
+            self.assertIn(
+                key,
+                self.status,
+                f"v10 harness-status must emit '{key}' when the .harness "
+                "provides the source data",
+            )
+            Draft202012Validator(props[key]).validate(self.status[key])
+
+        # phases: ordered, each carries at least an id; the active pipeline's
+        # first phase is read-state (from next-mission-loop.yml).
+        self.assertTrue(self.status["phases"], "phases must be non-empty")
+        self.assertEqual(self.status["phases"][0]["id"], "read-state")
+
+        # gates: every gate name referenced by the phases is classified.
+        self.assertIn("state_read_complete", self.status["gates"])
+        self.assertTrue(self.status["gates"]["state_read_complete"]["auto"])
+
+        # transitions: passed through verbatim from pipeline-state.yml.
+        self.assertIn("allowed", self.status["transitions"])
+        self.assertIn("blocked", self.status["transitions"])
+
+        # guardrails: all three sub-objects present with a present flag.
+        for sub in ("danger_zone", "quality_gates", "human_approval"):
+            self.assertIn(sub, self.status["guardrails"])
+            self.assertTrue(self.status["guardrails"][sub]["present"])
+
+        # budget is opt-in; if emitted it must validate against its slice.
+        if "budget" in self.status:
+            Draft202012Validator(props["budget"]).validate(self.status["budget"])
+
     def test_drift_is_caught_and_by_which_guard(self):
         """Guard the guard — and be honest about which check catches which drift.
 
@@ -557,27 +599,29 @@ class TestAuditEventSchemaContract(unittest.TestCase):
             )
 
     def test_audit_event_surface_at_v9_control_state(self):
-        """The audit-event controlState tightening lands at sidecar version 9.
+        """The audit-event controlState tightening landed at sidecar version 9
+        and must remain in force at the current surface.
 
         v9 requires 'approval' events to carry controlState (gateType +
-        decisionMaker) — a tightened required set is a breaking surface
-        change, so the single-source sidecar must read 9 and the golden
-        sample must stamp 9.
+        decisionMaker). Later additive surface bumps (e.g. the v10 harness-status
+        canvas fields) do not relax it, so the invariant is "the surface is at
+        least 9", not an exact match — the tightening never regresses. The golden
+        sample must stamp a v9-or-later surface (it carries the version a record
+        was written under, not necessarily the latest).
         """
         sidecar = json.loads(
             VERSION_SIDECAR_PATH.read_text(encoding="utf-8")
         )
-        self.assertEqual(
+        self.assertGreaterEqual(
             sidecar["schemaVersion"],
             9,
-            "audit-event controlState tightening lands at schemaVersion 9 "
-            "(sidecar is single source) — bump "
-            "packages/contracts/schema-version.json 8 -> 9",
+            "audit-event controlState tightening landed at schemaVersion 9 "
+            "(sidecar is single source) and must never regress below it",
         )
-        self.assertEqual(
+        self.assertGreaterEqual(
             self.sample["schemaVersion"],
             9,
-            "the golden audit-event sample must stamp the v9 surface",
+            "the golden audit-event sample must stamp the v9-or-later surface",
         )
 
     def test_approval_without_control_state_rejected(self):

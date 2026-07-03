@@ -23,7 +23,7 @@ SIDECAR_PATH = Path(__file__).resolve().parents[2] / "contracts" / "schema-versi
 # Fallbacks used ONLY when the sidecar is absent (a standalone harness install
 # detached from the monorepo). They match the committed sidecar; the parity test
 # asserts they agree when the sidecar IS present, so they can never silently drift.
-_SCHEMA_VERSION_FALLBACK = 9
+_SCHEMA_VERSION_FALLBACK = 10
 _APPROVAL_SCHEMA_VERSION_FALLBACK = 2
 
 
