@@ -469,7 +469,7 @@ export default function App() {
             onClick={() => setShowPalette(true)}
             className="hidden items-center gap-1.5 rounded border border-[var(--mc-border)] bg-[var(--mc-surface)] px-2 py-1 text-xs text-[var(--mc-fg-4)] transition-colors hover:text-[var(--mc-fg)] md:flex"
             title="Command palette (⌘K)"
-            aria-label="⌘K command palette"
+            aria-label="Command palette, ⌘K"
           >
             <Search size={12} />
             <kbd className="font-mono text-[10px] text-[var(--mc-fg-4)]">⌘K</kbd>
