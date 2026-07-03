@@ -81,15 +81,16 @@ export function FeatureBrief({ surfaceId }) {
         <div className="ml-auto flex items-center gap-0.5">
           <button
             onClick={() => setExpanded((prev) => !prev)}
-            className="text-gray-600 hover:text-gray-300 transition-colors p-0.5 rounded"
+            className="p-1.5 -my-1 text-gray-600 hover:text-gray-300 transition-colors rounded"
             aria-expanded={expanded}
             aria-controls={bodyId}
+            aria-label={expanded ? 'Collapse brief' : 'Expand brief'}
           >
             {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
           <button
             onClick={dismiss}
-            className="text-gray-600 hover:text-gray-300 transition-colors p-0.5 rounded"
+            className="p-1.5 -my-1 text-gray-600 hover:text-gray-300 transition-colors rounded"
             aria-label="Dismiss brief"
           >
             <X size={13} />
