@@ -73,7 +73,7 @@ describe('theme cascade: :root pins the EXACT Tailwind default channels (classic
 })
 
 describe('theme cascade: every theme overrides every rung (no classic bleed-through)', () => {
-  for (const theme of ['calm', 'tron', 'warm']) {
+  for (const theme of ['calm', 'tron', 'warm', 'paper']) {
     it(`[data-theme='${theme}'] overrides all gray + indigo channels`, () => {
       const block = blockFor(`[data-theme='${theme}']`)
       for (const palette of ['gray', 'indigo']) {

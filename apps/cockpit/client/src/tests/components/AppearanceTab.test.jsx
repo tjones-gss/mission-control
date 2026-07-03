@@ -11,9 +11,10 @@ describe('AppearanceTab', () => {
   it('renders every theme as a radio option', () => {
     render(<AppearanceTab />)
     const radios = screen.getAllByRole('radio')
-    expect(radios.length).toBe(4)
+    expect(radios.length).toBe(5)
     expect(screen.getByText('Classic')).toBeInTheDocument()
     expect(screen.getByText('Calm')).toBeInTheDocument()
+    expect(screen.getByText('Paper')).toBeInTheDocument()
   })
 
   it('marks the active theme as checked (calm by default)', () => {

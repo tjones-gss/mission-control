@@ -12,6 +12,7 @@ export const THEMES = [
   { id: 'calm', label: 'Calm', blurb: 'Vibrant-but-soft periwinkle on blue-slate.' },
   { id: 'tron', label: 'Tron', blurb: 'Deep blue-black + electric cyan.' },
   { id: 'warm', label: 'Warm gold', blurb: 'Cream-on-charcoal with a gold accent.' },
+  { id: 'paper', label: 'Paper', blurb: 'Warm cream + ink — the light theme.' },
 ]
 
 export const THEME_IDS = THEMES.map((t) => t.id)
