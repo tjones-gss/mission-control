@@ -8,6 +8,9 @@ import {
   normalizeStatus,
 } from '../MissionControlTab/HarnessDetail.jsx'
 import { StageStrip } from './StageStrip.jsx'
+import { StageCanvas } from './StageCanvas.jsx'
+import { GuardrailsPanel } from './GuardrailsPanel.jsx'
+import { BudgetBar } from './BudgetBar.jsx'
 
 // Read-only live view of one governed project's harness pipeline. Everything
 // rendered here maps 1:1 onto a real `harness status --json` field (via
@@ -110,7 +113,25 @@ export function LiveRun({ project, harnessVersion }) {
         {blocked && blocker && <div className="text-xs text-[color:var(--mc-warn)]">{blocker}</div>}
       </div>
 
-      <StageStrip pipeline={pipeline} blocked={blocked} blocker={blocker} />
+      {/* v10 harnesses emit the active pipeline's full ordered stage graph —
+          render the canvas. Older harnesses get the honest 3-slot window. */}
+      {Array.isArray(status.phases) && status.phases.length > 0 ? (
+        <StageCanvas
+          phases={status.phases}
+          currentPhase={pipeline.phase}
+          blocked={blocked}
+          gateKinds={status.gates}
+        />
+      ) : (
+        <StageStrip pipeline={pipeline} blocked={blocked} blocker={blocker} />
+      )}
+
+      <BudgetBar budget={status.budget} />
+
+      <GuardrailsPanel
+        guardrails={status.guardrails}
+        blockedTransitions={status.transitions?.blocked}
+      />
 
       {/* Missions + plans, summarized. Full mission detail lives in Runs · Missions. */}
       {(counts.length > 0 || pipeline.plan_status || plans.length > 0) && (

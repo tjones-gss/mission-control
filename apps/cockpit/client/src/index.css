@@ -61,7 +61,9 @@
   --mc-fg: #eef1f8;
   --mc-fg-2: #c5cbd9;
   --mc-fg-3: #8c94a8;
-  --mc-fg-4: #646d84;
+  /* fg-4 is the dimmest FUNCTIONAL text rung — held at ≥4.5:1 on --mc-bg
+   * (WCAG AA). fg-5 is decorative/disabled only; never body or label text. */
+  --mc-fg-4: #79839c;
   --mc-fg-5: #495066;
   --mc-accent: #7f8dff;
   --mc-accent-2: #aeb6ff;
@@ -95,7 +97,7 @@
   --mc-fg: #e9f3ff;
   --mc-fg-2: #adc0d8;
   --mc-fg-3: #6e87a4;
-  --mc-fg-4: #4c5f79;
+  --mc-fg-4: #6a81a3;
   --mc-fg-5: #33455c;
   --mc-accent: #2de2ff;
   --mc-accent-2: #7eecff;
@@ -129,7 +131,7 @@
   --mc-fg: #f5f0e6;
   --mc-fg-2: #cec5b4;
   --mc-fg-3: #9a9080;
-  --mc-fg-4: #6c6357;
+  --mc-fg-4: #867c6e;
   --mc-fg-5: #4a4338;
   --mc-accent: #d6a45f;
   --mc-accent-2: #e8c089;
@@ -148,6 +150,44 @@
   --mc-info-soft: rgba(122, 167, 217, 0.14);
   --mc-glass: rgba(28, 24, 19, 0.72);
   --mc-glass-brd: rgba(255, 255, 255, 0.08);
+}
+
+/* Paper — warm cream + ink, the only light theme. Every functional color is
+ * held at ≥4.5:1 on the paper background (WCAG AA, verified at authoring
+ * time). Known limitation: legacy surfaces still using hardcoded amber/green
+ * status utilities (outside the gray/indigo cascade) read fainter here —
+ * migrate those to --mc-* status tokens opportunistically, never a sweep. */
+[data-theme='paper'] {
+  --mc-bg: #f7f4ec;
+  --mc-bg-2: #f2eee4;
+  --mc-surface: #fdfcf8;
+  --mc-surface-2: #efeadf;
+  --mc-surface-3: #e7e1d3;
+  --mc-border: #e0d9c8;
+  --mc-border-2: #cfc6b2;
+  --mc-border-3: #b8ad94;
+  --mc-fg: #1f1c15;
+  --mc-fg-2: #3d382c;
+  --mc-fg-3: #5c5545;
+  --mc-fg-4: #6e6753;
+  --mc-fg-5: #948b74;
+  --mc-accent: #8a5f1e;
+  --mc-accent-2: #6f4c15;
+  --mc-accent-deep: #5e400f;
+  --mc-on-accent: #fdf9ef;
+  --mc-accent-soft: rgba(138, 95, 30, 0.12);
+  --mc-accent-line: rgba(138, 95, 30, 0.4);
+  --mc-accent-glow: rgba(138, 95, 30, 0.2);
+  --mc-ok: #157036;
+  --mc-ok-soft: rgba(21, 112, 54, 0.12);
+  --mc-warn: #9a5b06;
+  --mc-warn-soft: rgba(154, 91, 6, 0.13);
+  --mc-danger: #b3261e;
+  --mc-danger-soft: rgba(179, 38, 30, 0.11);
+  --mc-info: #1d5bd8;
+  --mc-info-soft: rgba(29, 91, 216, 0.11);
+  --mc-glass: rgba(253, 252, 248, 0.78);
+  --mc-glass-brd: rgba(31, 28, 21, 0.12);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -191,7 +231,7 @@
   --mc-gray-200: 197 203 217;
   --mc-gray-300: 197 203 217;
   --mc-gray-400: 140 148 168;
-  --mc-gray-500: 100 109 132;
+  --mc-gray-500: 121 131 156;
   --mc-gray-600: 73 80 102;
   --mc-gray-700: 58 66 88;
   --mc-gray-800: 42 49 67;
@@ -215,7 +255,7 @@
   --mc-gray-200: 173 192 216;
   --mc-gray-300: 173 192 216;
   --mc-gray-400: 110 135 164;
-  --mc-gray-500: 76 95 121;
+  --mc-gray-500: 106 129 163;
   --mc-gray-600: 51 69 92;
   --mc-gray-700: 39 54 80;
   --mc-gray-800: 24 35 58;
@@ -239,7 +279,7 @@
   --mc-gray-200: 206 197 180;
   --mc-gray-300: 206 197 180;
   --mc-gray-400: 154 144 128;
-  --mc-gray-500: 108 99 87;
+  --mc-gray-500: 134 124 110;
   --mc-gray-600: 74 67 56;
   --mc-gray-700: 60 53 39;
   --mc-gray-800: 45 39 30;
@@ -255,6 +295,32 @@
   --mc-indigo-800: 177 132 63;
   --mc-indigo-900: 177 132 63;
   --mc-indigo-950: 177 132 63;
+}
+
+/* Paper: the rung LADDER INVERTS for the light theme — components use
+ * text-gray-100 as "bright text" and bg-gray-950 as "page background", so on
+ * paper the 100 rung is ink and the 950 rung is cream. */
+[data-theme='paper'] {
+  --mc-gray-100: 31 28 21;
+  --mc-gray-200: 61 56 44;
+  --mc-gray-300: 61 56 44;
+  --mc-gray-400: 92 85 69;
+  --mc-gray-500: 110 103 83;
+  --mc-gray-600: 148 139 116;
+  --mc-gray-700: 184 173 148;
+  --mc-gray-800: 224 217 200;
+  --mc-gray-900: 239 234 223;
+  --mc-gray-950: 247 244 236;
+  --mc-indigo-100: 94 64 15;
+  --mc-indigo-200: 94 64 15;
+  --mc-indigo-300: 111 76 21;
+  --mc-indigo-400: 111 76 21;
+  --mc-indigo-500: 138 95 30;
+  --mc-indigo-600: 138 95 30;
+  --mc-indigo-700: 94 64 15;
+  --mc-indigo-800: 94 64 15;
+  --mc-indigo-900: 94 64 15;
+  --mc-indigo-950: 94 64 15;
 }
 
 @layer components {

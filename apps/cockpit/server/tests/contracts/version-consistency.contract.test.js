@@ -68,7 +68,10 @@ describe('contracts display schemaVersion matches the sidecar (single source of 
     expect(display).toBe(sidecar)
   })
 
-  it('the sidecar schemaVersion is 9 after the audit-event controlState tightening', () => {
-    expect(readJson(CONTRACTS_SIDECAR_SOURCE).schemaVersion).toBe(9)
+  it('the sidecar schemaVersion is at least 10 (v10 = pipeline-canvas status fields)', () => {
+    // Floor, not equality: the audit-event controlState tightening landed at 9
+    // and the pipeline-canvas enrichment (phases/transitions/guardrails/budget/
+    // gates) at 10 — the version must never regress below either.
+    expect(readJson(CONTRACTS_SIDECAR_SOURCE).schemaVersion).toBeGreaterThanOrEqual(10)
   })
 })

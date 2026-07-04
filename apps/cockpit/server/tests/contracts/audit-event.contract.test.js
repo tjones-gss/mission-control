@@ -67,10 +67,13 @@ describe('audit-event contract: the golden sample validates against the shared s
     expect(validate(bad)).toBe(false)
   })
 
-  it("the golden sample's schemaVersion matches the package SCHEMA_VERSION (9)", () => {
-    // v9: the controlState runtime-governance object lands (required on approvals).
-    expect(sample.schemaVersion).toBe(SCHEMA_VERSION)
-    expect(SCHEMA_VERSION).toBe(9)
+  it("the golden sample's audit surface landed at v9 and the package never regresses below it", () => {
+    // v9: the controlState runtime-governance object lands (required on
+    // approvals). Later bumps (v10 = pipeline-canvas STATUS fields) don't touch
+    // the audit surface, so the golden sample legitimately stays at 9 — records
+    // carry the surface version they were written under.
+    expect(sample.schemaVersion).toBe(9)
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(sample.schemaVersion)
   })
 
   it('the schema uses vendor-NEUTRAL language (no claude/anthropic/cursor/codex)', () => {

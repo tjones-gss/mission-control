@@ -14,6 +14,8 @@ import { LaunchDrawer } from './LaunchDrawer.jsx'
 import { RunDetail, RUN_STATUS } from './FleetRunDetail.jsx'
 import { formatCost } from '../../utils/cost.js'
 import { useRelativeTime } from '../../hooks/useRelativeTime.js'
+import { Card } from '../ui/Card.jsx'
+import { Chip } from '../ui/Chip.jsx'
 
 // Fleet UI — the power-user headline surface. Launch a fleet (a goal + N child
 // agents, each in its own git worktree/branch), then watch the children live as
@@ -59,13 +61,11 @@ function FleetDashboardCard({ run, selected, onSelect }) {
       ? run.spentUsd
       : (run.children || []).reduce((sum, child) => sum + (child.cost?.totalCost || 0), 0)
   return (
-    <button
-      type="button"
+    <Card
+      interactive
       onClick={() => onSelect(run.id)}
-      className={`rounded-lg border bg-[var(--mc-surface)] p-3 text-left transition-colors hover:bg-[var(--mc-surface-2)] ${
-        selected
-          ? 'border-[var(--mc-accent-line)] ring-1 ring-[var(--mc-accent-line)]'
-          : 'border-[var(--mc-border)]'
+      className={`p-3 hover:bg-[var(--mc-surface-2)] ${
+        selected ? 'border-[var(--mc-accent-line)] ring-1 ring-[var(--mc-accent-line)]' : ''
       }`}
     >
       <div className="flex items-start gap-2">
@@ -73,20 +73,16 @@ function FleetDashboardCard({ run, selected, onSelect }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-[var(--mc-fg)]">{run.goal}</div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--mc-fg-4)]">
-            <span
-              className={`rounded bg-[var(--mc-surface-2)] px-1.5 py-0.5 uppercase ${meta.cls}`}
-            >
-              {run.status}
-            </span>
+            <Chip className={meta.cls}>{run.status}</Chip>
             {run.policy?.verify && (
-              <span className="inline-flex items-center gap-1 rounded bg-[var(--mc-info-soft)] px-1.5 py-0.5 text-[var(--mc-info)]">
+              <Chip tone="info" caps={false}>
                 <ShieldCheck size={10} /> verify
-              </span>
+              </Chip>
             )}
             {escalationCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded bg-[var(--mc-warn-soft)] px-1.5 py-0.5 text-[var(--mc-warn)]">
+              <Chip tone="warn" caps={false}>
                 <AlertTriangle size={10} /> {escalationCount}
-              </span>
+              </Chip>
             )}
           </div>
         </div>
@@ -108,7 +104,7 @@ function FleetDashboardCard({ run, selected, onSelect }) {
           <Clock size={11} /> {elapsed || 'new'}
         </span>
       </div>
-    </button>
+    </Card>
   )
 }
 

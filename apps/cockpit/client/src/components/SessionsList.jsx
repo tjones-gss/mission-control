@@ -76,10 +76,14 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
   }
 
   return (
-    <button
+    // A div (not a <button>): waiting cards contain their own interactive
+    // controls (mute X, QuickActions), and nested buttons are invalid DOM.
+    // Mouse users can click anywhere on the card; the project-name button
+    // below is the keyboard/screen-reader affordance for opening it.
+    <div
       data-session-card-id={session.sessionId}
       onClick={() => onSelect(session.sessionId)}
-      className={`text-left p-3 rounded-lg border transition-all w-full min-w-0 ${selectedClasses}`}
+      className={`text-left p-3 rounded-lg border transition-all w-full min-w-0 cursor-pointer ${selectedClasses}`}
     >
       {/* Project name row — status dot matches the section color:
            green = active, amber = idle (recent OR waiting on input),
@@ -100,14 +104,23 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
           Date.now() - session.lastModified < ONE_HOUR && (
             <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
           )}
-        <span className="text-sm font-medium text-gray-200 truncate min-w-0 flex-1">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect(session.sessionId)
+          }}
+          className="text-sm font-medium text-gray-200 truncate min-w-0 flex-1 text-left"
+        >
           {projectLabel(session)}
-        </span>
+        </button>
         {session.needsInput && <span className="text-[10px] text-amber-400 shrink-0">Waiting</span>}
         {session.needsInput && onMute && (
+          // ≥24px hit area (WCAG 2.5.8) around the small glyph; -m-1.5 keeps
+          // the visual footprint unchanged inside the dense row.
           <span
             role="button"
             tabIndex={0}
+            aria-label="Dismiss notification"
             onClick={(e) => {
               e.stopPropagation()
               onMute(session.sessionId)
@@ -118,10 +131,10 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
                 onMute(session.sessionId)
               }
             }}
-            className="ml-auto text-gray-600 hover:text-gray-400 transition-colors shrink-0 cursor-pointer"
+            className="ml-auto p-1.5 -m-1.5 flex items-center justify-center text-gray-600 hover:text-gray-400 transition-colors shrink-0 cursor-pointer"
             title="Dismiss notification"
           >
-            <X size={10} />
+            <X size={12} />
           </span>
         )}
       </div>
@@ -172,7 +185,7 @@ function SessionCard({ session, isSelected, onSelect, onMute, onReply }) {
       {session.needsInput && !session.isActive && (
         <QuickActions sessionId={session.sessionId} onReply={onReply} />
       )}
-    </button>
+    </div>
   )
 }
 

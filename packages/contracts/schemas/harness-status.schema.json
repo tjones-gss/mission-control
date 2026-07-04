@@ -113,6 +113,108 @@
         "blocked": { "type": "boolean" },
         "blocker": { "type": ["string", "null"] }
       }
+    },
+    "phases": {
+      "type": "array",
+      "description": "Ordered phases of the ACTIVE pipeline definition (pipeline.active resolved through the harness pipeline loader). Absent when no active pipeline definition can be loaded. Each phase is the canonical phase-contract shape (see pipeline-phase schema); a permissive subset is described here.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "agent": { "type": "string" },
+          "strategy": { "type": "string" },
+          "gate": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "required": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "goal": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] },
+          "tier": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "transitions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Phase-transition rules copied verbatim from pipeline-state.yml (allowed_transitions / blocked_transitions). Keys are omitted when their source key is absent.",
+      "properties": {
+        "allowed": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Map of phase id -> array of phase ids reachable from it."
+        },
+        "blocked": {
+          "type": ["object", "array"],
+          "description": "Blocked transitions. In this repo pipeline-state.yml carries a map of transition-name -> boolean; older/other harnesses may emit an array of strings or objects. Passed through verbatim."
+        }
+      }
+    },
+    "guardrails": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Summary of which guardrail config files exist and their shape (counts + names, not full policy dumps). Each sub-object is always present with a boolean `present`; details appear only when the config file exists.",
+      "properties": {
+        "danger_zone": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "present": { "type": "boolean" },
+            "policy": { "type": ["object", "string"] },
+            "approval_required_count": { "type": "integer" },
+            "blocked_pattern_count": { "type": "integer" }
+          }
+        },
+        "quality_gates": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "present": { "type": "boolean" },
+            "stages": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "Map of stage name (e.g. before_pr) -> array of required check names."
+            },
+            "failure_policy": { "type": ["string", "object"] }
+          }
+        },
+        "human_approval": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "present": { "type": "boolean" },
+            "categories": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Run cost ceiling + spend for the active harness loop ledger. Omitted entirely when no cost policy and no ledger exist (cost tracking is opt-in).",
+      "properties": {
+        "ceiling_usd": { "type": ["number", "null"] },
+        "spent_usd": { "type": ["number", "null"] },
+        "exceeded": { "type": "boolean" },
+        "currency": { "type": "string" }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Classification of every gate name referenced by the active pipeline's phases. auto=true when the gate name is in the harness gate registry and is not a human-approval gate; auto=false for human-approval gates and names not in the registry. Absent when no active pipeline definition can be loaded.",
+      "patternProperties": {
+        "^.+$": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "auto": { "type": "boolean" }
+          }
+        }
+      }
     }
   }
 }

@@ -7,7 +7,7 @@
 
 # Mission Control Contract Specification
 
-**Contract surface version (schemaVersion): 9**  
+**Contract surface version (schemaVersion): 10**  
 **Approval document version (approvalSchemaVersion): 2**
 
 This is the versioned, **vendor-neutral** specification of the data shapes that cross the boundary between the oversight dashboard (the window) and the opt-in control-plane rails. The dashboard does not import the rails as a library — it shells out to the control-plane CLI (`harness status --json`) and reads/writes the approval, fleet, pipeline and audit documents described below. These schemas are the single source of truth; this document is generated from them so it can never silently drift.
@@ -40,6 +40,11 @@ Output of `harness status --json`, shelled out by the cockpit. Permissive on pur
 | `missions` | object | no |  |
 | `readiness_overall` | object | no |  |
 | `next` | object | no |  |
+| `phases` | array | no | Ordered phases of the ACTIVE pipeline definition (pipeline.active resolved through the harness pipeline loader). Absent when no active pipeline definition can be loaded. Each phase is the canonical phase-contract shape (see pipeline-phase schema); a permissive subset is described here. |
+| `transitions` | object | no | Phase-transition rules copied verbatim from pipeline-state.yml (allowed_transitions / blocked_transitions). Keys are omitted when their source key is absent. |
+| `guardrails` | object | no | Summary of which guardrail config files exist and their shape (counts + names, not full policy dumps). Each sub-object is always present with a boolean `present`; details appear only when the config file exists. |
+| `budget` | object | no | Run cost ceiling + spend for the active harness loop ledger. Omitted entirely when no cost policy and no ledger exist (cost tracking is opt-in). |
+| `gates` | object | no | Classification of every gate name referenced by the active pipeline's phases. auto=true when the gate name is in the harness gate registry and is not a human-approval gate; auto=false for human-approval gates and names not in the registry. Absent when no active pipeline definition can be loaded. |
 
 
 ### HarnessScaffoldResult

@@ -26,12 +26,12 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { useApi } from './hooks/useApi.js'
-import { useSSE } from './hooks/useSSE.js'
+import { useAppEvents } from './hooks/useAppEvents.js'
 import { useNotifications, getNotificationPrefs } from './hooks/useNotifications.js'
 import { useSound } from './hooks/useSound.js'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js'
 import { useStreamingSession } from './hooks/useStreamingSession.js'
-import { SessionsList } from './components/SessionsList.jsx'
+import { SessionsPanel } from './components/SessionsPanel.jsx'
 import { AgentTree } from './components/AgentTree.jsx'
 import { KanbanBoard } from './components/KanbanBoard.jsx'
 import { TaskBoard } from './components/TaskBoard.jsx'
@@ -99,20 +99,6 @@ function readShowAdvanced() {
     return false
   }
 }
-
-// Map SSE event types to sound event names
-const SSE_SOUND_MAP = {
-  session_update: 'sessionUpdate',
-  task_update: 'taskUpdate',
-  intelligence_update: 'intelligenceReady',
-  new_session: 'newSession',
-  team_update: 'teamUpdate',
-  history_update: 'historyUpdate',
-  sdk_message: 'sessionUpdate',
-}
-
-// Throttle interval for session_update sounds (ms)
-const SESSION_UPDATE_SOUND_COOLDOWN = 5000
 
 async function sendQuickReply(sessionId, message) {
   try {
@@ -185,34 +171,50 @@ export default function App() {
   // drawers opened from header toggles. No effect on the desktop fixed panes.
   const [showSidebarDrawer, setShowSidebarDrawer] = useState(false)
   const [showActivityDrawer, setShowActivityDrawer] = useState(false)
-  const [events, setEvents] = useState([])
-  // V3 hook instrumentation: the most recent real tool_call SSE event. MeshView
-  // turns it into a live packet; null until a hook bridge is installed (then the
-  // mesh falls back to simulated packets).
-  const [lastToolCall, setLastToolCall] = useState(null)
-  const [anomalies, setAnomalies] = useState([])
-  const anomalySeqRef = useRef(0)
-  const [sessionsVersion, setSessionsVersion] = useState(0)
-  const [tasksVersion, setTasksVersion] = useState(0)
-  const [intelligenceVersion, setIntelligenceVersion] = useState(0)
-  const [teamsVersion, setTeamsVersion] = useState(0)
-  const [historyVersion, setHistoryVersion] = useState(0)
-  const [planVersion, setPlanVersion] = useState(0)
-  const [configVersion, setConfigVersion] = useState(0)
-  const [memoryVersion, setMemoryVersion] = useState(0)
-  const [hooksVersion, setHooksVersion] = useState(0)
-  const [conductorVersion, setConductorVersion] = useState(0)
-  const [harnessVersion, setHarnessVersion] = useState(0)
-  const [fleetVersion, setFleetVersion] = useState(0)
-  // Parsers that reported a present-but-unparseable (degraded) ~/.claude read.
-  // Keyed by `${parser}:${reason}` so a banner shows the distinct failures
-  // without churning on repeated emits of the same one.
-  const [degradedParsers, setDegradedParsers] = useState([])
-  // Per-run escalation dedupe: only fire sound + notification on the
-  // transition into a paused/escalated state, not on every status.json
-  // rewrite that keeps the same escalation_reason. Key = `${projectPath}::${adr}`,
-  // value = the last seen escalation_reason string (or null when running).
-  const lastEscalationRef = useRef(new Map())
+  const [showNewSession, setShowNewSession] = useState(false)
+
+  // SDK streaming session
+  const streaming = useStreamingSession(selectedSessionId)
+
+  // Sound engine
+  const soundEngine = useSound()
+
+  const {
+    data: workflows,
+    loading: workflowsLoading,
+    refetch: refetchWorkflows,
+  } = useApi('/api/workflows')
+  const { data: skills, loading: skillsLoading, refetch: refetchSkills } = useApi('/api/skills')
+
+  // The SSE spine — event feed, useApi version counters, anomaly lifecycle,
+  // degraded-parser reports, and event sounds — lives in useAppEvents.
+  const {
+    connected,
+    events,
+    lastToolCall,
+    anomalies,
+    acknowledgeAnomaly,
+    resolveAnomaly,
+    degradedParsers,
+    sessionsVersion,
+    tasksVersion,
+    intelligenceVersion,
+    teamsVersion,
+    historyVersion,
+    planVersion,
+    configVersion,
+    memoryVersion,
+    hooksVersion,
+    conductorVersion,
+    harnessVersion,
+    fleetVersion,
+  } = useAppEvents({
+    streaming,
+    soundEngine,
+    onNewSession: () => setShowNewSession(false),
+    refetchWorkflows,
+    refetchSkills,
+  })
 
   const { data: sessions, refetch: refetchSessions } = useApi('/api/sessions', [sessionsVersion])
   const {
@@ -224,12 +226,6 @@ export default function App() {
     selectedSessionId,
     tasksVersion,
   ])
-  const {
-    data: workflows,
-    loading: workflowsLoading,
-    refetch: refetchWorkflows,
-  } = useApi('/api/workflows')
-  const { data: skills, loading: skillsLoading, refetch: refetchSkills } = useApi('/api/skills')
   const { data: teams, refetch: refetchTeams } = useApi('/api/teams', [teamsVersion])
 
   // Auto-select first active session
@@ -242,167 +238,6 @@ export default function App() {
 
   const selectedSession = sessions?.find((s) => s.sessionId === selectedSessionId)
 
-  // SDK streaming session
-  const streaming = useStreamingSession(selectedSessionId)
-
-  // Sound engine
-  const soundEngine = useSound()
-  const lastSessionSoundRef = useRef(0)
-
-  const sessionsDebounceRef = useRef(null)
-  const { connected } = useSSE(
-    useCallback(
-      (evt) => {
-        // Forward SDK events to streaming handler
-        streaming.handleSdkEvent(evt)
-
-        setEvents((prev) => [...prev.slice(-199), evt])
-        if (evt.type === 'session_update' || evt.type === 'new_session') {
-          if (evt.type === 'new_session') {
-            setShowNewSession(false)
-          }
-          if (!sessionsDebounceRef.current) {
-            sessionsDebounceRef.current = setTimeout(() => {
-              sessionsDebounceRef.current = null
-              setSessionsVersion((v) => v + 1)
-            }, 100)
-          }
-        }
-        if (evt.type === 'task_update') {
-          setTasksVersion((v) => v + 1)
-        }
-        if (evt.type === 'tool_call') {
-          setLastToolCall(evt.data)
-        }
-        if (evt.type === 'anomaly' && evt.data) {
-          const id = `an-${(anomalySeqRef.current += 1)}`
-          setAnomalies((prev) => {
-            const next = [...prev, { id, state: 'new', ts: Date.now(), ...evt.data }]
-            // Retention cap so a noisy long-running session can't grow the
-            // list (and the panel) without bound: evict settled entries
-            // (resolved first, then acknowledged) before ever dropping an
-            // unseen 'new' one; oldest go first within each state.
-            const MAX_ANOMALIES = 50
-            let overflow = next.length - MAX_ANOMALIES
-            if (overflow <= 0) return next
-            for (const state of ['resolved', 'acknowledged', 'new']) {
-              for (let i = 0; i < next.length && overflow > 0; ) {
-                if (next[i].state === state) {
-                  next.splice(i, 1)
-                  overflow -= 1
-                } else {
-                  i += 1
-                }
-              }
-              if (overflow <= 0) break
-            }
-            return next
-          })
-        }
-        if (evt.type === 'intelligence_update') {
-          setIntelligenceVersion((v) => v + 1)
-        }
-        if (evt.type === 'team_update') {
-          setTeamsVersion((v) => v + 1)
-        }
-        if (evt.type === 'history_update') {
-          setHistoryVersion((v) => v + 1)
-        }
-        if (evt.type === 'plan_update') {
-          setPlanVersion((v) => v + 1)
-        }
-        if (evt.type === 'config_update') {
-          setConfigVersion((v) => v + 1)
-        }
-        if (evt.type === 'memory_update') {
-          setMemoryVersion((v) => v + 1)
-        }
-        if (evt.type === 'hooks_update') {
-          setHooksVersion((v) => v + 1)
-        }
-        if (evt.type === 'conductor_update') {
-          setConductorVersion((v) => v + 1)
-          // The watcher payload only tells us *something* in this run's
-          // .conductor/<adr>/ changed — it doesn't include the parsed
-          // status. Fetch the run and check isPaused so we can fire the
-          // escalation sound + notification exactly once on transition.
-          const { projectPath, adr } = evt.data || {}
-          if (projectPath && adr) {
-            const key = `${projectPath}::${adr}`
-            fetch(`/api/conductor/${encodeURIComponent(projectPath)}/${adr}`)
-              .then((res) => (res.ok ? res.json() : null))
-              .then((run) => {
-                if (!run) return
-                const lastReason = lastEscalationRef.current.get(key) ?? null
-                const currentReason = run.isPaused ? run.escalationReason || 'paused' : null
-                lastEscalationRef.current.set(key, currentReason)
-                // Fire only on transition from running/different-reason to paused
-                if (currentReason && currentReason !== lastReason) {
-                  if (getNotificationPrefs().sound) {
-                    soundEngine.play('conductorEscalation', {
-                      projectLabel: run.projectLabel,
-                      adr: run.adr,
-                      escalationReason: run.escalationReason || 'paused',
-                    })
-                  }
-                  if (
-                    typeof Notification !== 'undefined' &&
-                    Notification.permission === 'granted'
-                  ) {
-                    new Notification('Conductor paused', {
-                      body: `${run.projectLabel} ADR ${run.adr}: ${run.escalationReason || 'awaiting your decision'}`,
-                      tag: `conductor-${key}`,
-                    })
-                  }
-                }
-              })
-              .catch(() => {
-                /* network errors swallowed — next event will retry */
-              })
-          }
-        }
-        if (evt.type === 'harness_update') {
-          setHarnessVersion((v) => v + 1)
-        }
-        if (evt.type === 'fleet_update') {
-          setFleetVersion((v) => v + 1)
-        }
-        if (evt.type === 'parser_degraded') {
-          const { parser, reason } = evt.data || {}
-          if (parser) {
-            setDegradedParsers((prev) => {
-              const key = `${parser}:${reason || ''}`
-              if (prev.some((d) => `${d.parser}:${d.reason || ''}` === key)) return prev
-              return [...prev, { parser, reason }]
-            })
-          }
-        }
-        if (evt.type === 'workflows_update') {
-          refetchWorkflows?.()
-        }
-        if (evt.type === 'skills_update') {
-          refetchSkills?.()
-        }
-
-        // Play sound for non-session events (needsInput is handled by useNotifications)
-        const soundEvent = SSE_SOUND_MAP[evt.type]
-        if (soundEvent && getNotificationPrefs().sound) {
-          // Throttle session_update sounds to avoid noise
-          if (evt.type === 'session_update') {
-            const now = Date.now()
-            if (now - lastSessionSoundRef.current < SESSION_UPDATE_SOUND_COOLDOWN) return
-            lastSessionSoundRef.current = now
-          }
-          soundEngine.play(
-            soundEvent,
-            evt.sessionId ? { projectLabel: evt.projectLabel || 'session' } : undefined,
-          )
-        }
-      },
-      [soundEngine, streaming.handleSdkEvent],
-    ),
-  )
-
   const activeSessions = sessions?.filter((s) => s.isActive) || []
   const { requestPermission, muteSession, mutedIds } = useNotifications(sessions, soundEngine)
   const needsInputSessions =
@@ -410,14 +245,6 @@ export default function App() {
   const visibleAnomalies = anomalies.filter((a) => a.state === 'new').slice(-4)
   const openAnomalyCount = anomalies.filter((a) => a.state !== 'resolved').length
   const newAnomalyCount = anomalies.filter((a) => a.state === 'new').length
-  const acknowledgeAnomaly = useCallback((id) => {
-    setAnomalies((prev) =>
-      prev.map((a) => (a.id === id && a.state === 'new' ? { ...a, state: 'acknowledged' } : a)),
-    )
-  }, [])
-  const resolveAnomaly = useCallback((id) => {
-    setAnomalies((prev) => prev.map((a) => (a.id === id ? { ...a, state: 'resolved' } : a)))
-  }, [])
   const openSessionFromAnomaly = useCallback((sessionId) => {
     setActiveTab('agents')
     setSelectedSessionId(sessionId)
@@ -512,52 +339,27 @@ export default function App() {
     resetDefaults: resetShortcuts,
   } = useKeyboardShortcuts(shortcutHandlers)
 
-  const [showNewSession, setShowNewSession] = useState(false)
-
-  // The Sessions panel body, shared by the desktop fixed sidebar (≥lg) and the
-  // mobile slide-in drawer (<lg). `onAfterSelect` lets the drawer close itself
-  // once the user picks a session; the fixed sidebar passes nothing.
   const sessionsPanel = (onAfterSelect) => (
-    <>
-      <div className="h-10 shrink-0 px-3 border-b border-[var(--mc-border)] flex items-center">
-        <span className="mc-eyebrow">Sessions</span>
-        {sessions && <span className="ml-2 text-xs text-gray-500">{sessions.length}</span>}
-        <button
-          onClick={() => setShowNewSession((s) => !s)}
-          className="ml-auto text-gray-600 hover:text-gray-300 transition-colors p-0.5 rounded"
-          title="New session"
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-      {showNewSession && (
-        <NewSessionForm
-          sessions={sessions}
-          onCreated={(arg) => {
-            setShowNewSession(false)
-            if (arg?.pendingSessionId) {
-              setSelectedSessionId(arg.pendingSessionId)
-              setAgentView('detail')
-            }
-            onAfterSelect?.()
-          }}
-        />
-      )}
-      <SessionsList
-        sessions={sessions}
-        selectedId={selectedSessionId}
-        onSelect={(id) => {
-          setSelectedSessionId(id)
-          onAfterSelect?.()
-        }}
-        onMuteSession={muteSession}
-        onReplySession={(id) => {
-          setSelectedSessionId(id)
+    <SessionsPanel
+      sessions={sessions}
+      selectedSessionId={selectedSessionId}
+      showNewSession={showNewSession}
+      onToggleNewSession={() => setShowNewSession((s) => !s)}
+      onSessionCreated={(arg) => {
+        setShowNewSession(false)
+        if (arg?.pendingSessionId) {
+          setSelectedSessionId(arg.pendingSessionId)
           setAgentView('detail')
-          onAfterSelect?.()
-        }}
-      />
-    </>
+        }
+      }}
+      onSelectSession={setSelectedSessionId}
+      onMuteSession={muteSession}
+      onReplySession={(id) => {
+        setSelectedSessionId(id)
+        setAgentView('detail')
+      }}
+      onAfterSelect={onAfterSelect}
+    />
   )
 
   return (
@@ -573,7 +375,7 @@ export default function App() {
           <Menu size={18} />
         </button>
         <span className="text-sm font-bold tracking-tight text-[var(--mc-fg)]">Oversight</span>
-        <span className="hidden text-xs tracking-tight text-[var(--mc-fg-5)] sm:inline">
+        <span className="hidden text-xs tracking-tight text-[var(--mc-fg-4)] sm:inline">
           behind the agent curtain
         </span>
         {!connected && (
@@ -655,7 +457,7 @@ export default function App() {
             className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs transition-colors ${
               showAdvanced
                 ? 'bg-[var(--mc-surface-2)] text-[var(--mc-fg-2)]'
-                : 'text-[var(--mc-fg-5)] hover:text-[var(--mc-fg-3)]'
+                : 'text-[var(--mc-fg-4)] hover:text-[var(--mc-fg-3)]'
             }`}
             title={showAdvanced ? 'Hide advanced tabs' : 'Show advanced tabs'}
             aria-pressed={showAdvanced}
@@ -667,14 +469,14 @@ export default function App() {
             onClick={() => setShowPalette(true)}
             className="hidden items-center gap-1.5 rounded border border-[var(--mc-border)] bg-[var(--mc-surface)] px-2 py-1 text-xs text-[var(--mc-fg-4)] transition-colors hover:text-[var(--mc-fg)] md:flex"
             title="Command palette (⌘K)"
-            aria-label="Open command palette"
+            aria-label="Command palette, ⌘K"
           >
             <Search size={12} />
-            <kbd className="font-mono text-[10px] text-[var(--mc-fg-5)]">⌘K</kbd>
+            <kbd className="font-mono text-[10px] text-[var(--mc-fg-4)]">⌘K</kbd>
           </button>
           <button
             onClick={() => setShowActivityDrawer(true)}
-            className="rounded p-1 text-[var(--mc-fg-5)] transition-colors hover:text-[var(--mc-fg-3)] md:hidden"
+            className="rounded p-1 text-[var(--mc-fg-4)] transition-colors hover:text-[var(--mc-fg-3)] md:hidden"
             title="Activity feed"
             aria-label="Open activity feed"
           >
@@ -682,14 +484,14 @@ export default function App() {
           </button>
           <button
             onClick={() => setShowSettings(true)}
-            className="ml-1 rounded p-1 text-[var(--mc-fg-5)] transition-colors hover:text-[var(--mc-fg-3)]"
+            className="ml-1 rounded p-1 text-[var(--mc-fg-4)] transition-colors hover:text-[var(--mc-fg-3)]"
             title="Settings (,)"
           >
             <Settings size={14} />
           </button>
           <button
             onClick={() => setShowLegend(true)}
-            className="rounded p-1 text-[var(--mc-fg-5)] transition-colors hover:text-[var(--mc-fg-3)]"
+            className="rounded p-1 text-[var(--mc-fg-4)] transition-colors hover:text-[var(--mc-fg-3)]"
             title="Help"
           >
             <HelpCircle size={14} />

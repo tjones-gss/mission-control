@@ -11,6 +11,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { QuickActions } from '../QuickActions.jsx'
+import { Chip } from '../ui/Chip.jsx'
 import { MetaBuildBanner } from './MetaBuildBanner.jsx'
 import { SelectionBar } from './SelectionBar.jsx'
 import { useApi } from '../../hooks/useApi.js'
@@ -51,18 +52,12 @@ async function defaultQuickReply(sessionId, message) {
 function RiskBadge({ riskLevel, riskDescription }) {
   const badge = RISK_BADGES[riskLevel]
   if (!badge) return null
-  const color = badge.tone === 'danger' ? 'var(--mc-danger)' : 'var(--mc-warn)'
-  const bg = badge.tone === 'danger' ? 'var(--mc-danger-soft)' : 'var(--mc-warn-soft)'
   const Icon = badge.Icon
   return (
-    <span
-      title={riskDescription || undefined}
-      className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-      style={{ color, backgroundColor: bg }}
-    >
+    <Chip tone={badge.tone} className="shrink-0 font-semibold" title={riskDescription || undefined}>
       <Icon size={11} />
       {badge.label}
-    </span>
+    </Chip>
   )
 }
 
@@ -147,11 +142,7 @@ function AttnCard({ session, onSelect, selected, onToggleSelect, focused, regist
           </span>
           <span className="truncate text-sm font-semibold text-[var(--mc-fg)]">{label}</span>
           <RiskBadge riskLevel={session.riskLevel} riskDescription={session.riskDescription} />
-          {session.permissionMode && (
-            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--mc-fg-4)] bg-[var(--mc-surface-2)]">
-              {session.permissionMode}
-            </span>
-          )}
+          {session.permissionMode && <Chip className="shrink-0">{session.permissionMode}</Chip>}
           <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] text-[var(--mc-fg-4)]">
             <Clock size={12} /> {waitLabel || 'waiting'}
           </span>

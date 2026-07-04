@@ -52,8 +52,10 @@ describe('audit-log: every recorded event is schema-valid', () => {
     })
     const validate = compileSchema()
     expect(validate(rec)).toBe(true)
-    // It stamped the required fields the caller did not provide.
-    expect(rec.schemaVersion).toBe(9)
+    // It stamped the required fields the caller did not provide. New records
+    // carry the CURRENT contract version (the audit surface itself landed at
+    // v9 and later bumps must never stamp lower).
+    expect(rec.schemaVersion).toBeGreaterThanOrEqual(9)
     expect(typeof rec.ts).toBe('string')
     expect(new Date(rec.ts).toISOString()).toBe(rec.ts)
     expect(rec.eventType).toBe('spawn')
